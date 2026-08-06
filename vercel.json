@@ -2,11 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/index.js": {
-      "includeFiles": [
-        "public/**",
-        "db/postgres-schema.sql",
-        "print-agent.js"
-      ]
+      "includeFiles": "{public/**,db/postgres-schema.sql,print-agent.js}"
     }
   },
   "rewrites": [
