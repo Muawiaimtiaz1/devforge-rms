@@ -19,13 +19,29 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  if (!databaseReady) {
-    databaseReady = initPostgres().catch((error) => {
-      databaseReady = undefined;
-      throw error;
-    });
-  }
+  try {
+    if (!databaseReady) {
+      databaseReady = initPostgres().catch((error) => {
+        databaseReady = undefined;
+        throw error;
+      });
+    }
 
-  await databaseReady;
-  return handleRequest(req, res);
+    await databaseReady;
+    return await handleRequest(req, res);
+  } catch (error) {
+    console.error("[VERCEL FUNCTION STARTUP ERROR]", error);
+
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.end(
+        JSON.stringify({
+          error: "Application startup failed",
+          code: "DATABASE_INITIALIZATION_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
 };
