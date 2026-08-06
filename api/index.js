@@ -1,11 +1,5 @@
-const serverless = require("serverless-http");
-
 const { app } = require("../server");
-const { initPostgres } = require("../db/db-init");
 const { usePostgres } = require("../db/runtime");
-
-const handleRequest = serverless(app);
-let databaseReady;
 
 module.exports = async function handler(req, res) {
   if (!usePostgres()) {
@@ -19,29 +13,5 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  try {
-    if (!databaseReady) {
-      databaseReady = initPostgres().catch((error) => {
-        databaseReady = undefined;
-        throw error;
-      });
-    }
-
-    await databaseReady;
-    return await handleRequest(req, res);
-  } catch (error) {
-    console.error("[VERCEL FUNCTION STARTUP ERROR]", error);
-
-    if (!res.headersSent) {
-      res.statusCode = 500;
-      res.setHeader("content-type", "application/json; charset=utf-8");
-      res.end(
-        JSON.stringify({
-          error: "Application startup failed",
-          code: "DATABASE_INITIALIZATION_FAILED",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
-  }
+  return app(req, res);
 };
