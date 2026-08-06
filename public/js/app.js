@@ -476,7 +476,7 @@ const AVAILABLE_PANELS = [
     id: "notifications",
     icon: `<rect x="4" y="4" width="16" height="16" rx="4" fill="#14B8A6" opacity="0.18"/><path d="M7 8h10M7 12h7M7 16h5" stroke="#14B8A6" stroke-width="2" stroke-linecap="round"/><path d="M17 15l2 2 3-4" stroke="#14B8A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
     label: "Notifications",
-    desc: "Platform releases, assignments, and shop notices from the owner."
+    desc: "Platform releases, assignments, and restaurant notices from the owner."
   },
   {
     id: "settings",
@@ -494,7 +494,7 @@ const AVAILABLE_PANELS = [
     id: "hierarchy",
     icon: `<path d="M12 2L4 6v4c0 4.4 3.6 8 8 10 4.4-2 8-5.6 8-10V6l-8-4z" fill="#0EA5E9"/><path d="M12 7v5m-3-3h6" stroke="white" stroke-width="2" stroke-linecap="round"/>`,
     label: "Master Platform Hierarchy",
-    desc: "Create new shops, connect databases, and manage global settings."
+    desc: "Create restaurants, connect services, and manage global settings."
   },
   {
     id: "subscriptions",
@@ -676,7 +676,7 @@ async function init() {
       shopMgmtHeader.textContent =
         currentUser.role === "superadmin"
           ? "Master Control"
-          : "Shop Management";
+          : "Restaurant Management";
     }
     if (lobbyUserDisplay) {
       lobbyUserDisplay.textContent = currentUser.username || currentUser.name;
@@ -1070,7 +1070,7 @@ async function renderActiveSettingsContent() {
              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                <div class="px-6 py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
                  <div class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mb-1">Business Type</div>
-                 <div class="text-sm font-black text-slate-700 dark:text-slate-200 uppercase">${currentUser.shop_type || 'Retail'}</div>
+                 <div class="text-sm font-black text-slate-700 dark:text-slate-200 uppercase">Restaurant</div>
                </div>
                <div class="px-6 py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
                  <div class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mb-1">Status</div>
@@ -1831,7 +1831,7 @@ function renderGlobalDashboard(data) {
           <button onclick="window.location.href = '/admin/store-monitoring'" class="flex flex-col items-start p-6 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all group shadow-sm hover:shadow-md h-full text-left">
             <svg class="w-8 h-8 text-indigo-500 mb-4 bg-indigo-100 dark:bg-indigo-900/30 p-1.5 rounded-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             <span class="block text-base font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-widest mb-2">SaaS Command Center</span>
-            <span class="block text-sm text-slate-500 dark:text-slate-400">Monitor all shops, view growth charts, and manage platform status</span>
+            <span class="block text-sm text-slate-500 dark:text-slate-400">Monitor all restaurants, view growth charts, and manage platform status</span>
           </button>
            <button onclick="navigate('subscriptions')" class="flex flex-col items-start p-6 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-all group shadow-sm hover:shadow-md h-full text-left">
             <svg class="w-8 h-8 text-emerald-500 mb-4 bg-emerald-100 dark:bg-emerald-900/30 p-1.5 rounded-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -3073,7 +3073,7 @@ async function renderPOS() {
     const targetShop = (shops || []).find(s => s.id === managedShopId);
     if (targetShop) baseShopType = targetShop.shop_type;
   }
-  const isRetail = baseShopType === 'retail';
+  const isRetail = false;
   window._posIsRetail = isRetail;
 
   const discountPresetOptions = _posDiscountPresets.map((preset) => {
@@ -3592,7 +3592,7 @@ function closePOSCheckout(immediate = false) {
 }
 
 function switchOrderType(type) {
-  const isRetail = window._posIsRetail ?? (currentUser && currentUser.shop_type === 'retail');
+  const isRetail = false;
   if (type !== 'orders') {
     window._posOrderType = type;
     window._posLastOrderType = type;
@@ -5936,7 +5936,7 @@ async function printBill(saleId, isUnpaid = false) {
   let headerHtml = "";
   const useLogo = shop?.use_logo_on_receipt && (shop?.logo_data || shop?.logo_path);
   const useText = shop?.use_text_on_receipt !== false; // Default true
-  const headerText = shop?.receipt_header_text || shop?.name || "STORE";
+  const headerText = shop?.receipt_header_text || shop?.name || "RESTAURANT";
 
   if (useLogo) {
     headerHtml += `<div style="margin-bottom: ${headerSpacing}px;"><img src="${shop.logo_data || shop.logo_path}" style="max-width: 60mm; max-height: 22mm; margin: 0 auto; display: block;" alt="${headerText}"></div>`;
@@ -6272,7 +6272,7 @@ async function printReturnReceipt(returnId) {
   let headerHtml = "";
   const useLogo = shop?.use_logo_on_receipt && (shop?.logo_data || shop?.logo_path);
   const useText = shop?.use_text_on_receipt !== false;
-  const headerText = shop?.receipt_header_text || shop?.name || "STORE";
+  const headerText = shop?.receipt_header_text || shop?.name || "RESTAURANT";
 
   if (useLogo) {
     headerHtml += `<img src="${shop.logo_data || shop.logo_path}" style="max-width: 60mm; max-height: 20mm; margin: 0 auto; display: block;" alt="${headerText}">`;
@@ -6763,9 +6763,9 @@ async function showSaleDuesDetails(saleId) {
 // ─── Expenses ───────────────────────────────────────────────────────
 function getExpenseCategoryChoices() {
   const categories = Array.isArray(_expenseCategories) ? [..._expenseCategories] : [];
-  if (!categories.some((category) => category.name === "Shop Expense")) {
+  if (!categories.some((category) => category.name === "Restaurant Expense")) {
     categories.unshift({
-      name: "Shop Expense",
+      name: "Restaurant Expense",
       emoji: "🏬",
       color_class: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
     });
@@ -8127,7 +8127,7 @@ function notificationTargetLabel(notification) {
     return `Assigned to ${notification.target_user_name || notification.target_user_username}`;
   }
   if (notification.shop_name) return notification.shop_name;
-  return "All shops";
+  return "All restaurants";
 }
 
 function notificationAction(notification) {
@@ -8171,7 +8171,7 @@ function renderNotificationCards(notifications) {
           </svg>
         </div>
         <h3 class="text-lg font-black text-slate-900 dark:text-white">No notifications found</h3>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">New platform releases, assignments, and shop notices will appear here.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">New platform releases, assignments, and restaurant notices will appear here.</p>
       </div>
     `;
   }
@@ -8251,7 +8251,7 @@ async function renderNotifications() {
       <div class="space-y-6">
         <section class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div>
-            <div class="text-xs font-black uppercase tracking-[0.2em] text-teal-600 dark:text-teal-300">Shop Communication</div>
+            <div class="text-xs font-black uppercase tracking-[0.2em] text-teal-600 dark:text-teal-300">Restaurant Communication</div>
             <h2 class="text-3xl font-black text-slate-950 dark:text-white tracking-tight mt-1">Notification Center</h2>
             <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Platform notices, assigned work, release updates, billing reminders, and shop-specific messages.</p>
           </div>
@@ -8346,9 +8346,9 @@ async function openNotificationComposer() {
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="block">
-            <span class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Target Shop</span>
+            <span class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Target Restaurant</span>
             <select id="notif-shop" onchange="updateNotificationTargetUsers()" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-800 dark:text-white">
-              <option value="">All Shops</option>
+              <option value="">All Restaurants</option>
               ${_notificationShops.map((shop) => `<option value="${Number(shop.id)}">${escapeOrderValue(shop.name || `Shop #${shop.id}`)}</option>`).join("")}
             </select>
           </label>
@@ -8367,7 +8367,7 @@ async function openNotificationComposer() {
 
         <label class="block">
           <span class="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Message</span>
-          <textarea id="notif-message" rows="5" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-medium text-slate-800 dark:text-white" placeholder="Write the notice that shops should see."></textarea>
+          <textarea id="notif-message" rows="5" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-medium text-slate-800 dark:text-white" placeholder="Write the notice that restaurants should see."></textarea>
         </label>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -9714,7 +9714,7 @@ async function renderRegister() {
               <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Movement Type</label>
               <select id="cash-movement-type" onchange="updateCashMovementTypeUI()" class="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:border-blue-500 transition-all outline-none font-black text-sm">
                 <option value="cash_drop">Cash drop to safe/admin</option>
-                <option value="shop_expense">Shop expense from drawer</option>
+                <option value="shop_expense">Restaurant expense from drawer</option>
                 <option value="handover">Handover to person</option>
               </select>
             </div>
@@ -9950,12 +9950,12 @@ function updateCashMovementTypeUI() {
     submitButton.textContent = type === "handover"
       ? "Request Handover"
       : type === "shop_expense"
-        ? "Request Shop Expense"
+        ? "Request Restaurant Expense"
         : "Request Cash Drop";
   }
   if (noteInput) {
     noteInput.placeholder = type === "shop_expense"
-      ? "Shop expense details, invoice, or reason."
+      ? "Restaurant expense details, invoice, or reason."
       : "Moved to safe, handed to manager, or drawer cleanup note.";
   }
 }
@@ -9981,14 +9981,14 @@ async function performCashMovement() {
       if (res.ok) toast("Cash handover sent for verification.");
     } else {
       const movementNote = type === "shop_expense"
-        ? `Shop Expense${note ? `: ${note}` : ""}`
+        ? `Restaurant Expense${note ? `: ${note}` : ""}`
         : note;
       const res = await api("/api/shifts/cash-drop", "POST", {
         shift_id: currentShift.id,
         amount,
         note: movementNote
       });
-      if (res.ok) toast(type === "shop_expense" ? "Shop expense sent for admin verification." : "Cash drop sent for admin verification.");
+      if (res.ok) toast(type === "shop_expense" ? "Restaurant expense sent for admin verification." : "Cash drop sent for admin verification.");
     }
 
     if (_currentPage === "register") {
@@ -10179,7 +10179,7 @@ function _activityLogTableShell(title = "Activity Trail", subtitle = "System act
               <th class="px-6 py-4">User</th>
               <th class="px-6 py-4">Action</th>
               <th class="px-6 py-4">Details</th>
-              ${currentUser.role === 'superadmin' ? '<th class="px-6 py-4">Shop</th>' : ''}
+              ${currentUser.role === 'superadmin' ? '<th class="px-6 py-4">Restaurant</th>' : ''}
             </tr>
           </thead>
           <tbody id="logs-table-body">
@@ -10293,7 +10293,7 @@ function _renderWastageLogsTab(wasteRows = []) {
               <th class="px-6 py-4">Cost</th>
               <th class="px-6 py-4">Reason</th>
               <th class="px-6 py-4">Staff</th>
-              ${currentUser.role === "superadmin" ? '<th class="px-6 py-4">Shop</th>' : ""}
+              ${currentUser.role === "superadmin" ? '<th class="px-6 py-4">Restaurant</th>' : ""}
             </tr>
           </thead>
           <tbody>
@@ -10341,7 +10341,7 @@ function _renderPaymentLogsTab(paymentRows = []) {
               <th class="px-6 py-4">Amount</th>
               <th class="px-6 py-4">Note</th>
               <th class="px-6 py-4">Collected By</th>
-              ${currentUser.role === 'superadmin' ? '<th class="px-6 py-4">Shop</th>' : ''}
+              ${currentUser.role === 'superadmin' ? '<th class="px-6 py-4">Restaurant</th>' : ''}
             </tr>
           </thead>
           <tbody>
@@ -10403,7 +10403,7 @@ function _renderSalesLogsTab(salesRows = []) {
               <th class="px-6 py-4">Served By</th>
               <th class="px-6 py-4">Amount</th>
               <th class="px-6 py-4">Payment</th>
-              ${currentUser.role === "superadmin" ? '<th class="px-6 py-4">Shop</th>' : ""}
+              ${currentUser.role === "superadmin" ? '<th class="px-6 py-4">Restaurant</th>' : ""}
             </tr>
           </thead>
           <tbody>
@@ -10459,7 +10459,7 @@ function _renderDeliveryLogsTab(deliveryRows = []) {
               <th class="px-6 py-4">Address</th>
               <th class="px-6 py-4">Rider</th>
               <th class="px-6 py-4">Status</th>
-              ${currentUser.role === "superadmin" ? '<th class="px-6 py-4">Shop</th>' : ""}
+              ${currentUser.role === "superadmin" ? '<th class="px-6 py-4">Restaurant</th>' : ""}
             </tr>
           </thead>
           <tbody>
@@ -10817,7 +10817,7 @@ function _renderShiftHistoryTable() {
               <th class="px-4 py-4">Logs</th>
               <th class="px-4 py-4">Cash Movement</th>
               <th class="px-4 py-4">Status</th>
-              ${currentUser.role === 'superadmin' ? '<th class="px-4 py-4">Shop</th>' : ''}
+              ${currentUser.role === 'superadmin' ? '<th class="px-4 py-4">Restaurant</th>' : ''}
               <th class="px-4 py-4 text-right">Audit</th>
             </tr>
           </thead>

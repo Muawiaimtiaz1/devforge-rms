@@ -401,7 +401,7 @@ function initCharts() {
             labels: labels.length ? labels : ['No Data'],
             datasets: [
                 {
-                    label: 'New Shops',
+                    label: 'New Restaurants',
                     data: dataPoints.length ? dataPoints : [0],
                     borderColor: colors.lavender,
                     backgroundColor: colors.lavenderFill,
@@ -472,7 +472,7 @@ function initCharts() {
     let bgColors = [colors.lavender, colors.yellow];
 
     if (!dData.some(Boolean)) {
-        dLabels = ['No shops'];
+        dLabels = ['No restaurants'];
         dData = [1];
         bgColors = [colors.grid];
     }
@@ -506,7 +506,7 @@ function renderStoreTable() {
     if (!tbody) return;
 
     if (!globalStores.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">No shops found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">No restaurants found.</td></tr>`;
         return;
     }
 

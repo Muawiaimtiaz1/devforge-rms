@@ -29,6 +29,9 @@ async function initPostgres() {
     // Keep existing deployments aligned with postgres-schema.sql. CREATE TABLE IF
     // NOT EXISTS does not add columns that were introduced after a table existed.
     await query("ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT");
+    await query("ALTER TABLE shops ALTER COLUMN shop_type SET DEFAULT 'restaurant'");
+    await query("UPDATE shops SET shop_type = 'restaurant' WHERE shop_type IS NULL OR shop_type <> 'restaurant'");
+    await query("UPDATE expense_categories SET name = 'Restaurant Expense' WHERE name = 'Shop Expense'");
 
     // 2. Check if any user exists (to ensure we have an admin)
     const userCheck = await query("SELECT id FROM users LIMIT 1");

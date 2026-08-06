@@ -37,7 +37,7 @@ function renderHierarchyUI() {
       <div class="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
         <div>
           <h3 class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Master Platform Hierarchy</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Multi-tenant view of all shops, assigned admins, staff, and parters.</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Multi-tenant view of all restaurants, assigned admins, staff, and partners.</p>
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
           <div class="relative">
@@ -46,7 +46,7 @@ function renderHierarchyUI() {
           </div>
           <button onclick="openCreateShop()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all shadow-md flex items-center gap-2 justify-center">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-            New Tenant
+            New Restaurant
           </button>
         </div>
       </div>
@@ -146,7 +146,7 @@ function renderHierarchyBlock(
                <h4 class="font-black text-lg text-slate-900 dark:text-white tracking-tight">${name}</h4>
                ${isGlobal ? "" : `<span class="w-2 h-2 rounded-full ${shop.status === "active" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"}"></span>`}
              </div>
-             <span class="text-[9px] uppercase font-black tracking-widest text-slate-400 mt-0.5 inline-block">Tenant Store</span>
+             <span class="text-[9px] uppercase font-black tracking-widest text-slate-400 mt-0.5 inline-block">Restaurant</span>
            </div>
          </div>
 
@@ -173,20 +173,20 @@ function renderHierarchyBlock(
 
       <!-- Card Footer Action -->
       <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/20 border-t border-slate-100 dark:border-slate-800/60 mt-auto flex items-center justify-between">
-        <span class="px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-widest ${shop.shop_type === 'restaurant' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' : 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'}">
-          ${shop.shop_type === 'restaurant' ? '🍽️ Restaurant' : '🛍️ Retail'}
+        <span class="px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-widest text-amber-600 bg-amber-50 dark:bg-amber-900/20">
+          🍽️ Restaurant
         </span>
         
         <div class="flex items-center gap-2">
-          <button onclick="event.preventDefault(); event.stopPropagation(); openRenameShop(${shop.id})" class="px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-slate-700 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl transition-all shadow-sm" title="Rename Shop">
+          <button onclick="event.preventDefault(); event.stopPropagation(); openRenameShop(${shop.id})" class="px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-slate-700 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl transition-all shadow-sm" title="Rename Restaurant">
             Rename
           </button>
-          <button onclick="event.preventDefault(); event.stopPropagation(); deleteShop(${shop.id}, '${name.replace(/'/g, "\\'")}')" class="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all border border-transparent hover:border-rose-200 dark:hover:border-rose-800" title="Remove Shop">
+          <button onclick="event.preventDefault(); event.stopPropagation(); deleteShop(${shop.id}, '${name.replace(/'/g, "\\'")}')" class="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all border border-transparent hover:border-rose-200 dark:hover:border-rose-800" title="Remove Restaurant">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
           </button>
-          <button onclick="event.preventDefault(); event.stopPropagation(); openEditShop(${shop.id})" class="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-indigo-600 dark:hover:bg-indigo-600 border border-slate-200 dark:border-slate-700 hover:border-indigo-600 dark:hover:border-indigo-600 rounded-xl transition-all shadow-sm flex items-center gap-1.5" title="Manage Shop">
+          <button onclick="event.preventDefault(); event.stopPropagation(); openEditShop(${shop.id})" class="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-indigo-600 dark:hover:bg-indigo-600 border border-slate-200 dark:border-slate-700 hover:border-indigo-600 dark:hover:border-indigo-600 rounded-xl transition-all shadow-sm flex items-center gap-1.5" title="Manage Restaurant">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-            Manage Shop
+            Manage Restaurant
           </button>
         </div>
       </div>
@@ -199,7 +199,7 @@ async function toggleShopStatus(id, current) {
   const next = current === "active" ? "blocked" : "active";
   const r = await api(`/api/admin/store/${id}/status`, "PATCH", { status: next });
   if (r.error) return toast(r.error, "error");
-  toast(`Shop ${next === "active" ? "Activated" : "Blocked"} `);
+  toast(`Restaurant ${next === "active" ? "Activated" : "Blocked"} `);
   if (typeof _managedShopId !== 'undefined' && _managedShopId !== null) {
     renderShopManagement(_managedShopId);
   } else {
@@ -231,9 +231,9 @@ let _wizardData = {};
 function openCreateShop() { openShopWizard(); }
 
 function openShopWizard() {
-  _wizardStep = 1;
+  _wizardStep = 2;
   _wizardData = {
-    type: null,
+    type: "restaurant",
     name: "",
     adminUsername: "",
     adminPassword: "",
@@ -252,7 +252,7 @@ function setWizardType(t) {
 
 function wizardNext() {
   if (_wizardStep === 2) {
-    if (!_wizardData.name) return toast("Please enter a shop name", "warning");
+    if (!_wizardData.name) return toast("Please enter a restaurant name", "warning");
     // Capture services if restaurant
     if (_wizardData.type === "restaurant") {
       const checks = document.querySelectorAll(".service-check");
@@ -297,7 +297,7 @@ function wizardPrev() {
 async function submitWizard(btn) {
   const payload = {
     name: _wizardData.name,
-    shop_type: _wizardData.type,
+    shop_type: "restaurant",
     allowed_panels: _wizardData.panels,
     adminUsername: _wizardData.adminUsername,
     adminPassword: _wizardData.adminPassword,
@@ -315,22 +315,22 @@ async function submitWizard(btn) {
     if (r.error) {
       toast(r.error, "error");
       btn.disabled = false;
-      btn.textContent = "Launch Shop";
+      btn.textContent = "Launch Restaurant";
       return;
     }
-    toast("Shop created successfully!");
+    toast("Restaurant created successfully!");
     closeModal();
     renderHierarchy();
   } catch (e) {
-    toast("Failed to launch shop", "error");
+    toast("Failed to launch restaurant", "error");
     btn.disabled = false;
   }
 }
 
 function renderWizard() {
   const titles = [
-    "Choose Your Business Type",
-    "Configure Your Shop",
+    "Restaurant",
+    "Configure Your Restaurant",
     "Select Access Modules",
     "Admin Credentials",
     "Staff Management",
@@ -340,28 +340,7 @@ function renderWizard() {
 
   let content = "";
 
-  if (_wizardStep === 1) {
-    content = `
-      <div class="grid grid-cols-2 gap-6 py-6">
-        <div onclick="setWizardType('retail')" class="cursor-pointer group p-8 rounded-3xl border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-all flex flex-col items-center gap-6 text-center">
-          <div class="w-20 h-20 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-5xl group-hover:scale-110 transition-all shadow-sm">🛍️</div>
-          <div>
-            <h4 class="font-black text-slate-900 dark:text-white uppercase tracking-tight text-lg">Retail Shop</h4>
-            <p class="text-xs text-slate-500 mt-2 font-medium">Electronics, Pharmacy, Garments, or General Store.</p>
-          </div>
-        </div>
-        <div onclick="setWizardType('restaurant')" class="cursor-pointer group p-8 rounded-3xl border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-all flex flex-col items-center gap-6 text-center">
-           <div class="w-20 h-20 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-5xl group-hover:scale-110 transition-all shadow-sm">🍽️</div>
-           <div>
-            <h4 class="font-black text-slate-900 dark:text-white uppercase tracking-tight text-lg">Restaurant</h4>
-            <p class="text-xs text-slate-500 mt-2 font-medium">Boutique Dining, Cafes, or Cloud Kitchens.</p>
-          </div>
-        </div>
-      </div>
-      <p class="text-center text-slate-400 text-[10px] uppercase font-black tracking-widest mt-4">Step 1: Core Business Identification</p>
-    `;
-  } else if (_wizardStep === 2) {
-    if (_wizardData.type === "restaurant") {
+  if (_wizardStep === 2) {
       content = `
         <div class="space-y-6 py-4">
           <div>
@@ -405,25 +384,6 @@ function renderWizard() {
           </div>
         </div>
       `;
-    } else {
-      content = `
-        <div class="space-y-6 py-4">
-          <div>
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2">Retail Shop Name</label>
-            <input type="text" oninput="_wizardData.name=this.value" value="${_wizardData.name}" placeholder="e.g. Mega Mart" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-indigo-500 outline-none font-bold text-lg transition-all">
-          </div>
-          <div class="p-5 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl flex gap-4 items-start">
-             <div class="text-2xl mt-1">🧩</div>
-             <div>
-                <h5 class="text-xs font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-widest mb-1">Standard retail pack</h5>
-                <p class="text-xs text-indigo-600/70 dark:text-indigo-400/70 leading-relaxed font-medium">
-                   We'll pre-load your store with Inventory management, Multi-batch tracking, Customer CRM, and Expenses tracking as part of your retail kit.
-                </p>
-             </div>
-          </div>
-        </div>
-      `;
-    }
   } else if (_wizardStep === 3) {
     content = `
       <div class="space-y-6 py-4">
@@ -561,13 +521,13 @@ function renderWizard() {
 
   const footer = `
     <div class="flex justify-between items-center pt-8 border-t border-slate-100 dark:border-slate-800 mt-4">
-      <button onclick="wizardPrev()" class="px-6 py-2.5 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white font-bold transition-all ${_wizardStep === 1 ? "opacity-0 pointer-events-none" : ""}">Back</button>
+      <button onclick="wizardPrev()" class="px-6 py-2.5 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white font-bold transition-all ${_wizardStep === 2 ? "opacity-0 pointer-events-none" : ""}">Back</button>
       <div class="hidden sm:flex gap-1.5">
         ${[1, 2, 3, 4, 5, 6, 7].map(i => `<div class="w-3 h-1.5 rounded-full transition-all duration-300 ${i === _wizardStep ? "bg-indigo-600 w-8" : (i < _wizardStep ? "bg-indigo-300" : "bg-slate-200 dark:bg-slate-800")}"></div>`).join("")}
       </div>
       ${_wizardStep === 7
       ? `<button onclick="submitWizard(this)" class="px-10 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95">Complete Launch</button>`
-      : `<button onclick="wizardNext()" class="px-10 py-3 rounded-xl bg-slate-950 dark:bg-indigo-600 hover:scale-105 active:scale-95 text-white font-black uppercase tracking-widest text-xs transition-all shadow-lg ${_wizardStep === 1 ? 'hidden' : ''}">Proceed Next</button>`
+      : `<button onclick="wizardNext()" class="px-10 py-3 rounded-xl bg-slate-950 dark:bg-indigo-600 hover:scale-105 active:scale-95 text-white font-black uppercase tracking-widest text-xs transition-all shadow-lg">Proceed Next</button>`
     }
     </div>
   `;
@@ -791,13 +751,13 @@ function openEditShop(id) {
 
 function openRenameShop(id) {
   const shop = hierarchyData.shops.find((s) => Number(s.id) === Number(id));
-  if (!shop) return toast("Shop not found", "error");
+  if (!shop) return toast("Restaurant not found", "error");
   const currentName = shop.name || shop.store_name || "";
 
-  openModal("Rename Shop", `
+  openModal("Rename Restaurant", `
     <div class="space-y-4">
       <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">New Shop Name</label>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">New Restaurant Name</label>
         <input id="rename-shop-name" type="text" value="${currentName.replace(/"/g, "&quot;")}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-bold">
       </div>
       <div class="grid grid-cols-2 gap-3">
@@ -810,11 +770,11 @@ function openRenameShop(id) {
 
 async function renameShop(id) {
   const name = $c("rename-shop-name")?.value.trim();
-  if (!name) return toast("Shop name is required", "error");
+  if (!name) return toast("Restaurant name is required", "error");
 
   const r = await api(`/api/shops/${id}`, "PATCH", { name });
   if (r.error) return toast(r.error, "error");
-  toast("Shop renamed");
+  toast("Restaurant renamed");
   closeModal();
   if (typeof _managedShopId !== "undefined" && _managedShopId !== null) {
     renderShopManagement(_managedShopId);
@@ -834,7 +794,7 @@ function shopFormHtml(shop = null) {
   return `
       <div class="space-y-4">
       <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Shop Name</label>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Restaurant Name</label>
         <input id="shop-name" type="text" value="${shop ? (shop.name || shop.store_name || "").replace(/"/g, "&quot;") : ""}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-indigo-500 transition-all">
       </div>
       <div>
@@ -858,7 +818,7 @@ function shopFormHtml(shop = null) {
       ${!shop
       ? `
       <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
-        <label class="block text-xs font-bold text-indigo-600 uppercase tracking-widest mb-3">Initial Shop Owner Account</label>
+        <label class="block text-xs font-bold text-indigo-600 uppercase tracking-widest mb-3">Initial Restaurant Admin Account</label>
         <div class="grid grid-cols-2 gap-3">
           <input id="shop-admin-username" type="text" placeholder="Admin Username" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none focus:border-indigo-500 transition-all">
           <input id="shop-admin-password" type="password" placeholder="Admin Password" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none focus:border-indigo-500 transition-all">
@@ -901,7 +861,7 @@ async function saveShop(id) {
   const r = await api(url, method, payload);
   if (r.error) return toast(r.error, "error");
 
-  toast(id ? "Shop updated" : "Shop created & admin added");
+  toast(id ? "Restaurant updated" : "Restaurant created & admin added");
   closeModal();
   if (typeof _managedShopId !== 'undefined' && _managedShopId !== null) {
     renderShopManagement(_managedShopId);
@@ -910,13 +870,13 @@ async function saveShop(id) {
   }
 }
 
-async function deleteShop(id, name = "this shop") {
-  if (id === 1) return toast("Cannot delete main shop", "warning");
-  if (!confirm(`Remove "${name}" and all of its data?\n\nThis will delete users, products, sales, customers, and settings for this shop. This cannot be undone.`)) return;
+async function deleteShop(id, name = "this restaurant") {
+  if (id === 1) return toast("Cannot delete main restaurant", "warning");
+  if (!confirm(`Remove "${name}" and all of its data?\n\nThis will delete users, products, sales, customers, and settings for this restaurant. This cannot be undone.`)) return;
   const typed = prompt(`Type DELETE to permanently remove "${name}".`);
-  if (typed !== "DELETE") return toast("Shop removal cancelled", "warning");
+  if (typed !== "DELETE") return toast("Restaurant removal cancelled", "warning");
   await api(`/api/shops/${id}`, "DELETE");
-  toast("Shop deleted");
+  toast("Restaurant deleted");
   _managedShopId = null;
   renderHierarchy();
 }
@@ -931,7 +891,7 @@ async function renderShopManagement(shopId) {
 
   const shop = hierarchyData.shops.find(s => s.id === shopId);
   if (!shop) {
-    toast("Shop not found", "error");
+    toast("Restaurant not found", "error");
     return renderHierarchyUI();
   }
 
@@ -959,10 +919,10 @@ async function renderShopManagement(shopId) {
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <button onclick="openRenameShop(${shop.id})" class="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-            Rename Shop
+            Rename Restaurant
           </button>
           <button onclick="deleteShop(${shop.id}, '${(shop.store_name || shop.name || "Shop").replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-300 text-xs font-black hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all">
-            Remove Shop
+            Remove Restaurant
           </button>
         </div>
       </div>
@@ -993,7 +953,7 @@ async function renderShopManagement(shopId) {
           <!-- Admin Tab -->
           <div id="shop-tab-admin" class="space-y-6">
              <div class="flex items-center justify-between">
-                <h4 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Shop Administrators</h4>
+                <h4 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Restaurant Administrators</h4>
                 <button onclick="openCreateUser(${shop.id}, 'admin')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md">+ Add Admin</button>
              </div>
              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1004,10 +964,10 @@ async function renderShopManagement(shopId) {
              <!-- Shop Permissions Form -->
              <div class="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
                <h4 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4">Master Allowed Panels</h4>
-               <p class="text-xs text-slate-500 mb-4">Select which modules this shop has access to. (Affects all admins and employees of this shop)</p>
+               <p class="text-xs text-slate-500 mb-4">Select which modules this restaurant has access to. (Affects all admins and employees of this restaurant)</p>
                <div id="shop-modules-container">
                  ${shopFormHtml(shop)}
-                 <button onclick="saveShop(${shop.id})" class="mt-6 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-md">Update Shop Allowed Panels</button>
+                 <button onclick="saveShop(${shop.id})" class="mt-6 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-md">Update Restaurant Modules</button>
                </div>
              </div>
           </div>

@@ -187,7 +187,7 @@ class AuthService {
       if (!shop) return null;
 
       shopName = shop.name;
-      shopType = shop.shop_type || 'retail';
+      shopType = shop.shop_type || 'restaurant';
       shopStatus = shop.status || 'active';
       shopCreatedAt = shop.created_at;
       shopPhone = shop.receipt_phone || '';

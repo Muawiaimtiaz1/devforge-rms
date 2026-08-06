@@ -278,15 +278,15 @@ function renderReceiptSettings() {
               
               <div id="text-header-input" class="${settings.use_text_on_receipt === false ? "hidden" : "space-y-4 mb-6"}">
                 <div>
-                  <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Shop Name on Receipt</label>
+                  <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Restaurant Name on Receipt</label>
                   <input type="text" id="receipt-header-text" value="${settings.receipt_header_text || settings.name || ""}" 
-                         placeholder="Your Shop Name" oninput="updateReceiptPreview()"
+                         placeholder="Your Restaurant Name" oninput="updateReceiptPreview()"
                          class="w-full px-6 py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all">
                 </div>
                 <div>
                   <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Extended Name / Tagline</label>
                   <input type="text" id="receipt-extended-name" value="${settings.receipt_extended_name || ""}" 
-                         placeholder="e.g. Fine Dining or Wholesale & Retail" oninput="updateReceiptPreview()"
+                         placeholder="e.g. Fine Dining Restaurant" oninput="updateReceiptPreview()"
                          class="w-full px-6 py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all">
                 </div>
               </div>
@@ -397,7 +397,7 @@ function renderReceiptSettings() {
 
             <!-- Header Text Styling -->
             <div class="bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
-              <h5 class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Header (Shop Name)</h5>
+              <h5 class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Header (Restaurant Name)</h5>
               <div class="grid grid-cols-3 gap-4">
                 <div>
                   <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Font Size</label>
@@ -1025,7 +1025,7 @@ async function renderUsers() {
       <table class="w-full text-sm">
         <thead><tr class="border-b border-slate-200 dark:border-slate-800 text-left bg-slate-50 dark:bg-black/20">
           <th class="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Name</th>
-          <th class="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Shop</th>
+          <th class="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Restaurant</th>
           <th class="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Username</th>
           <th class="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Role</th>
           <th class="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Access</th>
@@ -1572,12 +1572,12 @@ async function renderShops() {
     <div class="space-y-6">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 class="text-xl font-bold text-slate-800 dark:text-white">Shop Management</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400">Manage system-wide stores and shops</p>
+          <h3 class="text-xl font-bold text-slate-800 dark:text-white">Restaurant Management</h3>
+          <p class="text-sm text-slate-500 dark:text-slate-400">Manage restaurants across the platform</p>
         </div>
         <button onclick="openCreateShop()" class="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all shadow-lg active:scale-95">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-          Add New Shop
+          Add New Restaurant
         </button>
       </div>
 
@@ -1587,7 +1587,7 @@ async function renderShops() {
             <thead>
               <tr class="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">ID</th>
-                <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Shop Name</th>
+                <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Restaurant Name</th>
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Status</th>
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Allotted Panels</th>
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-right">Actions</th>
@@ -1739,7 +1739,7 @@ async function renderSubscriptions() {
 
       <div class="flex flex-col lg:flex-row gap-3">
         <select onchange="_platformPaymentFilter.shopId=this.value; renderSubscriptions();" class="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm font-bold">
-          <option value="all">All Shops</option>
+          <option value="all">All Restaurants</option>
           ${_subscriptionShopsCache.map((shop) => `<option value="${Number(shop.id)}" ${String(_platformPaymentFilter.shopId) === String(shop.id) ? "selected" : ""}>${subscriptionEscapeHtml(shop.name || `Shop #${shop.id}`)}</option>`).join("")}
         </select>
         <select onchange="_platformPaymentFilter.category=this.value; renderSubscriptions();" class="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm font-bold">
@@ -1753,7 +1753,7 @@ async function renderSubscriptions() {
             <thead>
               <tr class="bg-slate-50/50 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800">
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Date</th>
-                <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Shop</th>
+                <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Restaurant</th>
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Type</th>
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Details</th>
                 <th class="px-5 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Method</th>

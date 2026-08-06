@@ -4,7 +4,6 @@ const { z } = require('zod');
 
 const shopSchema = z.object({
   name: z.string().min(1),
-  shop_type: z.enum(['retail', 'restaurant', 'pharmacy', 'grocery']).default('retail'),
   allowed_panels: z.array(z.string()).optional().default([]),
   adminUsername: z.string().min(3),
   adminPassword: z.string().min(6),
@@ -41,10 +40,10 @@ class ShopService {
     const panelsJson = JSON.stringify(ensureShopPanels(data.allowed_panels));
 
     const shopId = await db.transaction(async (trx) => {
-      // 1. Create Shop
+      // 1. Create Restaurant
       const [idObj] = await trx('shops').insert({
         name: data.name,
-        shop_type: data.shop_type,
+        shop_type: 'restaurant',
         allowed_panels: panelsJson,
         status: 'active'
       }).returning('id');
@@ -102,8 +101,8 @@ class ShopService {
       // 6. Log activity
       await trx('activity_logs').insert({
         shop_id: sid,
-        action: 'Store Created',
-        details: `Store ${data.name} created with ${totalUsers} initial staff.`
+        action: 'Restaurant Created',
+        details: `Restaurant ${data.name} created with ${totalUsers} initial staff.`
       });
 
       return sid;
@@ -125,7 +124,7 @@ class ShopService {
   }
 
   async deleteShop(id) {
-    if (Number(id) === 1) throw new Error("Cannot delete main shop");
+    if (Number(id) === 1) throw new Error("Cannot delete main restaurant");
     await db('shops').where({ id }).delete();
   }
 }

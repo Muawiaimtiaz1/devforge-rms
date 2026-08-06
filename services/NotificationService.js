@@ -122,7 +122,7 @@ class NotificationService {
 
     if (targetShopId) {
       const shop = await db('shops').where({ id: targetShopId }).first();
-      if (!shop) throw new Error('Target shop not found');
+      if (!shop) throw new Error('Target restaurant not found');
     }
 
     if (data.target_user_id) {

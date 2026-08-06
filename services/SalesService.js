@@ -534,7 +534,7 @@ class SalesService {
               }
             }
           } else {
-            // Retail Stock Deduction (FIFO)
+            // Packaged product stock deduction (FIFO)
             const batches = await trx('product_batches')
               .where({ product_id: item.product.id, shop_id: shopId })
               .andWhere('quantity', '>', 0)
@@ -626,7 +626,7 @@ class SalesService {
       for (const item of oldItems) {
         if (item.product_id) {
           if (item.batch_id) {
-            // Retail item restoration
+            // Packaged product restoration
             await trx('product_batches').where({ id: item.batch_id }).update({ quantity: db.raw('quantity + ?', [item.quantity]) });
             await trx('products').where({ id: item.product_id }).update({ stock: db.raw('stock + ?', [item.quantity]) });
           } else {
@@ -652,7 +652,7 @@ class SalesService {
                 }
               }
             } else {
-              // Oversold retail item restoration
+              // Oversold packaged product restoration
               await trx('products').where({ id: item.product_id }).update({ stock: db.raw('stock + ?', [item.quantity]) });
               const newestBatch = await trx('product_batches').where({ product_id: item.product_id, shop_id: shopId }).orderBy('created_at', 'desc').first();
               if (newestBatch) await trx('product_batches').where({ id: newestBatch.id }).update({ quantity: db.raw('quantity + ?', [item.quantity]) });
