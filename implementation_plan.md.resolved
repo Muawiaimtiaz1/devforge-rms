@@ -1,0 +1,60 @@
+# Implementation Plan - Order Editing Functionality
+
+Allowing users to modify active (non-completed) orders directly from the Orders Panel.
+
+## User Review Required
+
+> [!IMPORTANT]
+> Editing an order will load it back into the POS cart. Any existing items in your current cart will be replaced. 
+> The system will handle stock restoration for removed items and deduction for new items during the update process.
+
+## Proposed Changes
+
+### [Sales Module]
+
+#### [MODIFY] [SalesService.js](file:///home/muawiaimtiaz/code-drive/rms-system-v-online/services/SalesService.js)
+*   Implement `updateSaleItems(saleId, newItems, shopId)`:
+    *   Fetch previous items.
+    *   Restore stock for previous items (Raw stock or Product batches).
+    *   Delete old items.
+    *   Register new items and deduct stock (using existing `createSale` logic where possible).
+    *   Recalculate total.
+
+#### [MODIFY] [sales.js](file:///home/muawiaimtiaz/code-drive/rms-system-v-online/routes/sales.js)
+*   Add `PUT /api/sales/:id/items` route to handle the item update request.
+
+### [POS Frontend]
+
+#### [MODIFY] [app.js](file:///home/muawiaimtiaz/code-drive/rms-system-v-online/public/js/app.js)
+*   **Global State**: Add `_editingOrderId = null;`.
+*   **order Editing**:
+    *   Update `renderPOSOrders` to include an "Edit" button.
+    *   Implement `editOrder(id)`:
+        *   Fetch order details.
+        *   Populate the `cart` with order items.
+        *   Set `_editingOrderId = id`.
+        *   Switch UI to the POS panel.
+        *   Trigger `updateCartUI()`.
+*   **Cart UI**:
+    *   If `_editingOrderId` is set, change the checkout button text to "Update Order" and color it (e.g., Amber).
+    *   Add a "Cancel Edit" button to return to normal POS mode.
+*   **Checkout Logic**:
+    *   Modify `checkout()` to check if `_editingOrderId` is set.
+    *   If editing, call `PUT /api/sales/:id/items` instead of the normal `POST /api/sales`.
+
+## Verification Plan
+
+### Automated Tests
+*   Create an order with 2 Pizzas.
+*   Edit order -> Change to 1 Pizza and 1 Drink.
+*   Verify stock of Pizza is restored by 1 and Drink is deducted by 1.
+*   Verify sale total is updated.
+
+### Manual Verification
+1.  Create a "Kitchen" order.
+2.  Go to Orders Panel.
+3.  Click "Edit" on that order.
+4.  Verify POS loads with those items.
+5.  Add/Remove items.
+6.  Click "Update Order".
+7.  Verify the order is updated in the list.

@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/uploads/devforge_os.png" />
+    <title>POS System — Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        white: '#f8fafc',
+                        black: '#0f172a'
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script>
+        // Init theme before body renders to avoid flicker
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        html {
+            font-size: 18px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* ─── Cards (standard solid, no glassmorphism) ──── */
+        .glass {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        .dark .glass {
+            background: #111827;
+            border: 1px solid #1f2937;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        }
+
+
+        /* ─── Nav links ─────────────────────────────────── */
+        .nav-link {
+            transition: all 0.2s ease;
+            color: #64748b;
+            position: relative;
+            padding: 0.5rem 1rem;
+            border-radius: 0.75rem;
+        }
+
+        .nav-link.active {
+            background: rgba(99, 102, 241, 0.08);
+            color: #6366f1;
+            font-weight: 700;
+        }
+
+        .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 4px;
+            background: #6366f1;
+            border-radius: 10px;
+        }
+
+        .dark .nav-link.active {
+            background: rgba(99, 102, 241, 0.2);
+            color: #f8fafc;
+        }
+
+        .nav-link:not(.active):hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0f172a;
+        }
+
+        .dark .nav-link:not(.active):hover {
+            background: rgba(255, 255, 255, 0.07);
+            color: #f8fafc;
+        }
+
+        /* DARK MODE */
+        .dark .nav-link {
+            color: #9ca3af;
+            /* gray-400 */
+        }
+
+        /* HOVER IN DARK MODE */
+        /* This rule is now redundant due to the more specific .dark .nav-link:not(.active):hover */
+        /* .dark .nav-link:hover,
+        .dark .nav-link.active {
+            color: #f8fafc;
+        } */
+
+        /* ─── Scrollbar ─────────────────────────────────── */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        html:not(.dark) ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            color: #f8fafc;
+        }
+
+        html:not(.dark) ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .dark ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        .dark ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        /* Hide native number arrows */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            appearance: none;
+            margin: 0;
+        }
+
+        input[type="number"] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+
+        /* ─── Modal backdrop ────────────────────────────── */
+        .modal-backdrop {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(6px);
+        }
+
+        /* ─── Hover rows ────────────────────────────────── */
+        .hover-row:hover {
+            background: rgba(37, 99, 235, 0.04);
+        }
+
+        .dark .hover-row:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        /* ─── Product Card (Mockup Style) ────────────────── */
+        .product-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid #E2E8F0;
+        }
+
+        .product-card:hover {
+            border-color: #6366f1;
+        }
+
+        .dark .product-card {
+            border-color: #1e293b;
+        }
+
+        .dark .product-card:hover {
+            border-color: #374151;
+        }
+
+        @font-face {
+            font-family: 'bit array-a2';
+            src: url('/fonts/be69564cba72b68a4f28d2f3d3139513.eot');
+            src: url('/fonts/be69564cba72b68a4f28d2f3d3139513.eot?#iefix') format('embedded-opentype'),
+                url('/fonts/be69564cba72b68a4f28d2f3d3139513.woff2') format('woff2'),
+                url('/fonts/be69564cba72b68a4f28d2f3d3139513.woff') format('woff'),
+                url('/fonts/be69564cba72b68a4f28d2f3d3139513.ttf') format('truetype'),
+                url('/fonts/be69564cba72b68a4f28d2f3d3139513.svg#BIT') format('svg');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+
+            #bill-content,
+            #bill-content *,
+            #barcode-print-area,
+            #barcode-print-area * {
+                visibility: visible;
+                font-family: 'bit array-a2' !important;
+                color: #111827 !important;
+                font-weight: 700 !important;
+            }
+
+            #barcode-print-area {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                display: flex !important;
+                justify-content: center;
+                align-items: center;
+            }
+
+            #bill-content {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+            }
+        }
+
+        #user-avatar {
+            border-radius: 50% !important;
+            background: #2563eb !important;
+        }
+
+        /* ─── Profile Dropdown ──────────────────────────── */
+        #profile-dropdown {
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            pointer-events: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #profile-dropdown.active {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #475569;
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+
+        .dark .dropdown-item {
+            color: #94a3b8;
+        }
+
+        .dropdown-item:hover {
+            background-color: #f1f5f9;
+            color: #6366f1;
+        }
+
+        .dark .dropdown-item:hover {
+            background-color: #1e293b;
+            color: #818cf8;
+        }
+
+        /* ─── Lobby Styles (Odoo Inspired) ──────────────── */
+        .lobby-active {
+            background: linear-gradient(135deg, #e4e4f2 0%, #f0f0ff 100%) !important;
+        }
+
+        .dark .lobby-active {
+            background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%) !important;
+        }
+
+        .lobby-active #top-nav { 
+            background: transparent !important; 
+            border-bottom: none !important;
+            box-shadow: none !important;
+        }
+        
+        .lobby-active main { padding-top: 5rem !important; background: transparent !important; }
+        .lobby-active #page-header-wrap { display: none !important; }
+
+        .lobby-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+            gap: 2rem 1rem;
+            padding: 0;
+            width: 100%;
+        }
+
+        .lobby-module-group {
+            padding: 1.25rem 0 1.5rem;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.16);
+        }
+
+        .lobby-module-group:last-child {
+            border-bottom: 0;
+        }
+
+        .lobby-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            animation: lobby-fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+        }
+
+        .lobby-item:hover {
+            transform: scale(1.08);
+        }
+
+        .lobby-icon-wrap {
+            width: 82px;
+            height: 82px;
+            background: #f8fafc;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.02);
+            margin-bottom: 0.75rem;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.02);
+        }
+
+        .dark .lobby-icon-wrap {
+            background: #1e293b;
+            border-color: rgba(255,255,255,0.05);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+
+        .lobby-label {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #4b5563;
+            letter-spacing: -0.01em;
+        }
+
+        .dark .lobby-label {
+            color: #94a3b8;
+        }
+
+        /* Top Bar Enhancements */
+        .header-status-badge {
+            background: #ef4444;
+            color: #f8fafc;
+            padding: 4px 12px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
+        }
+
+        @keyframes lobby-fade-in {
+            0% { opacity: 0; transform: translateY(15px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        #lobby-controls {
+            display: flex;
+        }
+
+        .lobby-active #header-branding {
+            display: none !important;
+        }
+
+        .lobby-active #switch-module-btn {
+            display: none !important;
+        }
+
+        .saas-command-sidebar {
+            display: none;
+        }
+
+        .platform-owner-shell .saas-command-sidebar {
+            display: flex !important;
+        }
+
+        .platform-owner-shell #top-nav {
+            left: 86px;
+            width: calc(100% - 86px);
+        }
+
+        .platform-owner-shell main {
+            padding-left: 86px;
+        }
+
+        .platform-owner-shell #quick-menu-btn,
+        .platform-owner-shell #switch-module-btn {
+            display: none !important;
+        }
+
+        .rail-btn {
+            color: #64748b;
+            background: transparent;
+            border: 1px solid transparent;
+        }
+
+        .rail-btn:hover,
+        .rail-btn:focus,
+        .rail-btn.active {
+            color: #ffffff !important;
+            background: #0f172a !important;
+            border-color: #0f172a !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            outline: none;
+            transform: scale(1.05);
+        }
+
+        .dark .rail-btn {
+            color: #94a3b8;
+            background: transparent;
+            border-color: transparent;
+        }
+
+        .dark .rail-btn:hover,
+        .dark .rail-btn:focus,
+        .dark .rail-btn.active {
+            color: #0f172a !important;
+            background: #ffffff !important;
+            border-color: #ffffff !important;
+            box-shadow: 0 10px 25px rgba(255, 255, 255, 0.1);
+        }
+
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        @media (max-width: 640px) {
+            .saas-command-sidebar {
+                width: 76px;
+                padding: 0.75rem;
+            }
+
+            .platform-owner-shell #top-nav {
+                left: 76px;
+                width: calc(100% - 76px);
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+
+            .platform-owner-shell main {
+                padding-left: 76px;
+            }
+        }
+
+        .animate-delay-100 { animation-delay: 100ms; }
+        .animate-delay-200 { animation-delay: 200ms; }
+        .animate-delay-300 { animation-delay: 300ms; }
+        .animate-delay-400 { animation-delay: 400ms; }
+        .animate-delay-500 { animation-delay: 500ms; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200 transition-colors duration-300">
+
+    <aside id="saas-command-sidebar"
+        class="saas-command-sidebar fixed left-0 top-0 z-40 h-screen w-[86px] p-4 flex-col items-center gap-4 bg-gray-50/95 dark:bg-gray-950/95 border-r border-slate-200/70 dark:border-slate-800/80 backdrop-blur-xl">
+        <div class="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto hide-scrollbar pb-1">
+            <button onclick="openSaasCommandCenter('overview')" title="SaaS Command Center"
+                class="w-11 h-11 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center transition-all hover:scale-105">
+                <span class="w-5 h-5 rounded-full bg-slate-950 dark:bg-white block relative after:absolute after:w-2 after:h-2 after:rounded-full after:bg-white dark:after:bg-slate-950 after:right-0 after:top-0"></span>
+            </button>
+            <nav class="flex flex-col items-center gap-2" aria-label="SaaS command navigation">
+                <button onclick="openSaasCommandCenter('overview')" title="Platform Overview" data-command-tab="overview"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M4 13h6V4H4v9zm10 7h6V4h-6v16zM4 20h6v-3H4v3z"/></svg>
+                </button>
+                <button onclick="openSaasCommandCenter('activity')" title="System Logs" data-command-tab="activity"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M9 12h6m-6 4h6M7 4h7l5 5v11a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>
+                </button>
+                <button onclick="openSaasCommandCenter('health')" title="Server Health" data-command-tab="health"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M5 12h3l2-6 4 12 2-6h3M4 6h16M4 18h16"/></svg>
+                </button>
+
+                <button onclick="openSaasCommandCenter('ledger')" title="Payment Ledger" data-command-tab="ledger"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M9 7h8M9 12h8M9 17h5M5 7h.01M5 12h.01M5 17h.01"/></svg>
+                </button>
+                <div class="my-1 h-px w-8 bg-slate-200 dark:bg-slate-800" aria-hidden="true"></div>
+                <button onclick="openPlatformModule('hierarchy')" title="Shops & Hierarchy" data-platform-page="hierarchy"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M4 20h16M6 20V8l6-4 6 4v12M9 20v-5h6v5M9 10h.01M12 10h.01M15 10h.01"/></svg>
+                </button>
+                <button onclick="openPlatformModule('subscriptions')" title="Platform Payments" data-platform-page="subscriptions"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M3 8h18v10H3V8zm0 3h18M7 15h4M16 15h1"/></svg>
+                </button>
+                <button onclick="openPlatformModule('notifications')" title="Notifications" data-platform-page="notifications"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0a3 3 0 01-6 0"/></svg>
+                </button>
+                <button onclick="openPlatformModule('users')" title="Users & Access" data-platform-page="users"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H2v-2a4 4 0 014-4h3m6-4a4 4 0 10-8 0 4 4 0 008 0zm6 1a3 3 0 10-5.83-1"/></svg>
+                </button>
+                <button onclick="openPlatformModule('settings')" title="Settings" data-platform-page="settings"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M10.3 4.3l.5-1.3h2.4l.5 1.3a7.9 7.9 0 011.8.7l1.2-.6 1.7 1.7-.6 1.2c.3.6.6 1.2.7 1.8l1.3.5V12l-1.3.5a7.9 7.9 0 01-.7 1.8l.6 1.2-1.7 1.7-1.2-.6a7.9 7.9 0 01-1.8.7l-.5 1.3h-2.4l-.5-1.3a7.9 7.9 0 01-1.8-.7l-1.2.6-1.7-1.7.6-1.2a7.9 7.9 0 01-.7-1.8L4.2 12V9.6l1.3-.5c.1-.6.4-1.2.7-1.8l-.6-1.2 1.7-1.7 1.2.6c.6-.3 1.2-.6 1.8-.7z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M12 14.5a3.3 3.3 0 100-6.5 3.3 3.3 0 000 6.5z"/></svg>
+                </button>
+                <button onclick="openPlatformModule('logs')" title="Audit Logs" data-platform-page="logs"
+                    class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1" d="M8 4h8l2 2v14H6V6l2-2zm2 6h6M10 14h6M10 18h3"/></svg>
+                </button>
+            </nav>
+        </div>
+        <button onclick="toggleTheme()" title="Toggle Theme"
+            class="rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all">
+            <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 3v1m0 16v1m9-9h-1M4 9h-1m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+        </button>
+    </aside>
+
+    <!-- Top Navigation Bar -->
+    <header id="top-nav"
+        class="fixed top-0 left-0 w-full h-16 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 z-50 flex items-center justify-between px-6 transition-colors duration-300 shadow-sm">
+
+        <!-- Quick Actions / Sidebar Trigger (Left) -->
+        <div class="flex items-center gap-4">
+            <button onclick="toggleQuickMenu()" id="quick-menu-btn"
+                class="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-800">
+                <svg class="w-5 h-5 transform transition-transform rotate-180" id="quick-menu-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+            </button>
+
+            <!-- Branding (Left) -->
+            <div class="flex items-center gap-3 min-w-fit" id="header-branding">
+                <div
+                    class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-900/20">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                </div>
+                <div class="hidden sm:block">
+                    <div class="font-bold text-gray-900 dark:text-white text-sm tracking-tight leading-none"
+                        id="header-shop-name">POS System</div>
+                    <div class="text-[9px] text-gray-500 dark:text-slate-500 uppercase tracking-widest font-bold mt-0.5"
+                        id="header-shop-mgmt">Management</div>
+                </div>
+            </div>
+        </div>
+        <!-- Lobby Controls (Always shown) -->
+        <div id="lobby-controls" class="flex-1 flex items-center justify-end px-4 gap-4 sm:gap-6">
+            
+        <!-- User Controls (Right) -->
+        <div class="flex items-center gap-3">
+            <div class="hidden lg:flex flex-col items-end mr-3">
+                <div class="text-[11px] font-bold text-gray-900 dark:text-white leading-none truncate max-w-[120px]" id="user-name-sidebar">Admin</div>
+                <div class="text-[9px] text-gray-500 uppercase font-black tracking-widest mt-0.5" id="user-role-sidebar">admin</div>
+            </div>
+
+            <button onclick="openNotificationsPanel()" id="topbar-notification-btn"
+                class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-800 hidden"
+                title="Notifications">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0a3 3 0 01-6 0m6 0H9" />
+                </svg>
+                <span id="topbar-notification-count"
+                    class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-teal-600 text-white text-[10px] font-black leading-[18px] text-center shadow-md shadow-teal-900/20"></span>
+            </button>
+
+            <!-- Switch Module (Icon Only) -->
+            <button id="switch-module-btn" onclick="returnToNavigationHome()"
+                class="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-800" title="Switch Module">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+            </button>
+
+            <!-- Theme Toggle (Convert Mode) -->
+            <button onclick="toggleTheme()" 
+                class="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-800" title="Convert Mode (Theme)">
+                <svg id="sun-icon-header" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 9h-1m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                <svg id="moon-icon-header" class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+            </button>
+            
+            <button onclick="logout()" 
+                class="flex items-center justify-center w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all border border-rose-100 dark:border-rose-800/50 group" title="Sign Out">
+                <svg class="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+            </button>
+        </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main content container -->
+    <main class="pt-20 min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-300">
+        <div class="container mx-auto px-6 pb-20">
+            <header id="page-header-wrap" class="flex items-center justify-between mb-8">
+                <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tighter" id="page-title">
+                    Dashboard</h2>
+                <div class="h-px flex-1 bg-slate-200 dark:bg-slate-800 mx-8"></div>
+            </header>
+            <div id="page-content">
+                <div class="flex items-center justify-center h-64 text-slate-400 italic">Initializing experience...
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal -->
+    <div id="modal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+        <div class="glass rounded-2xl w-full shadow-xl transition-all" id="modal-box">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+                <h3 class="font-bold text-gray-900 dark:text-white" id="modal-title">Modal</h3>
+                <button onclick="closeModal()"
+                    class="text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="p-6" id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Bill Print Area -->
+    <div id="bill-print-area" class="hidden"></div>
+
+    <!-- Barcode Print Area -->
+    <div id="barcode-print-area" class="hidden"></div>
+
+    <!-- Quick Navigation Sidebar (Left) -->
+    <div id="quick-sidebar-backdrop" onclick="toggleQuickMenu()" class="fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-[70] hidden opacity-0 transition-opacity duration-300"></div>
+    <aside id="quick-sidebar" class="fixed top-0 left-0 h-full w-[380px] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-[80] shadow-[0_0_100px_-20px_rgba(0,0,0,0.3)] -translate-x-full transition-transform duration-500 ease-out flex flex-col p-8">
+        <div class="flex items-center justify-between mb-10">
+            <h3 class="text-2xl font-black text-slate-900 dark:text-white tracking-tighter">Navigate Modules</h3>
+            <button onclick="toggleQuickMenu()" class="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-rose-500 transition-all flex items-center justify-center">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto space-y-8 pr-2" id="quick-sidebar-content">
+            <!-- Panels will be rendered here via JS -->
+        </div>
+        <div class="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800">
+            <button onclick="returnToNavigationHome()" class="w-full flex items-center justify-center gap-3 h-14 rounded-2xl bg-indigo-600 text-white font-black text-sm shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                <span id="navigation-home-label">Return to Lobby</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- User Access Details Sidebar (Left) -->
+    <div id="user-access-backdrop" onclick="toggleUserAccessMenu()" class="fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-[70] hidden opacity-0 transition-opacity duration-300"></div>
+    <aside id="user-access-sidebar" class="fixed top-0 left-0 h-full w-[400px] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-[80] shadow-[0_0_100px_-20px_rgba(0,0,0,0.3)] -translate-x-full transition-transform duration-500 ease-out flex flex-col p-8">
+        <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white" id="ua-avatar">?</div>
+                <div>
+                    <h3 class="text-xl font-black text-slate-900 dark:text-white tracking-tight" id="ua-name">User Name</h3>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest" id="ua-username">@username</p>
+                </div>
+            </div>
+            <button onclick="toggleUserAccessMenu()" class="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-rose-500 transition-all flex items-center justify-center">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto pr-2">
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Assigned Modules</label>
+                    <div class="grid grid-cols-1 gap-3" id="ua-panels-list">
+                        <!-- User panels will be rendered here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800">
+            <button id="ua-edit-btn" class="w-full flex items-center justify-center gap-3 h-14 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-sm shadow-xl hover:bg-slate-800 dark:hover:bg-slate-100 transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                Manage Permissions
+            </button>
+        </div>
+    </aside>
+
+    <!-- Settings Navigation Sidebar (Left) -->
+    <div id="settings-nav-backdrop" onclick="toggleSettingsNav()" class="fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-[70] hidden opacity-0 transition-opacity duration-300"></div>
+    <aside id="settings-nav-drawer" class="fixed top-0 left-0 h-full w-[380px] bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-[80] shadow-[0_0_100px_-20px_rgba(0,0,0,0.3)] -translate-x-full transition-transform duration-500 ease-out flex flex-col p-8">
+        <div class="flex items-center justify-between mb-10">
+            <h3 class="text-2xl font-black text-slate-900 dark:text-white tracking-tighter">Settings Menu</h3>
+            <button onclick="toggleSettingsNav()" class="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-rose-500 transition-all flex items-center justify-center">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto space-y-2" id="settings-nav-content">
+            <!-- Navigation links will be rendered here -->
+        </div>
+    </aside>
+
+    <script src="/js/analytics/analytics-core.js?v=1.0.9"></script>
+
+    <script src="/js/analytics/analytics-overview.js?v=1.0.9"></script>
+    <script src="/js/analytics/analytics-charts.js?v=1.0.9"></script>
+    <script src="/js/analytics/analytics-tabs.js?v=1.0.9"></script>
+    <script src="/js/settings.js?v=1.0.11"></script>
+    <script src="/js/hierarchy.js?v=1.0.11"></script>
+    <script src="/js/kitchen.js?v=1.0.8"></script>
+    <script src="/js/products/product-image-tools.js?v=1.0.0"></script>
+    <script src="/js/app.js?v=1.0.27"></script>
+</body>
+</html>

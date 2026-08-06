@@ -1,0 +1,13 @@
+node_modules/
+.env
+*.log
+db/*.db
+db/*.sqlite3
+.DS_Store
+dist/
+build/
+cookie.txt
+cookies.txt
+*.zip
+temp-win-sqlite/
+tmp/

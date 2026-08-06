@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/uploads/devforge_os.png" />
+  <title>POS System — Professional Inventory Management</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.5s ease-out forwards',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <script>
+    if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  </script>
+  <style>
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+    }
+
+    .dark .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+    }
+
+    .animated-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background-color: #f8fafc;
+      transition: background-color 0.5s ease;
+    }
+
+    .dark .animated-bg {
+      background-color: #0b1120;
+    }
+
+    input:-webkit-autofill {
+      -webkit-box-shadow: 0 0 0 1000px white inset !important;
+      -webkit-text-fill-color: #0f172a !important;
+    }
+
+    .dark input:-webkit-autofill {
+      -webkit-box-shadow: 0 0 0 1000px #1e293b inset !important;
+      -webkit-text-fill-color: #f8fafc !important;
+    }
+  </style>
+</head>
+
+<body
+  class="min-h-screen flex items-center justify-center font-sans antialiased text-slate-900 dark:text-slate-100 overflow-hidden relative selection:bg-indigo-500/30">
+
+  <!-- Premium Background -->
+  <div class="animated-bg">
+  </div>
+
+  <!-- Theme Toggle -->
+  <button onclick="toggleTheme()"
+    class="fixed top-6 right-6 md:right-8 z-50 p-3 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all hover:scale-105 active:scale-95">
+    <svg id="theme-icon-sun" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M12 3v1m0 16v1m9-9h-1M4 9h-1m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+    </svg>
+    <svg id="theme-icon-moon" class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+    </svg>
+  </button>
+
+  <!-- Main Container Layout -->
+  <div
+    class="z-20 w-full max-w-5xl flex flex-col md:flex-row rounded-[2rem] glass-panel shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.8)] mx-4 md:h-[600px] animate-fade-in relative border">
+
+    <!-- Left Side: Branding / Value Prop -->
+    <div
+      class="w-full md:w-5/12 p-8 md:p-12 border-b md:border-b-0 md:border-r border-slate-200/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-900/40 dark:to-slate-900/10 backdrop-blur-sm rounded-t-[2rem] md:rounded-l-[2rem] md:rounded-tr-none z-10">
+
+      <div class="relative z-10 flex items-center gap-4 mb-8 md:mb-0">
+        <img src="/uploads/devforge_os.png" alt="DevForge OS Logo" class="h-14 w-auto" />
+        <span class="text-2xl font-black tracking-tighter text-slate-900 dark:text-white uppercase">
+          DevForge<span class="text-indigo-600 dark:text-indigo-400"> OS</span>
+        </span>
+      </div>
+
+      <div class="relative z-10 hidden md:block">
+        <h2
+          class="text-3xl lg:text-4xl font-extrabold text-slate-900 dark:text-white leading-[1.15] mb-5 tracking-tight">
+          Next-Gen <br /><span
+            class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-500 dark:from-indigo-400 dark:to-cyan-300">Inventory
+            Intelligence.</span>
+        </h2>
+        <p class="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-8 font-medium">
+          Empower your retail operations with real-time analytics, seamless point of sale, and enterprise-grade
+          security.
+        </p>
+
+        <div
+          class="flex items-center gap-4 text-sm font-semibold text-slate-700 dark:text-slate-300 border-t border-slate-200/50 dark:border-slate-800/50 pt-6">
+          <div class="flex -space-x-3">
+            <div
+              class="w-10 h-10 rounded-full border-2 border-white dark:border-slate-800 shadow-sm bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center text-white">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                </path>
+              </svg>
+            </div>
+          </div>
+          <p>Exclusive <strong class="text-slate-900 dark:text-white">Enterprise</strong> Edition.</p>
+        </div>
+      </div>
+
+      <div
+        class="relative z-10 text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-bold hidden md:block">
+        © 2026 DEVFORG OS Systems
+      </div>
+    </div>
+
+    <!-- Right Side: Login Form -->
+    <div
+      class="w-full md:w-7/12 p-8 md:p-16 flex flex-col justify-center bg-white/50 dark:bg-slate-900/40 rounded-b-[2rem] md:rounded-r-[2rem] md:rounded-bl-none z-20">
+      <div class="max-w-sm w-full mx-auto">
+        <div class="mb-8 text-center md:text-left">
+          <h3 class="text-2xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">Welcome back</h3>
+          <p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Please enter your credentials to access the
+            system.</p>
+        </div>
+
+        <form id="login-form" onsubmit="handleLogin(event)" class="space-y-6">
+
+          <div class="space-y-2">
+            <label
+              class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Username</label>
+            <div class="relative group">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <svg class="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" fill="none"
+                  viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <input id="login-username" type="text" required autocomplete="username" placeholder="admin"
+                class="w-full pl-12 pr-4 py-3.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-semibold shadow-sm" />
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex justify-between items-center">
+              <label
+                class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Password</label>
+              <a href="#"
+                class="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors">Forgot
+                password?</a>
+            </div>
+            <div class="relative group">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <svg class="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" fill="none"
+                  viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <input id="login-password" type="password" required autocomplete="current-password" placeholder="••••••••"
+                class="w-full pl-12 pr-12 py-3.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-bold tracking-widest shadow-sm" />
+              <button type="button" onclick="togglePw('login-password')"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div id="login-error"
+            class="hidden flex items-center gap-3 text-rose-600 dark:text-rose-400 text-sm bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl px-4 py-3 font-semibold shadow-sm animate-fade-in">
+            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span id="login-error-text"></span>
+          </div>
+
+          <button type="submit" id="login-btn"
+            class="w-full py-4 mt-4 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold text-base transition-all shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] flex items-center justify-center gap-2 group border border-white/10">
+            <span>Access System</span>
+            <svg class="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+            </svg>
+          </button>
+        </form>
+
+        <div class="mt-8 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
+          Authorized personnel only. <a href="#"
+            class="font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors">IT
+            Support</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let loginRedirectInProgress = false;
+
+    async function redirectIfAlreadyAuthenticated() {
+      if (loginRedirectInProgress) return;
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (res.ok) {
+          loginRedirectInProgress = true;
+          window.location.replace('/dashboard');
+        }
+      } catch {
+        // Stay on login if the session check cannot reach the server.
+      }
+    }
+
+    redirectIfAlreadyAuthenticated();
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) redirectIfAlreadyAuthenticated();
+    });
+
+    // Theme Toggle Logic
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.contains('dark');
+      if (isDark) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+      } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      }
+    }
+
+    // Password Reveal
+    function togglePw(id) {
+      const el = document.getElementById(id);
+      el.type = el.type === 'password' ? 'text' : 'password';
+    }
+
+    // Login Handler
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('login-btn');
+      const err = document.getElementById('login-error');
+      const errText = document.getElementById('login-error-text');
+      const originalContent = btn.innerHTML;
+
+      btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Authenticating...`;
+      btn.disabled = true;
+      btn.classList.add('opacity-90', 'cursor-not-allowed');
+      err.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('login-username').value,
+            password: document.getElementById('login-password').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errText.textContent = data.error;
+          err.classList.remove('hidden');
+        }
+        else {
+          // Success flourish before redirecting
+          loginRedirectInProgress = true;
+          btn.innerHTML = `<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Success! Redirecting...`;
+          btn.classList.replace('from-indigo-600', 'from-emerald-500');
+          btn.classList.replace('to-blue-600', 'to-emerald-600');
+          setTimeout(() => {
+            window.location.replace('/dashboard');
+          }, 500);
+          return; // Prevent resetting the button state
+        }
+      } catch {
+        errText.textContent = 'Network error. Please try again.';
+        err.classList.remove('hidden');
+      }
+
+      btn.innerHTML = originalContent;
+      btn.disabled = false;
+      btn.classList.remove('opacity-90', 'cursor-not-allowed');
+    }
+  </script>
+</body>
+
+</html>
