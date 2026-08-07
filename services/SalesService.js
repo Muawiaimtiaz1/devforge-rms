@@ -13,6 +13,7 @@ const checkoutSchema = z.object({
     special_instructions: z.string().nullable().optional(),
     variants: z.array(z.any()).nullable().optional(),
     addons: z.array(z.any()).nullable().optional(),
+    stock_variant_id: z.number().int().positive().nullable().optional(),
   })).min(1, "Cart cannot be empty"),
   discount: z.number().nonnegative().default(0),
   tax_percentage: z.number().nonnegative().default(0),
@@ -34,6 +35,124 @@ const checkoutSchema = z.object({
 });
 
 class SalesService {
+  parseMenuConfig(value) {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+    try { return JSON.parse(value); } catch (_) { return []; }
+  }
+
+  async resolveMenuSelection(trx, product, item, shopId) {
+    const variants = this.parseMenuConfig(product.variants_config);
+    const addonOptions = this.parseMenuConfig(product.addons_config);
+    if (!variants.length) return null;
+
+    const requestedVariants = Array.isArray(item.variants) ? item.variants : [];
+    if (requestedVariants.length !== 1) throw new Error(`Select one size for "${product.name}".`);
+    const requestedVariant = requestedVariants[0];
+    const variant = variants.find(v => String(v.id) === String(requestedVariant.id));
+    if (!variant) throw new Error(`The selected size for "${product.name}" is no longer available.`);
+
+    const requestedAddons = Array.isArray(item.addons) ? item.addons : [];
+    const requestedIds = requestedAddons.map(a => String(a.id));
+    if (new Set(requestedIds).size !== requestedIds.length) throw new Error(`Duplicate add-ons selected for "${product.name}".`);
+    const addons = requestedIds.map(id => addonOptions.find(a => String(a.id) === id));
+    if (addons.some(addon => !addon)) throw new Error(`An add-on selected for "${product.name}" is no longer available.`);
+
+    const requirements = [...(variant.ingredients || []).map(ingredient => ({
+      raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity)
+    })), ...addons.map(addon => ({
+      raw_stock_id: Number(addon.raw_stock_id), quantity: Number(addon.quantity)
+    }))];
+    const price = Number(variant.price) + addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+    const cost = await this.calculateRequirementsCost(trx, requirements, shopId);
+    return {
+      price,
+      cost,
+      requirements,
+      variants: [{ id: variant.id, name: variant.name, price: Number(variant.price), ingredients: variant.ingredients || [] }],
+      addons: addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price || 0), raw_stock_id: Number(addon.raw_stock_id), quantity: Number(addon.quantity) }))
+    };
+  }
+
+  async resolveStockVariantSelection(trx, product, item, shopId) {
+    if (product.product_type === 'recipe_based') return null;
+    const requestedId = item.stock_variant_id || item.variants?.[0]?.id;
+    if (!requestedId) return null;
+    const variant = await trx('product_stock_variants')
+      .where({ id: Number(requestedId), product_id: product.id, shop_id: shopId, is_active: true })
+      .forUpdate().first();
+    if (!variant) throw new Error(`The selected variant for "${product.name}" is no longer available.`);
+    if (Number(variant.stock) < Number(item.quantity)) throw new Error(`Insufficient stock for "${product.name} — ${variant.name}".`);
+    return {
+      id: variant.id,
+      price: Number(variant.selling_price),
+      cost: Number(variant.buying_price),
+      variants: [{ id: variant.id, name: variant.name, price: Number(variant.selling_price) }]
+    };
+  }
+
+  async calculateRequirementsCost(trx, requirements, shopId) {
+    let total = 0;
+    for (const requirement of requirements) {
+      const stock = await trx('raw_stocks').where({ id: Number(requirement.raw_stock_id), shop_id: shopId }).first();
+      if (!stock) continue;
+      const latestBatch = await trx('raw_stock_batches').where({ raw_stock_id: stock.id, shop_id: shopId }).orderBy('created_at', 'desc').first();
+      total += (Number(requirement.quantity || 0) / Number(stock.conversion_factor || 1)) * Number(latestBatch?.buying_price || 0);
+    }
+    return total;
+  }
+
+  async validateIngredientRequirements(trx, requirements, quantity, productName, shopId) {
+    const totals = new Map();
+    for (const req of requirements) totals.set(req.raw_stock_id, (totals.get(req.raw_stock_id) || 0) + Number(req.quantity || 0) * quantity);
+    for (const [rawStockId, usageQuantity] of totals) {
+      const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).forUpdate().first();
+      if (!stock) throw new Error(`An ingredient configured for "${productName}" no longer exists.`);
+      const totalNeeded = usageQuantity / Number(stock.conversion_factor || 1);
+      if (Number(stock.current_stock) < totalNeeded) throw new Error(`Insufficient stock of ingredient "${stock.name}" for "${productName}".`);
+    }
+  }
+
+  async deductIngredientRequirements(trx, requirements, quantity, shopId) {
+    const totals = new Map();
+    for (const req of requirements) totals.set(req.raw_stock_id, (totals.get(req.raw_stock_id) || 0) + Number(req.quantity || 0) * quantity);
+    for (const [rawStockId, usageQuantity] of totals) {
+      const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).first();
+      const totalNeeded = usageQuantity / Number(stock.conversion_factor || 1);
+      let remaining = totalNeeded;
+      const batches = await trx('raw_stock_batches').where({ raw_stock_id: rawStockId, shop_id: shopId }).andWhere('quantity', '>', 0).orderBy('created_at', 'asc');
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, Number(batch.quantity));
+        await trx('raw_stock_batches').where({ id: batch.id }).update({ quantity: db.raw('quantity - ?', [take]) });
+        remaining -= take;
+      }
+      await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).update({ current_stock: db.raw('current_stock - ?', [totalNeeded]) });
+    }
+  }
+
+  getSnapshotRequirements(item) {
+    const variants = this.parseMenuConfig(item.variants_json);
+    const addons = this.parseMenuConfig(item.addons_json);
+    return [
+      ...variants.flatMap(variant => Array.isArray(variant?.ingredients) ? variant.ingredients : []),
+      ...addons.filter(addon => addon?.raw_stock_id && Number(addon.quantity) > 0).map(addon => ({ raw_stock_id: addon.raw_stock_id, quantity: addon.quantity }))
+    ];
+  }
+
+  async restoreIngredientRequirements(trx, requirements, quantity, shopId) {
+    const totals = new Map();
+    for (const req of requirements) totals.set(Number(req.raw_stock_id), (totals.get(Number(req.raw_stock_id)) || 0) + Number(req.quantity || 0) * quantity);
+    for (const [rawStockId, usageQuantity] of totals) {
+      const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).first();
+      if (!stock) continue;
+      const totalToRestore = usageQuantity / Number(stock.conversion_factor || 1);
+      await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).update({ current_stock: db.raw('current_stock + ?', [totalToRestore]) });
+      const newestBatch = await trx('raw_stock_batches').where({ raw_stock_id: rawStockId, shop_id: shopId }).orderBy('created_at', 'desc').first();
+      if (newestBatch) await trx('raw_stock_batches').where({ id: newestBatch.id }).update({ quantity: db.raw('quantity + ?', [totalToRestore]) });
+    }
+  }
+
   async getPrinterRouting(dbInstance, shopId) {
     const printers = await dbInstance('printers')
       .where({ shop_id: shopId })
@@ -379,12 +498,15 @@ class SalesService {
 
           if (!product) throw new Error(`Product ${item.product_id} not found`);
 
+          const menuSelection = await this.resolveMenuSelection(trx, product, item, shopId);
+          const stockSelection = menuSelection ? null : await this.resolveStockVariantSelection(trx, product, item, shopId);
+
           // Check for Recipe
           const recipeLink = await trx('product_recipe_links')
             .where({ product_id: item.product_id, shop_id: shopId })
             .first();
 
-          if (recipeLink) {
+          if (!menuSelection && recipeLink) {
             const ingredients = await trx('recipe_ingredients as ri')
               .select('ri.raw_stock_id', 'ri.quantity as amount_per_unit', 'rs.name as ing_name', 'rs.current_stock', 'rs.conversion_factor')
               .join('raw_stocks as rs', 'ri.raw_stock_id', 'rs.id')
@@ -397,18 +519,21 @@ class SalesService {
                 throw new Error(`Insufficient stock of ingredient "${ing.ing_name}" for "${product.name}".`);
               }
             }
-          } else if (product.stock < item.quantity) {
+          } else if (!menuSelection && !stockSelection && product.stock < item.quantity) {
             throw new Error(`Insufficient stock for "${product.name}"`);
           }
 
           resolvedItems.push({
             product,
             quantity: item.quantity,
-            selling_price: item.selling_price,
+            selling_price: menuSelection ? menuSelection.price : (stockSelection ? stockSelection.price : item.selling_price),
             parent_id: item.parent_id,
             special_instructions: item.special_instructions,
-            variants_json: item.variants ? JSON.stringify(item.variants) : null,
-            addons_json: item.addons ? JSON.stringify(item.addons) : null,
+            variants_json: menuSelection ? JSON.stringify(menuSelection.variants) : (stockSelection ? JSON.stringify(stockSelection.variants) : (item.variants ? JSON.stringify(item.variants) : null)),
+            addons_json: menuSelection ? JSON.stringify(menuSelection.addons) : (item.addons ? JSON.stringify(item.addons) : null),
+            ingredient_requirements: menuSelection?.requirements || null,
+            stock_variant_id: stockSelection?.id || null,
+            cost_price: menuSelection?.cost ?? stockSelection?.cost ?? Number(product.buying_price || 0),
           });
         } else {
           resolvedItems.push({
@@ -420,8 +545,15 @@ class SalesService {
             special_instructions: item.special_instructions,
           });
         }
-        subtotal += item.selling_price * item.quantity;
+        const resolved = resolvedItems[resolvedItems.length - 1];
+        subtotal += resolved.selling_price * item.quantity;
       }
+
+      const configuredRequirements = resolvedItems.flatMap(item => (item.ingredient_requirements || []).map(req => ({
+        raw_stock_id: req.raw_stock_id,
+        quantity: Number(req.quantity) * Number(item.quantity)
+      })));
+      if (configuredRequirements.length) await this.validateIngredientRequirements(trx, configuredRequirements, 1, 'this order', shopId);
 
       // 2. Calculations
       const taxAmount = (subtotal - data.discount) * (data.tax_percentage / 100);
@@ -498,6 +630,26 @@ class SalesService {
         }
 
         if (!item.manual) {
+          if (item.stock_variant_id) {
+            await trx('sale_items').insert({
+              sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
+              stock_variant_id: item.stock_variant_id, quantity: item.quantity,
+              price_at_sale: priceAtSale, buying_price_at_sale: item.cost_price || 0,
+              special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
+            });
+            await trx('product_stock_variants').where({ id: item.stock_variant_id }).decrement('stock', item.quantity);
+            await trx('products').where({ id: item.product.id }).decrement('stock', item.quantity);
+            continue;
+          }
+          if (item.ingredient_requirements) {
+            await trx('sale_items').insert({
+              sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
+              quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: item.cost_price || 0,
+              special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
+            });
+            await this.deductIngredientRequirements(trx, item.ingredient_requirements, item.quantity, shopId);
+            continue;
+          }
           // Recipe Stock Deduction
           const variantNames = item.variants_json ? JSON.parse(item.variants_json).map(v => v.name || v) : [];
           const links = await trx('product_recipe_links')
@@ -625,12 +777,22 @@ class SalesService {
       // 2. Restore Stock for Old Items
       for (const item of oldItems) {
         if (item.product_id) {
+          if (item.stock_variant_id) {
+            await trx('product_stock_variants').where({ id: item.stock_variant_id }).increment('stock', item.quantity);
+            await trx('products').where({ id: item.product_id }).increment('stock', item.quantity);
+            continue;
+          }
           if (item.batch_id) {
             // Packaged product restoration
             await trx('product_batches').where({ id: item.batch_id }).update({ quantity: db.raw('quantity + ?', [item.quantity]) });
             await trx('products').where({ id: item.product_id }).update({ stock: db.raw('stock + ?', [item.quantity]) });
           } else {
             // Recipe or Oversold item
+            const snapshotRequirements = this.getSnapshotRequirements(item);
+            if (snapshotRequirements.length) {
+              await this.restoreIngredientRequirements(trx, snapshotRequirements, Number(item.quantity), shopId);
+              continue;
+            }
             const variantNames = item.variants_json ? JSON.parse(item.variants_json).map(v => v.name || v) : [];
             const activeLinks = await trx('product_recipe_links')
               .where({ product_id: item.product_id, shop_id: shopId })
@@ -682,9 +844,12 @@ class SalesService {
           const product = await trx('products').where({ id: item.product_id, shop_id: shopId }).first();
           if (!product) throw new Error(`Product ${item.product_id} not found`);
 
+          const menuSelection = await this.resolveMenuSelection(trx, product, item, shopId);
+          const stockSelection = menuSelection ? null : await this.resolveStockVariantSelection(trx, product, item, shopId);
+
           // Stock Validation
           const recipeLink = await trx('product_recipe_links').where({ product_id: item.product_id, shop_id: shopId }).first();
-          if (recipeLink) {
+          if (!menuSelection && recipeLink) {
              const ingredients = await trx('recipe_ingredients as ri')
               .select('ri.raw_stock_id', 'ri.quantity as amount_per_unit', 'rs.name as ing_name', 'rs.current_stock', 'rs.conversion_factor')
               .join('raw_stocks as rs', 'ri.raw_stock_id', 'rs.id')
@@ -695,21 +860,31 @@ class SalesService {
               const totalNeeded = (ing.amount_per_unit * item.quantity) / factor;
               if (ing.current_stock < totalNeeded) throw new Error(`Insufficient stock of ingredient "${ing.ing_name}" for "${product.name}".`);
             }
-          } else if (product.stock < item.quantity) {
+          } else if (!menuSelection && !stockSelection && product.stock < item.quantity) {
             throw new Error(`Insufficient stock for "${product.name}"`);
           }
 
           resolvedItems.push({
-            product, quantity: item.quantity, selling_price: item.selling_price, parent_id: item.parent_id,
+            product, quantity: item.quantity, selling_price: menuSelection ? menuSelection.price : (stockSelection ? stockSelection.price : item.selling_price), parent_id: item.parent_id,
             special_instructions: item.special_instructions,
-            variants_json: item.variants ? JSON.stringify(item.variants) : null,
-            addons_json: item.addons ? JSON.stringify(item.addons) : null,
+            variants_json: menuSelection ? JSON.stringify(menuSelection.variants) : (stockSelection ? JSON.stringify(stockSelection.variants) : (item.variants ? JSON.stringify(item.variants) : null)),
+            addons_json: menuSelection ? JSON.stringify(menuSelection.addons) : (item.addons ? JSON.stringify(item.addons) : null),
+            ingredient_requirements: menuSelection?.requirements || null,
+            stock_variant_id: stockSelection?.id || null,
+            cost_price: menuSelection?.cost ?? stockSelection?.cost ?? Number(product.buying_price || 0),
           });
         } else {
           resolvedItems.push({ manual: true, name: item.name, quantity: item.quantity, selling_price: item.selling_price, parent_id: item.parent_id, special_instructions: item.special_instructions });
         }
-        subtotal += item.selling_price * item.quantity;
+        const resolved = resolvedItems[resolvedItems.length - 1];
+        subtotal += resolved.selling_price * item.quantity;
       }
+
+      const configuredRequirements = resolvedItems.flatMap(item => (item.ingredient_requirements || []).map(req => ({
+        raw_stock_id: req.raw_stock_id,
+        quantity: Number(req.quantity) * Number(item.quantity)
+      })));
+      if (configuredRequirements.length) await this.validateIngredientRequirements(trx, configuredRequirements, 1, 'this order', shopId);
 
       const taxAmount = (subtotal - data.discount) * (data.tax_percentage / 100);
       const grandTotal = subtotal - data.discount + taxAmount;
@@ -753,6 +928,26 @@ class SalesService {
         }
 
         if (!item.manual) {
+           if (item.stock_variant_id) {
+             await trx('sale_items').insert({
+               sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
+               stock_variant_id: item.stock_variant_id, quantity: item.quantity,
+               price_at_sale: priceAtSale, buying_price_at_sale: item.cost_price || 0,
+               special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
+             });
+             await trx('product_stock_variants').where({ id: item.stock_variant_id }).decrement('stock', item.quantity);
+             await trx('products').where({ id: item.product.id }).decrement('stock', item.quantity);
+             continue;
+           }
+           if (item.ingredient_requirements) {
+             await trx('sale_items').insert({
+               sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
+               quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: item.cost_price || 0,
+               special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
+             });
+             await this.deductIngredientRequirements(trx, item.ingredient_requirements, item.quantity, shopId);
+             continue;
+           }
            const variantNames = item.variants_json ? JSON.parse(item.variants_json).map(v => v.name || v) : [];
            const links = await trx('product_recipe_links').where({ product_id: item.product.id, shop_id: shopId });
            const activeLinks = links.filter(l => !l.variant_name || variantNames.includes(l.variant_name));
@@ -1060,7 +1255,7 @@ class SalesService {
 
       for (const item of items) {
         const original = await trx('sale_items as si')
-          .select('si.id as sale_item_id', 'si.quantity as sold_qty', 'si.buying_price_at_sale', 'si.batch_id')
+          .select('si.id as sale_item_id', 'si.quantity as sold_qty', 'si.buying_price_at_sale', 'si.batch_id', 'si.stock_variant_id')
           .select(db.raw(`(
             SELECT COALESCE(SUM(ri.quantity), 0)
             FROM return_items ri
@@ -1095,6 +1290,11 @@ class SalesService {
             });
             if (original.batch_id) await trx('product_batches').where({ id: original.batch_id }).update({ damaged_quantity: db.raw('damaged_quantity + ?', [item.quantity]) });
           } else {
+            if (original.stock_variant_id) {
+              await trx('product_stock_variants').where({ id: original.stock_variant_id }).increment('stock', item.quantity);
+              await trx('products').where({ id: item.product_id }).increment('stock', item.quantity);
+              continue;
+            }
             let batchRestored = false;
             if (original.batch_id) {
                 const updated = await trx('product_batches').where({ id: original.batch_id }).update({ quantity: db.raw('quantity + ?', [item.quantity]) });

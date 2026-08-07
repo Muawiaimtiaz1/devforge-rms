@@ -439,7 +439,7 @@ const AVAILABLE_PANELS = [
   {
     id: "products",
     icon: `<path d="M12 3L4 7v10l8 4 8-4V7l-8-4z" fill="#10B981"/><path d="M4 7l8 4 8-4M12 11v10" stroke="white" stroke-width="1.5"/>`,
-    label: "Inventory",
+    label: "Menu",
     desc: "Inventory tracking, stock alerts, and product catalog management."
   },
   {
@@ -517,7 +517,7 @@ const AVAILABLE_PANELS = [
   {
     id: "raw-stock",
     icon: `<path d="M12 2L2 7l10 5 10-5-10-5z" fill="#F97316"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#F97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    label: "Raw Ingredients",
+    label: "Inventory",
     desc: "Manage base stock and track ingredient batches."
   },
   {
@@ -768,6 +768,10 @@ function navigate(page) {
       return false;
   }
 
+  if (page === "pos" && !_editingOrderId) {
+    window._posEntryOrderType = null;
+  }
+
   _currentPage = page;
   localStorage.setItem("pos_page", page);
   sessionStorage.setItem("lobby_selected", "true");
@@ -782,7 +786,7 @@ function navigate(page) {
   const titles = {
     dashboard: "Dashboard",
     brands: "Brands",
-    products: "Products",
+    products: "Menu",
     pos: "POS / Checkout",
     delivery: "Delivery Panel",
     "sales-history": "Sales History",
@@ -796,7 +800,7 @@ function navigate(page) {
     hierarchy: "Master Platform Hierarchy",
     tables: "Table Management",
     kds: "Kitchen Display System",
-    "raw-stock": "Raw Ingredients",
+    "raw-stock": "Inventory",
     "waste-management": "Waste Management",
     recipes: "Manage Recipes",
     "pending-dues": "Pending Dues Ledger",
@@ -2067,7 +2071,24 @@ function inventoryNumber(value) {
 }
 
 function inventoryIsRecipeProduct(product) {
-  return Array.isArray(product.ingredients) && product.ingredients.length > 0;
+  return product?.product_type === 'recipe_based' || (Array.isArray(product?.variants) && product.variants.length > 0) || (Array.isArray(product?.ingredients) && product.ingredients.length > 0);
+}
+
+function isProductPublishedToMenu(product) {
+  if (inventoryIsRecipeProduct(product)) return true;
+  return (product?.stock_variants || []).some(variant => variant.is_active !== false && variant.is_on_menu === true);
+}
+
+function getProductMenuStock(product) {
+  if (inventoryIsRecipeProduct(product)) return Infinity;
+  const variants = product?.stock_variants || [];
+  if (variants.length) return variants.filter(variant => variant.is_on_menu).reduce((sum, variant) => sum + Number(variant.stock || 0), 0);
+  return Number(product?.stock || 0);
+}
+
+function getProductMenuVariants(product) {
+  if (inventoryIsRecipeProduct(product)) return product?.variants || [];
+  return (product?.stock_variants || []).filter(variant => variant.is_on_menu).map(variant => ({ ...variant, price: Number(variant.selling_price) }));
 }
 
 function getInventoryStockStatus(product) {
@@ -2097,7 +2118,7 @@ async function renderProducts(onlyLowStock = false) {
   // Filter out components from global list for UI purposes
   allProducts = products;
   syncProductMap(products);
-  const mainProducts = products.filter((p) => p.is_component !== 1);
+  const mainProducts = products.filter((p) => p.is_component !== 1 && isProductPublishedToMenu(p));
   updateLowStockBadge(mainProducts);
 
   const selectedStockFilter = onlyLowStock ? "low" : "all";
@@ -2190,12 +2211,12 @@ async function renderProducts(onlyLowStock = false) {
               </td>
               <td class="px-5 py-4">
                 <div class="flex flex-col gap-1">
-                  ${p.ingredients && p.ingredients.length > 0
+                  ${inventoryIsRecipeProduct(p)
               ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 uppercase tracking-widest">
                         🍳 Recipe-Based
                        </span>`
               : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${p.stock > p.min_stock_level ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" : p.stock > 0 ? "bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300" : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"}">
-                        ${p.stock}${p.components && p.components.length > 0 ? " Full Kits" : ""}
+                        ${getProductMenuStock(p)}${p.components && p.components.length > 0 ? " Full Kits" : ""}
                        </span>`
             }
                   ${(() => {
@@ -2205,24 +2226,24 @@ async function renderProducts(onlyLowStock = false) {
                 return `<div class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest pl-1">+ ${c.stock} ${c.name} (Loose)</div>`;
               }).join("");
             })()}
-                  ${!(p.ingredients && p.ingredients.length > 0) ? `<div class="text-[10px] text-slate-500 pl-1 italic">Threshold: ${p.min_stock_level}</div>` : ""}
+                  ${!inventoryIsRecipeProduct(p) ? `<div class="text-[10px] text-slate-500 pl-1 italic">Threshold: ${p.min_stock_level}</div>` : ""}
                 </div>
               </td>
-              <td class="px-5 py-4 text-slate-600 dark:text-slate-400">Rs. ${p.selling_price || 0}</td>
+              <td class="px-5 py-4 text-slate-600 dark:text-slate-400">${getProductMenuVariants(p).length ? getProductMenuVariants(p).map(v => `<div class="text-xs"><strong>${escapeOrderValue(v.name)}:</strong> Rs. ${Number(v.price).toLocaleString()}</div>`).join('') : `Rs. ${p.selling_price || 0}`}</td>
               <td class="px-5 py-4">
                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${p.damage_stock > 0 ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}">
                   ${p.damage_stock || 0} Damaged
                 </span>
               </td>
               <td class="px-5 py-4 text-right space-x-1 whitespace-nowrap">
-                ${!(p.ingredients && p.ingredients.length > 0)
+                ${!inventoryIsRecipeProduct(p) && !(p.stock_variants || []).length
               ? `<button onclick="adjustStock(${p.id},'${p.name.replace(/'/g, "\\'")}',${p.stock},${p.buying_price})" class="px-2 py-1 text-xs rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700">Stock</button>`
               : ""
                 }
-                <div class="inline-flex rounded-lg shadow-sm" role="group">
+                ${!inventoryIsRecipeProduct(p) && !(p.stock_variants || []).length ? `<div class="inline-flex rounded-lg shadow-sm" role="group">
                   <button onclick="openLossPopup(${p.id}, '${p.name.replace(/'/g, "\\'")}')" class="px-2 py-1 text-xs rounded-l-lg bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-800/50 transition-all border border-rose-200 dark:border-rose-900/50 border-r-0">Loss</button>
                   <button onclick="openRecoveryPopup(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.damage_stock})" class="px-2 py-1 text-xs rounded-r-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-800/50 transition-all border border-emerald-200 dark:border-emerald-900/50">Recov</button>
-                </div>
+                </div>` : ''}
                 <button onclick="openEditProduct(${p.id})" class="px-2 py-1 text-xs rounded-lg bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-all border border-indigo-200 dark:border-indigo-900/50">Edit</button>
                 ${p.barcode ? `<button onclick="printBarcode('${p.barcode.replace(/'/g, "\\'")}')" title="Print barcode" aria-label="Print barcode" class="inline-flex shrink-0 items-center justify-center p-2 rounded-lg bg-slate-50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all border border-slate-200 dark:border-slate-900/50"><svg class="block shrink-0 overflow-visible" style="width:20px;height:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>` : ""}
               </td>
@@ -2305,6 +2326,7 @@ function productFormHtml(p = {}, brands = []) {
     </div>`;
 
   const isRestaurant = currentUser.shop_type === "restaurant";
+  const isRecipeProduct = isRestaurant && (p.product_type === 'recipe_based' || window._formProductType === 'recipe_based' || (p.variants || []).length > 0);
   const labelComp = isRestaurant ? "Ingredients (Recipe)" : "Unit Breakdown / Loose Items";
   const descComp = isRestaurant
     ? "Define raw ingredients for this item. Cost will be auto-calculated from raw stock prices."
@@ -2335,6 +2357,36 @@ function productFormHtml(p = {}, brands = []) {
     </div>
   `
     : "";
+
+  const menuOptionsHtml = isRecipeProduct ? `
+    <div class="col-span-2 border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Required Variants</h4>
+          <p class="text-[10px] text-slate-500 mt-0.5">Every product needs at least one size. Each size has its own price and ingredient quantities.</p>
+        </div>
+        <button type="button" onclick="addProductVariant()" class="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold">+ Variant</button>
+      </div>
+      <div id="pf-variant-list" class="space-y-3"></div>
+    </div>
+    <div class="col-span-2 border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Optional Add-ons</h4>
+          <p class="text-[10px] text-slate-500 mt-0.5">Choose an inventory ingredient, its consumed quantity, and the extra bill price.</p>
+        </div>
+        <button type="button" onclick="addProductAddon()" class="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold">+ Add-on</button>
+      </div>
+      <div id="pf-addon-list" class="space-y-2"></div>
+    </div>` : '';
+  const stockVariantsHtml = isRestaurant && !isRecipeProduct ? `
+    <div class="col-span-2 border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div><h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Stock Variants</h4><p class="text-[10px] text-slate-500 mt-0.5">Each size has independent cost, selling price, barcode, and stock. Publish variants to Menu when ready.</p></div>
+        <button type="button" onclick="addStockProductVariant()" class="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold">+ Variant</button>
+      </div>
+      <div id="pf-stock-variant-list" class="space-y-3"></div>
+    </div>` : '';
 
   return `
     <div class="space-y-4">
@@ -2372,20 +2424,23 @@ function productFormHtml(p = {}, brands = []) {
           <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Pricing & Inventory</h4>
         </div>
 
-        <div id="pricing-cost-container" class="col-span-2 sm:col-span-1">
+        <input id="pf-product-type" type="hidden" value="${isRecipeProduct ? 'recipe_based' : 'stock_based'}" />
+        <div id="pricing-cost-container" class="${isRestaurant ? 'hidden' : 'col-span-2 sm:col-span-1'}">
           ${numInput("pf-buy", "Cost Price", p.buying_price ?? "")}
         </div>
-        <div id="pricing-sell-container" class="col-span-2 sm:col-span-1">
+        <div id="pricing-sell-container" class="${isRestaurant ? 'hidden' : 'col-span-2 sm:col-span-1'}">
           ${numInput("pf-sell", "Selling Price", p.selling_price ?? "")}
         </div>
-        <div id="pricing-stock-container" class="col-span-2 sm:col-span-1">
+        <div id="pricing-stock-container" class="${isRestaurant ? 'hidden' : 'col-span-2 sm:col-span-1'}">
           ${numInput("pf-stock", "Initial Stock", p.stock ?? "")}
         </div>
-        <div id="pricing-min-stock-container" class="col-span-2 sm:col-span-1">
+        <div id="pricing-min-stock-container" class="${isRestaurant ? 'hidden' : 'col-span-2 sm:col-span-1'}">
            ${numInput("pf-min-stock", "Minimum Stock Level", p.min_stock_level ?? "", "Alert threshold")}
         </div>
 
-        ${compHtml}
+        ${menuOptionsHtml}
+        ${stockVariantsHtml}
+        ${isRestaurant ? '' : compHtml}
 
         <div class="col-span-2 border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
           <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Product Image</h4>
@@ -2460,7 +2515,216 @@ function productFormHtml(p = {}, brands = []) {
     </div>`;
 }
 
-async function openAddProduct() {
+function newMenuOptionId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function rawStockOptions(selectedId) {
+  return (window._rawStocksList || []).map((stock) =>
+    `<option value="${stock.id}" ${Number(selectedId) === Number(stock.id) ? 'selected' : ''}>${escapeOrderValue(stock.name)} (${escapeOrderValue(stock.usage_unit || stock.unit || '')})</option>`
+  ).join('');
+}
+
+function addProductVariant() {
+  const firstStock = (window._rawStocksList || [])[0];
+  window._formVariants = window._formVariants || [];
+  window._formVariants.push({
+    id: newMenuOptionId('variant'), name: '', price: 0,
+    is_default: window._formVariants.length === 0,
+    ingredients: firstStock ? [] : []
+  });
+  renderProductVariantsForm();
+}
+
+function removeProductVariant(index) {
+  if ((window._formVariants || []).length <= 1) return toast('At least one variant is required', 'warning');
+  window._formVariants.splice(index, 1);
+  if (!window._formVariants.some(v => v.is_default)) window._formVariants[0].is_default = true;
+  renderProductVariantsForm();
+}
+
+function updateProductVariant(index, field, value) {
+  const variant = (window._formVariants || [])[index];
+  if (!variant) return;
+  if (field === 'price') variant[field] = Math.max(Number(value) || 0, 0);
+  else variant[field] = value;
+}
+
+function setDefaultProductVariant(index) {
+  (window._formVariants || []).forEach((variant, i) => { variant.is_default = i === index; });
+  renderProductVariantsForm();
+}
+
+function addVariantIngredient(variantIndex) {
+  const stock = (window._rawStocksList || [])[0];
+  if (!stock) return toast('Add inventory ingredients first', 'error');
+  window._formVariants[variantIndex].ingredients.push({ raw_stock_id: stock.id, quantity: 1 });
+  renderProductVariantsForm();
+}
+
+function updateVariantIngredient(variantIndex, ingredientIndex, field, value) {
+  const ingredient = window._formVariants?.[variantIndex]?.ingredients?.[ingredientIndex];
+  if (!ingredient) return;
+  ingredient[field] = field === 'raw_stock_id' ? Number(value) : Math.max(Number(value) || 0, 0);
+  refreshProductVariantCost(variantIndex);
+}
+
+function calculateProductVariantCost(variant) {
+  return (variant?.ingredients || []).reduce((total, ingredient) => {
+    const stock = (window._rawStocksList || []).find(item => Number(item.id) === Number(ingredient.raw_stock_id));
+    if (!stock) return total;
+    return total + (Number(ingredient.quantity || 0) / Number(stock.conversion_factor || 1)) * Number(stock.buying_price || 0);
+  }, 0);
+}
+
+function refreshProductVariantCost(variantIndex) {
+  const value = calculateProductVariantCost(window._formVariants?.[variantIndex]);
+  const target = $c(`pf-variant-cost-${variantIndex}`);
+  if (target) target.textContent = `Rs. ${value.toFixed(2)}`;
+}
+
+function removeVariantIngredient(variantIndex, ingredientIndex) {
+  window._formVariants[variantIndex].ingredients.splice(ingredientIndex, 1);
+  renderProductVariantsForm();
+}
+
+function renderProductVariantsForm() {
+  const host = $c('pf-variant-list');
+  if (!host) return;
+  host.innerHTML = (window._formVariants || []).map((variant, variantIndex) => `
+    <div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
+      <div class="grid grid-cols-12 gap-2 items-end">
+        <label class="col-span-5 text-[10px] font-bold text-slate-500">Variant name
+          <input value="${escapeOrderValue(variant.name)}" oninput="updateProductVariant(${variantIndex}, 'name', this.value)" placeholder="Small, Medium, Regular" class="mt-1 w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+        </label>
+        <label class="col-span-4 text-[10px] font-bold text-slate-500">Selling price
+          <input type="number" min="0.01" step="0.01" value="${Number(variant.price || 0)}" oninput="updateProductVariant(${variantIndex}, 'price', this.value)" class="mt-1 w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm" />
+        </label>
+        <label class="col-span-2 flex flex-col items-center gap-1 text-[10px] font-bold text-slate-500"><span>Default</span><input type="radio" name="pf-default-variant" ${variant.is_default ? 'checked' : ''} onchange="setDefaultProductVariant(${variantIndex})" /></label>
+        <button type="button" onclick="removeProductVariant(${variantIndex})" class="col-span-1 h-9 rounded-lg text-rose-500 hover:bg-rose-50" title="Remove variant">×</button>
+      </div>
+      <div class="space-y-2">
+        <div class="flex justify-between items-center"><span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Ingredients for ${escapeOrderValue(variant.name || 'this variant')}</span><span class="text-[10px] font-black text-emerald-600">Calculated cost: <strong id="pf-variant-cost-${variantIndex}">Rs. ${calculateProductVariantCost(variant).toFixed(2)}</strong></span><button type="button" onclick="addVariantIngredient(${variantIndex})" class="text-[10px] font-bold text-emerald-600">+ Ingredient</button></div>
+        ${(variant.ingredients || []).map((ingredient, ingredientIndex) => `
+          <div class="grid grid-cols-12 gap-2">
+            <select onchange="updateVariantIngredient(${variantIndex}, ${ingredientIndex}, 'raw_stock_id', this.value)" class="col-span-7 px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs">${rawStockOptions(ingredient.raw_stock_id)}</select>
+            <input type="number" min="0.0001" step="0.01" value="${Number(ingredient.quantity || 0)}" onchange="updateVariantIngredient(${variantIndex}, ${ingredientIndex}, 'quantity', this.value)" class="col-span-4 px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" placeholder="Qty" />
+            <button type="button" onclick="removeVariantIngredient(${variantIndex}, ${ingredientIndex})" class="col-span-1 text-rose-500">×</button>
+          </div>`).join('') || '<p class="text-[10px] text-slate-400 italic">No ingredients configured.</p>'}
+      </div>
+    </div>`).join('');
+}
+
+function addProductAddon() {
+  const stock = (window._rawStocksList || [])[0];
+  if (!stock) return toast('Add inventory ingredients first', 'error');
+  window._formAddons = window._formAddons || [];
+  window._formAddons.push({ id: newMenuOptionId('addon'), name: stock.name, raw_stock_id: stock.id, quantity: 1, price: 0 });
+  renderProductAddonsForm();
+}
+
+function updateProductAddon(index, field, value) {
+  const addon = (window._formAddons || [])[index];
+  if (!addon) return;
+  if (field === 'raw_stock_id') {
+    addon.raw_stock_id = Number(value);
+    const stock = (window._rawStocksList || []).find(s => Number(s.id) === Number(value));
+    if (stock && !addon.name) addon.name = stock.name;
+  } else if (field === 'quantity' || field === 'price') addon[field] = Math.max(Number(value) || 0, 0);
+  else addon[field] = value;
+}
+
+function removeProductAddon(index) {
+  window._formAddons.splice(index, 1);
+  renderProductAddonsForm();
+}
+
+function renderProductAddonsForm() {
+  const host = $c('pf-addon-list');
+  if (!host) return;
+  host.innerHTML = (window._formAddons || []).map((addon, index) => `
+    <div class="grid grid-cols-12 gap-2 items-end rounded-xl border border-slate-200 dark:border-slate-700 p-2">
+      <label class="col-span-3 text-[10px] text-slate-500">Display name<input value="${escapeOrderValue(addon.name)}" oninput="updateProductAddon(${index}, 'name', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" /></label>
+      <label class="col-span-4 text-[10px] text-slate-500">Inventory item<select onchange="updateProductAddon(${index}, 'raw_stock_id', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs">${rawStockOptions(addon.raw_stock_id)}</select></label>
+      <label class="col-span-2 text-[10px] text-slate-500">Used qty<input type="number" min="0.0001" step="0.01" value="${Number(addon.quantity || 0)}" onchange="updateProductAddon(${index}, 'quantity', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" /></label>
+      <label class="col-span-2 text-[10px] text-slate-500">Extra price<input type="number" min="0" step="0.01" value="${Number(addon.price || 0)}" onchange="updateProductAddon(${index}, 'price', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" /></label>
+      <button type="button" onclick="removeProductAddon(${index})" class="col-span-1 h-9 text-rose-500">×</button>
+    </div>`).join('') || '<p class="text-[10px] text-slate-400 italic">No optional add-ons configured.</p>';
+}
+
+function addStockProductVariant() {
+  window._formStockVariants = window._formStockVariants || [];
+  window._formStockVariants.push({
+    name: '', sku: `VAR-${Math.random().toString(36).slice(2, 9).toUpperCase()}`,
+    barcode: '', buying_price: 0, selling_price: 0, stock: 0,
+    min_stock_level: 0, is_default: window._formStockVariants.length === 0, is_on_menu: false
+  });
+  renderStockProductVariantsForm();
+}
+
+function updateStockProductVariant(index, field, value) {
+  const variant = window._formStockVariants?.[index];
+  if (!variant) return;
+  if (['buying_price', 'selling_price', 'stock', 'min_stock_level'].includes(field)) variant[field] = Math.max(Number(value) || 0, 0);
+  else if (['is_default', 'is_on_menu'].includes(field)) variant[field] = !!value;
+  else variant[field] = value;
+}
+
+function setDefaultStockProductVariant(index) {
+  (window._formStockVariants || []).forEach((variant, i) => { variant.is_default = i === index; });
+  renderStockProductVariantsForm();
+}
+
+function removeStockProductVariant(index) {
+  if ((window._formStockVariants || []).length <= 1) return toast('At least one stock variant is required', 'warning');
+  window._formStockVariants.splice(index, 1);
+  if (!window._formStockVariants.some(v => v.is_default)) window._formStockVariants[0].is_default = true;
+  renderStockProductVariantsForm();
+}
+
+function renderStockProductVariantsForm() {
+  const host = $c('pf-stock-variant-list');
+  if (!host) return;
+  host.innerHTML = (window._formStockVariants || []).map((variant, index) => `
+    <div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 bg-slate-50/60 dark:bg-slate-900/40 space-y-3">
+      <div class="grid grid-cols-12 gap-2">
+        <label class="col-span-4 text-[10px] text-slate-500">Variant name<input value="${escapeOrderValue(variant.name)}" oninput="updateStockProductVariant(${index}, 'name', this.value)" placeholder="250ml, 500ml, 1 Liter" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <label class="col-span-4 text-[10px] text-slate-500">SKU<input value="${escapeOrderValue(variant.sku)}" oninput="updateStockProductVariant(${index}, 'sku', this.value)" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <label class="col-span-3 text-[10px] text-slate-500">Barcode<input value="${escapeOrderValue(variant.barcode || '')}" oninput="updateStockProductVariant(${index}, 'barcode', this.value)" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <button type="button" onclick="removeStockProductVariant(${index})" class="col-span-1 text-rose-500">×</button>
+      </div>
+      <div class="grid grid-cols-12 gap-2 items-end">
+        <label class="col-span-2 text-[10px] text-slate-500">Cost<input type="number" min="0" step="0.01" value="${Number(variant.buying_price || 0)}" oninput="updateStockProductVariant(${index}, 'buying_price', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <label class="col-span-2 text-[10px] text-slate-500">Selling price<input type="number" min="0.01" step="0.01" value="${Number(variant.selling_price || 0)}" oninput="updateStockProductVariant(${index}, 'selling_price', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <label class="col-span-2 text-[10px] text-slate-500">Stock<input type="number" min="0" step="1" value="${Number(variant.stock || 0)}" oninput="updateStockProductVariant(${index}, 'stock', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <label class="col-span-2 text-[10px] text-slate-500">Min stock<input type="number" min="0" step="1" value="${Number(variant.min_stock_level || 0)}" oninput="updateStockProductVariant(${index}, 'min_stock_level', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <label class="col-span-2 flex items-center gap-2 text-[10px] font-bold text-slate-500"><input type="radio" name="pf-default-stock-variant" ${variant.is_default ? 'checked' : ''} onchange="setDefaultStockProductVariant(${index})"> Default</label>
+        ${variant.id ? `<label class="col-span-2 flex items-center gap-2 text-[10px] font-bold text-emerald-600"><input type="checkbox" ${variant.is_on_menu ? 'checked' : ''} onchange="updateStockProductVariant(${index}, 'is_on_menu', this.checked)"> On Menu</label>` : '<span class="col-span-2 text-[10px] font-bold text-slate-400">Publish after saving</span>'}
+      </div>
+    </div>`).join('');
+}
+
+function openAddProduct() {
+  if (currentUser.shop_type !== 'restaurant') return openAddProductForm('stock_based');
+  openModal('Choose Product Type', `
+    <div class="py-8">
+      <p class="text-center text-sm text-slate-500 dark:text-slate-400 mb-8">Choose how this menu item consumes inventory.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl mx-auto">
+        <button type="button" onclick="openAddProductForm('recipe_based')" class="group p-7 rounded-3xl border-2 border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 hover:border-emerald-500 hover:-translate-y-1 transition-all text-left">
+          <span class="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mb-5"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16M6 5l1 15h10l1-15M9 9v7m6-7v7M8 2h8"/></svg></span>
+          <span class="block text-xl font-black text-slate-900 dark:text-white">Recipe-Based</span>
+          <span class="block mt-2 text-xs leading-relaxed text-slate-500">Prepared from ingredients. Costs are calculated automatically for each required size.</span>
+        </button>
+        <button type="button" onclick="closeModal(); navigate('raw-stock')" class="group p-7 rounded-3xl border-2 border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/20 hover:border-indigo-500 hover:-translate-y-1 transition-all text-left">
+          <span class="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mb-5"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></span>
+          <span class="block text-xl font-black text-slate-900 dark:text-white">Cost/Stock-Based</span>
+          <span class="block mt-2 text-xs leading-relaxed text-slate-500">Purchased finished products are created in Inventory, then published to Menu by variant.</span>
+        </button>
+      </div>
+    </div>`, 'max-w-4xl');
+}
+
+async function openAddProductForm(productType) {
   let brands = window._productBrands || (await api("/api/brands"));
 
   // GET /api/brands auto-creates a default brand if none exist
@@ -2469,15 +2733,36 @@ async function openAddProduct() {
   }
 
   window._formComponents = [];
+  window._formProductType = productType === 'recipe_based' ? 'recipe_based' : 'stock_based';
+  if (window._formProductType === 'recipe_based') {
+    const rawStocks = await api('/api/raw-stock');
+    window._rawStocksList = Array.isArray(rawStocks) ? rawStocks : [];
+    window._formVariants = ['Small', 'Medium', 'Large', 'Extra Large'].map((name, index) => ({
+      id: newMenuOptionId('variant'), name, price: 0, is_default: index === 0, ingredients: []
+    }));
+    window._formAddons = [];
+    window._formStockVariants = [];
+  } else {
+    window._formVariants = [];
+    window._formAddons = [];
+    window._formStockVariants = [{
+      name: 'Regular', sku: `VAR-${Math.random().toString(36).slice(2, 9).toUpperCase()}`,
+      barcode: '', buying_price: 0, selling_price: 0, stock: 0,
+      min_stock_level: 0, is_default: true, is_on_menu: false
+    }];
+  }
   window.ProductImageTools?.resetState?.();
   const randomSku = 'SKU-' + Math.random().toString(36).substring(2, 10).toUpperCase();
   openModal(
     "Add Product",
-    productFormHtml({ sku: randomSku }, brands) +
+    productFormHtml({ sku: randomSku, product_type: window._formProductType }, brands) +
     `<button onclick="saveProduct()" class="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all">Save Product</button>`,
-    "max-w-xl",
+    "max-w-4xl",
   );
   renderFormCompositionList();
+  renderProductVariantsForm();
+  renderProductAddonsForm();
+  renderStockProductVariantsForm();
 
   const buyEl = document.getElementById("pf-buy");
   const sellEl = document.getElementById("pf-sell");
@@ -2490,6 +2775,25 @@ async function openEditProduct(id) {
   const product = allProducts.find((p) => p.id === id) || {};
   window.ProductImageTools?.resetState?.();
 
+  if (currentUser.shop_type === 'restaurant') {
+    window._formProductType = product.product_type === 'recipe_based' || (product.variants && product.variants.length) ? 'recipe_based' : 'stock_based';
+    if (window._formProductType === 'recipe_based') {
+      const rawStocks = await api('/api/raw-stock');
+      window._rawStocksList = Array.isArray(rawStocks) ? rawStocks : [];
+      window._formVariants = (product.variants && product.variants.length)
+        ? JSON.parse(JSON.stringify(product.variants))
+        : [{ id: newMenuOptionId('variant'), name: 'Regular', price: Number(product.selling_price || 0), is_default: true, ingredients: (product.ingredients || []).map(i => ({ raw_stock_id: i.id, quantity: Number(i.quantity) })) }];
+      window._formAddons = JSON.parse(JSON.stringify(product.addons || []));
+      window._formStockVariants = [];
+    } else {
+      window._formVariants = [];
+      window._formAddons = [];
+      window._formStockVariants = (product.stock_variants || []).length
+        ? JSON.parse(JSON.stringify(product.stock_variants))
+        : [{ name: 'Regular', sku: product.sku, barcode: product.barcode || '', buying_price: Number(product.buying_price || 0), selling_price: Number(product.selling_price || 0), stock: Number(product.stock || 0), min_stock_level: Number(product.min_stock_level || 0), is_default: true, is_on_menu: true }];
+    }
+  }
+
   // Decide what to load into form components
   if (currentUser.shop_type === 'restaurant' && product.ingredients) {
     window._formComponents = product.ingredients.map(i => ({ ...i, is_ingredient: true, raw_stock_id: i.id }));
@@ -2501,10 +2805,13 @@ async function openEditProduct(id) {
     "Edit Product",
     productFormHtml(product, brands) +
     `<button onclick="saveProduct(${id})" class="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all">Update Product</button>`,
-    "max-w-xl",
+    "max-w-4xl",
   );
   recalculateComponentPrices(); // To handle readOnly/hidden states
   renderFormCompositionList();
+  renderProductVariantsForm();
+  renderProductAddonsForm();
+  renderStockProductVariantsForm();
 
   // Attach redistribution listeners
   const buyEl = document.getElementById("pf-buy");
@@ -2516,9 +2823,33 @@ async function openEditProduct(id) {
 async function saveProduct(id) {
   try {
     const isRestaurant = currentUser.shop_type === 'restaurant';
+    const productType = $c('pf-product-type')?.value === 'recipe_based' ? 'recipe_based' : 'stock_based';
+    const isRecipeProduct = isRestaurant && productType === 'recipe_based';
     const components = (isRestaurant) ? [] : (window._formComponents || []);
-    const ingredients = isRestaurant ?
-      (window._formComponents || []).map(i => ({ raw_stock_id: i.raw_stock_id, quantity: i.quantity })) : [];
+    const ingredients = [];
+    const variants = isRecipeProduct ? (window._formVariants || []) : [];
+    const addons = isRecipeProduct ? (window._formAddons || []) : [];
+    const stockVariants = !isRecipeProduct && isRestaurant ? (window._formStockVariants || []) : [];
+
+    if (isRecipeProduct) {
+      if (!variants.length) return toast('At least one variant is required', 'error');
+      if (variants.some(v => !v.name.trim() || Number(v.price) <= 0)) return toast('Every variant needs a name and selling price greater than zero', 'error');
+      const variantNames = variants.map(v => v.name.trim().toLowerCase());
+      if (new Set(variantNames).size !== variantNames.length) return toast('Variant names must be unique', 'error');
+      if (variants.some(v => (v.ingredients || []).some(i => !i.raw_stock_id || Number(i.quantity) <= 0))) return toast('Every variant ingredient needs a valid quantity', 'error');
+      if (addons.some(a => !a.name.trim() || !a.raw_stock_id || Number(a.quantity) <= 0 || Number(a.price) < 0)) return toast('Every add-on needs a name, inventory item, used quantity, and valid extra price', 'error');
+      const addonNames = addons.map(a => a.name.trim().toLowerCase());
+      if (new Set(addonNames).size !== addonNames.length) return toast('Add-on names must be unique', 'error');
+      if (!variants.some(v => v.is_default)) variants[0].is_default = true;
+    }
+    if (!isRecipeProduct && isRestaurant) {
+      if (!stockVariants.length) return toast('At least one stock variant is required', 'error');
+      if (stockVariants.some(v => !v.name.trim() || !v.sku.trim() || Number(v.selling_price) <= 0)) return toast('Every stock variant needs a name, SKU, and selling price', 'error');
+      const names = stockVariants.map(v => v.name.trim().toLowerCase());
+      const skus = stockVariants.map(v => v.sku.trim().toLowerCase());
+      if (new Set(names).size !== names.length || new Set(skus).size !== skus.length) return toast('Stock variant names and SKUs must be unique', 'error');
+      if (!stockVariants.some(v => v.is_default)) stockVariants[0].is_default = true;
+    }
 
     const imageFile = window.ProductImageTools
       ? await window.ProductImageTools.getUploadFile()
@@ -2550,14 +2881,20 @@ async function saveProduct(id) {
     formData.append('name', name);
     formData.append('category', category);
     formData.append('description', $c("pf-desc").value.trim());
+    formData.append('product_type', productType);
     formData.append('brand_id', brand_id);
     if (document.getElementById("pf-barcode")) formData.append('barcode', document.getElementById("pf-barcode").value.trim());
-    formData.append('buying_price', parseFloat($c("pf-buy").value) || 0);
-    formData.append('selling_price', parseFloat($c("pf-sell").value) || 0);
-    formData.append('stock', parseInt($c("pf-stock").value) || 0);
-    formData.append('min_stock_level', parseInt($c("pf-min-stock").value) || 0);
+    const defaultVariant = variants.find(v => v.is_default) || variants[0];
+    const defaultStockVariant = stockVariants.find(v => v.is_default) || stockVariants[0];
+    formData.append('buying_price', isRecipeProduct ? 0 : (isRestaurant ? Number(defaultStockVariant?.buying_price || 0) : (parseFloat($c("pf-buy").value) || 0)));
+    formData.append('selling_price', isRecipeProduct ? Number(defaultVariant.price) : (isRestaurant ? Number(defaultStockVariant?.selling_price || 0) : (parseFloat($c("pf-sell").value) || 0)));
+    formData.append('stock', isRecipeProduct ? 0 : (isRestaurant ? stockVariants.reduce((sum, variant) => sum + Number(variant.stock || 0), 0) : (parseInt($c("pf-stock").value) || 0)));
+    formData.append('min_stock_level', isRestaurant ? 0 : (parseInt($c("pf-min-stock").value) || 0));
     formData.append('components', JSON.stringify(components));
     formData.append('ingredients', JSON.stringify(ingredients));
+    formData.append('variants', JSON.stringify(variants));
+    formData.append('addons', JSON.stringify(addons));
+    formData.append('stock_variants', JSON.stringify(stockVariants));
     if (imageFile) formData.append('image', imageFile);
 
     const url = id ? `/api/products/${id}` : '/api/products';
@@ -2578,7 +2915,11 @@ async function saveProduct(id) {
 
     closeModal();
     toast("Product saved successfully!");
-    renderProducts();
+    if (productType === 'stock_based' && currentUser.shop_type === 'restaurant') {
+      navigate('raw-stock');
+    } else {
+      renderProducts();
+    }
   } catch (err) {
     console.error("[CRITICAL] saveProduct failed:", err);
     toast("Error: " + err.message, "error");
@@ -2989,8 +3330,7 @@ function getPOSLayout() {
 
 function capturePOSLayoutState() {
   const ids = [
-    "pos-floor", "pos-table", "pos-waiter", "pos-kitchen", "pos-delivery-name",
-    "pos-delivery-phone", "pos-rider", "pos-delivery-addr", "pos-takeaway-name",
+    "pos-floor", "pos-table", "pos-waiter", "pos-kitchen", "pos-rider", "pos-delivery-addr",
     "pos-token", "pos-discount", "pos-discount-preset", "pos-tax", "pos-tax-preset",
     "pos-method", "pos-received", "pos-cust-name", "pos-cust-phone"
   ];
@@ -3019,6 +3359,90 @@ async function setPOSLayout(layout) {
   await renderPOS();
 }
 
+function renderPOSLanding() {
+  $c("page-content").innerHTML = `
+    <div class="min-h-[calc(100vh-7rem)] flex items-center justify-center px-4">
+      <div class="w-full max-w-2xl text-center">
+        <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Ready to take an order?</h2>
+        <p class="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Start a new restaurant order or open the existing orders view.</p>
+        <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <button type="button" onclick="showPOSOrderTypeChooser()" class="group p-7 rounded-3xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-600/25 transition-all hover:-translate-y-0.5 active:translate-y-0 text-left">
+            <span class="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mb-5">
+              <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#ffffff" fill-opacity=".18"/><path d="M12 7v10M7 12h10" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/></svg>
+            </span>
+            <span class="block text-xl font-black">New Order</span>
+            <span class="block mt-1 text-xs font-semibold text-indigo-100">Choose dine-in, takeaway, or delivery</span>
+          </button>
+          <button type="button" onclick="openPOSOrdersView()" class="group p-7 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-violet-500 hover:shadow-xl hover:shadow-violet-500/10 transition-all hover:-translate-y-0.5 active:translate-y-0 text-left">
+            <span class="w-14 h-14 rounded-2xl bg-violet-50 dark:bg-violet-950/50 flex items-center justify-center mb-5">
+              <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="3" fill="#8b5cf6" fill-opacity=".16"/><path d="M9 9h6M9 13h6M9 17h4" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round"/><path d="M9 4.5h6" stroke="#c4b5fd" stroke-width="2.5" stroke-linecap="round"/></svg>
+            </span>
+            <span class="block text-xl font-black text-slate-900 dark:text-white">View Orders</span>
+            <span class="block mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Open the Orders screen already inside POS</span>
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function showPOSOrderTypeChooser() {
+  $c("page-content").innerHTML = `
+    <div class="min-h-[calc(100vh-7rem)] flex items-center justify-center px-4 py-10">
+      <div class="w-full max-w-4xl">
+        <div class="text-center mb-8">
+          <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Select Order Type</h2>
+          <p class="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Choose how this order will be served.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <button type="button" onclick="startPOSOrder('dine_in')" class="group p-8 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-indigo-500 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all text-center">
+            <span class="mx-auto w-20 h-20 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <svg class="w-12 h-12" viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="25" cy="25" r="14" fill="#c7d2fe"/><circle cx="25" cy="25" r="9" fill="#ffffff"/><path d="M10 8v13M6 8v8c0 3 2 5 4 5s4-2 4-5V8M10 21v19M39 8c-5 4-6 12-3 17h3v15" stroke="#4f46e5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="block mt-5 text-xl font-black text-slate-900 dark:text-white">Dine-in</span>
+            <span class="block mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Table, waiter, and kitchen service</span>
+          </button>
+          <button type="button" onclick="startPOSOrder('takeaway')" class="group p-8 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-amber-500 hover:shadow-2xl hover:shadow-amber-500/10 transition-all text-center">
+            <span class="mx-auto w-20 h-20 rounded-2xl bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <svg class="w-12 h-12" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M12 17h24l-3 23H15l-3-23Z" fill="#fde68a"/><path d="M16 17c0-6 3-9 8-9s8 3 8 9" stroke="#d97706" stroke-width="3" stroke-linecap="round"/><path d="M12 17h24l-3 23H15l-3-23Z" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/><path d="M20 25h8" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/></svg>
+            </span>
+            <span class="block mt-5 text-xl font-black text-slate-900 dark:text-white">Takeaway</span>
+            <span class="block mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Counter pickup and token service</span>
+          </button>
+          <button type="button" onclick="startPOSOrder('delivery')" class="group p-8 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all text-center">
+            <span class="mx-auto w-20 h-20 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <svg class="w-12 h-12" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M6 13h24v21H6z" fill="#a7f3d0"/><path d="M30 21h7l6 7v6H30V21Z" fill="#6ee7b7"/><path d="M6 13h24v21H6V13Zm24 8h7l6 7v6H30V21Z" stroke="#059669" stroke-width="3" stroke-linejoin="round"/><circle cx="15" cy="36" r="4" fill="#ffffff" stroke="#047857" stroke-width="3"/><circle cx="37" cy="36" r="4" fill="#ffffff" stroke="#047857" stroke-width="3"/><path d="M34 25h5" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/></svg>
+            </span>
+            <span class="block mt-5 text-xl font-black text-slate-900 dark:text-white">Delivery</span>
+            <span class="block mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Customer address and rider service</span>
+          </button>
+        </div>
+        <div class="mt-7 text-center">
+          <button type="button" onclick="renderPOSLanding()" class="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">Back</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function startPOSOrder(orderType) {
+  const allowedTypes = ['dine_in', 'takeaway', 'delivery'];
+  if (!allowedTypes.includes(orderType)) return;
+  window._posEntryOrderType = orderType;
+  await renderPOS();
+}
+
+async function openPOSOrdersView() {
+  window._posEntryOrderType = 'dine_in';
+  await renderPOS();
+  switchOrderType('orders');
+}
+
+function startFreshPOSOrder() {
+  window._posEntryOrderType = null;
+  cart = [];
+  _posSelectedCustomer = null;
+  renderPOSLanding();
+}
+
 function restorePOSLayoutState(restore) {
   if (!restore?.form) return;
   Object.entries(restore.form.values || {}).forEach(([id, value]) => {
@@ -3039,6 +3463,10 @@ function restorePOSLayoutState(restore) {
 
 async function renderPOS() {
   const deliveryOnly = _currentPage === 'delivery';
+  if (!deliveryOnly && !_editingOrderId && !window._posEntryOrderType && !window._posLayoutRestore) {
+    renderPOSLanding();
+    return;
+  }
   const splitLayout = !deliveryOnly && getPOSLayout() === "split";
   const layoutRestore = window._posLayoutRestore || null;
   window._posLayoutRestore = null;
@@ -3067,6 +3495,7 @@ async function renderPOS() {
   _posCustomerResults = [];
   const waiterList = (waiters || []).filter(u => ['admin', 'user', 'waiter'].includes(u.role));
   const kitchenList = (waiters || []).filter(u => u.role === 'kitchen');
+  const riderList = (waiters || []).filter(u => u.role === 'rider');
 
   let baseShopType = currentUser.shop_type;
   if (currentUser.role === 'superadmin' && managedShopId) {
@@ -3186,13 +3615,13 @@ async function renderPOS() {
             <div class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Order Type</div>
             <div class="grid grid-cols-3 ${splitLayout ? 'gap-1' : 'gap-2'}">
               <button id="otype-dine_in" onclick="switchOrderType('dine_in')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-indigo-600 text-white font-bold text-xs transition-all">
-                <span>🍽️</span><span>Dine-in</span>
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="13" cy="12" r="6" fill="currentColor" fill-opacity=".2"/><path d="M5 4v7m-2-7v4c0 2 1 3 2 3s2-1 2-3V4m-2 7v9M20 4c-3 2-3 7-1 9h1v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Dine-in</span>
               </button>
               <button id="otype-takeaway" onclick="switchOrderType('takeaway')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-slate-500 dark:text-slate-400 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                <span>🛍️</span><span>Takeaway</span>
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 8h14l-2 12H7L5 8Z" fill="currentColor" fill-opacity=".18"/><path d="M8 8c0-3 1.5-5 4-5s4 2 4 5M5 8h14l-2 12H7L5 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Takeaway</span>
               </button>
               <button id="otype-delivery" onclick="switchOrderType('delivery')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-slate-500 dark:text-slate-400 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                <span>🚚</span><span>Delivery</span>
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" fill="currentColor" fill-opacity=".18"/><path d="M3 6h11v10H3V6Zm11 4h4l3 3v3h-7v-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7" cy="18" r="2" fill="currentColor"/><circle cx="18" cy="18" r="2" fill="currentColor"/></svg><span>Delivery</span>
               </button>
             </div>
           </div>
@@ -3203,7 +3632,7 @@ async function renderPOS() {
           <div id="pos-restaurant-fields" class="${isRetail ? 'hidden' : ''} mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
             <!-- Dine-in specific: Table & Waiter -->
             <div id="pos-dine-fields" class="mb-2 space-y-2">
-              <div>
+              <div class="${(_posFloors || []).length ? '' : 'hidden'}">
                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Floor</label>
                 <select id="pos-floor" onchange="onPosFloorChange()" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
                   <option value="">-- All Floors --</option>
@@ -3228,24 +3657,16 @@ async function renderPOS() {
               </div>
             </div>
 
-            <!-- Delivery specific: Customer details + address -->
+            <!-- Delivery-specific address and rider. Customer identity uses the shared fields below. -->
             <div id="pos-delivery-fields" class="mb-2 space-y-2 hidden">
               <div>
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Customer Name</label>
-                <input id="pos-delivery-name" type="text" placeholder="Customer name" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Phone</label>
-                  <input id="pos-delivery-phone" type="text" placeholder="Phone" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Rider</label>
-                  <select id="pos-rider" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
-                    <option value="">-- Rider --</option>
-                    ${waiterList.map(w => `<option value="${w.id}">${w.name}</option>`).join('')}
-                  </select>
-                </div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Rider</label>
+                <select id="pos-rider" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
+                  <option value="">-- Rider --</option>
+                  ${riderList.length
+                    ? riderList.map(r => `<option value="${r.id}">${r.name}</option>`).join('')
+                    : '<option value="" disabled>No riders available</option>'}
+                </select>
               </div>
               <div>
                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Delivery Address</label>
@@ -3253,18 +3674,10 @@ async function renderPOS() {
               </div>
             </div>
 
-            <!-- Takeaway: Token + walkup customer details -->
+            <!-- Takeaway token -->
             <div id="pos-takeaway-fields" class="mb-4 space-y-2 hidden">
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Token #</label>
-                  <input id="pos-token" type="text" placeholder="Auto or manual" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Customer</label>
-                  <input id="pos-takeaway-name" type="text" placeholder="Optional" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
-                </div>
-              </div>
+              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Token #</label>
+              <input id="pos-token" type="text" placeholder="Auto or manual" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
             </div>
 
             <div id="pos-kitchen-fields" class="mb-2 space-y-2">
@@ -3272,24 +3685,24 @@ async function renderPOS() {
                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Kitchen</label>
                 <select id="pos-kitchen" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
                   <option value="">-- Select Kitchen --</option>
-                  ${kitchenList.map(k => `<option value="${k.id}" ${kitchenList.length === 1 ? 'selected' : ''}>${k.username} (${k.name})</option>`).join('')}
+                  ${kitchenList.map(k => `<option value="${k.id}" ${kitchenList.length === 1 ? 'selected' : ''}>${k.name || 'Kitchen'}</option>`).join('')}
                 </select>
               </div>
             </div>
           </div>
 
           <div id="pos-cart-controls" class="border-t border-slate-200 dark:border-slate-700 ${splitLayout ? 'mt-0.5 pt-0.5 space-y-1 shrink-0' : 'mt-4 pt-4 space-y-4'}">
-            <div class="${splitLayout ? 'grid grid-cols-2 gap-1 text-[10px]' : 'space-y-2 text-base'} text-slate-600 dark:text-slate-300">
+            <div class="hidden">
                <div class="flex justify-between ${splitLayout ? 'rounded-md bg-slate-50 dark:bg-slate-800 px-1.5 py-1' : ''}"><span>Subtotal</span><span id="cart-subtotal" class="font-bold text-slate-900 dark:text-white">Rs. 0</span></div>
-               <div class="flex justify-between text-rose-500 ${splitLayout ? 'rounded-md bg-rose-50 dark:bg-rose-950/20 px-1.5 py-1' : ''}"><span class="${splitLayout ? 'text-[9px]' : 'text-xs'} font-bold uppercase tracking-widest">Tax Amount</span><span id="cart-tax-amt" class="font-bold">Rs. 0.00</span></div>
+               <div class="hidden"><span>Tax Amount</span><span id="cart-tax-amt">Rs. 0.00</span></div>
             </div>
 
-            <div id="pos-grand-total-row" class="flex justify-between items-center ${splitLayout ? 'text-base pt-0.5' : 'text-2xl pt-4'} font-black text-indigo-600 dark:text-indigo-400 border-t border-slate-200 dark:border-slate-800">
+            <div id="pos-grand-total-row" class="hidden">
               <span class="text-slate-900 dark:text-white ${splitLayout ? 'text-xs' : 'text-lg'}">Grand Total</span>
               <span id="cart-total" data-total="0">Rs. 0.00</span>
             </div>
 
-            <div class="grid grid-cols-2 ${splitLayout ? 'gap-1 p-1.5 text-xs' : 'gap-4 p-4 text-base'} bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
+            <div class="hidden">
                <div><label class="flex items-center gap-1 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">${splitLayout ? `
                  <span class="relative inline-flex h-5 w-5 items-center justify-center rounded-md bg-rose-100 text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-200 focus-within:ring-2 focus-within:ring-rose-500 dark:bg-rose-950/40 dark:text-rose-400 dark:ring-rose-900" title="Choose discount preset">
                    −
@@ -3338,7 +3751,8 @@ async function renderPOS() {
             </div>
 
             <div class="grid ${splitLayout ? 'grid-cols-4 gap-1 text-xs pt-0.5' : 'grid-cols-2 gap-4 text-base pt-2'} border-t border-slate-200 dark:border-slate-800">
-               <!-- Customer Identity for Pending Dues -->
+               <!-- Customer identity is shown only for delivery orders. -->
+               <div id="pos-customer-identity-fields" class="contents hidden">
                <div class="col-span-1 relative">
                  <label id="pos-cust-name-label" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cust. Name</label>
                  <input id="pos-cust-name" type="text" placeholder="Optional" 
@@ -3357,15 +3771,16 @@ async function renderPOS() {
                  <!-- Suggestions Dropdown -->
                  <div id="pos-cust-phone-suggestions" class="hidden absolute z-[100] left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"></div>
                </div>
+               </div>
 
-               <div><label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">Payment</label>
+               <div class="hidden"><label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">Payment</label>
                <select id="pos-method" onchange="handlePOSMethodChange(this.value)" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-base shadow-sm font-bold">
                   <option value="cash">Cash</option>
                   <option value="card">Card</option>
                   <option value="online">Online</option>
                </select></div>
 
-               <div><label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Received</label>
+               <div class="hidden"><label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Received</label>
                  <div class="flex items-center gap-1">
                    <button type="button" onclick="$c('pos-received').stepDown();calculateRemaining()" class="${splitLayout ? 'w-6 h-6 text-xs' : 'w-8 h-8 text-sm'} flex items-center justify-center rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all font-bold shadow-sm">-</button>
                    <input id="pos-received" type="number" min="0" value="" oninput="calculateRemaining()" class="flex-1 min-w-0 px-2 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 focus:outline-none focus:border-indigo-500 transition-all text-sm font-black shadow-sm text-center" />
@@ -3375,7 +3790,7 @@ async function renderPOS() {
             </div>
 
             ${deliveryOnly ? `
-            <label class="mt-3 flex items-center justify-between gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 cursor-pointer">
+            <label class="hidden">
               <div>
                 <div class="text-xs font-black text-blue-800 dark:text-blue-300">Money received</div>
                 <div class="text-[10px] font-bold text-blue-600/70 dark:text-blue-400/70">Credits this payment to your staff sales total</div>
@@ -3383,12 +3798,12 @@ async function renderPOS() {
               <input id="delivery-money-received" type="checkbox" onchange="syncDeliveryMoneyReceived()" class="w-5 h-5 rounded border-blue-300 text-blue-600 focus:ring-blue-500" />
             </label>` : ''}
 
-            <div class="flex justify-between items-center ${splitLayout ? 'text-sm mt-0.5 p-1.5' : 'text-lg mt-2 p-3'} font-black bg-emerald-50 dark:bg-emerald-950/20 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+            <div class="hidden">
               <span class="text-emerald-700 dark:text-emerald-400 text-xs uppercase tracking-widest">Change / Dues</span>
               <span id="cart-remaining" class="text-emerald-600 dark:text-emerald-400">Rs. 0.00</span>
             </div>
 
-            <div class="flex items-center gap-2 ${splitLayout ? 'mb-0.5 p-1' : 'mb-2 p-2'} bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-lg">
+            <div class="hidden">
               <input type="checkbox" id="pos-is-quotation" class="${splitLayout ? 'w-4 h-4' : 'w-5 h-5'} rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer" onchange="toggleQuotationMode(this.checked)" />
               <label for="pos-is-quotation" class="text-xs font-black text-amber-700 dark:text-amber-400 cursor-pointer select-none">
                 Generate Quotation (Estimate Only)
@@ -3416,7 +3831,7 @@ async function renderPOS() {
               Active Orders
             </h3>
             <div class="flex flex-wrap items-center justify-end gap-3">
-              <button onclick="switchOrderType(window._posLastOrderType || (window._posIsRetail ? 'takeaway' : 'dine_in'))" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2">
+              <button onclick="showPOSOrderTypeChooser()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M12 5v14m7-7H5"/></svg>
                 New Order
               </button>
@@ -3488,7 +3903,7 @@ async function renderPOS() {
 
   // Track current order type state
   window._posDeliveryOnly = deliveryOnly;
-  window._posOrderType = layoutRestore?.form?.orderType || (deliveryOnly ? 'delivery' : (isRetail ? 'takeaway' : 'dine_in'));
+  window._posOrderType = layoutRestore?.form?.orderType || window._posEntryOrderType || (deliveryOnly ? 'delivery' : 'dine_in');
   window._posLastOrderType = window._posOrderType;
   switchOrderType(deliveryOnly ? 'orders' : window._posOrderType);
 
@@ -3501,11 +3916,15 @@ async function renderPOS() {
     });
   }
 
-  const mainProducts = products.filter((p) => p.is_component !== 1);
+  const mainProducts = products.filter((p) => p.is_component !== 1 && isProductPublishedToMenu(p));
   renderPOSProducts(mainProducts, 1);
   renderCart();
   if (layoutRestore) restorePOSLayoutState(layoutRestore);
-  else if (!_editingOrderId) applyPOSLinkedTaxPreset($c("pos-method")?.value || "cash");
+  else if (!_editingOrderId) {
+    if ($c("pos-discount")) $c("pos-discount").value = "0";
+    if ($c("pos-tax")) $c("pos-tax").value = "0";
+    calculateCartTotal();
+  }
 }
 
 async function renderDeliveryPanel() {
@@ -3615,6 +4034,7 @@ function switchOrderType(type) {
   const dineEl = $c('pos-dine-fields');
   const deliveryEl = $c('pos-delivery-fields');
   const takeawayEl = $c('pos-takeaway-fields');
+  const customerIdentityEl = $c('pos-customer-identity-fields');
   const contentGrid = $c('pos-content-grid');
   const ordersContainer = $c('pos-orders-container');
   const ordersBtn = $c('pos-orders-toolbar-btn');
@@ -3640,6 +4060,7 @@ function switchOrderType(type) {
     if (dineEl) dineEl.classList.toggle('hidden', type !== 'dine_in' || isRetail);
     if (deliveryEl) deliveryEl.classList.toggle('hidden', type !== 'delivery' || isRetail);
     if (takeawayEl) takeawayEl.classList.toggle('hidden', type !== 'takeaway' || isRetail);
+    if (customerIdentityEl) customerIdentityEl.classList.toggle('hidden', type !== 'delivery');
   }
 }
 
@@ -3655,6 +4076,16 @@ async function showPrintOptionsModal(id) {
 
     openModal('Unpaid Bill Options', `
       <div class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label id="pp-customer-name-label" class="block text-xs font-bold text-slate-500 mb-1">Customer Name ${sale.order_type === 'delivery' ? '<span class="text-rose-500">*</span>' : '<span class="font-normal">(optional)</span>'}</label>
+            <input id="pp-customer-name" type="text" value="${escapeOrderValue(sale.customer_name || '')}" oninput="updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+          </div>
+          <div>
+            <label id="pp-customer-phone-label" class="block text-xs font-bold text-slate-500 mb-1">Phone Number ${sale.order_type === 'delivery' ? '<span class="text-rose-500">*</span>' : '<span class="font-normal">(optional)</span>'}</label>
+            <input id="pp-customer-phone" type="tel" value="${escapeOrderValue(sale.customer_phone || '')}" oninput="updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+          </div>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Payment Method</label>
@@ -3674,6 +4105,14 @@ async function showPrintOptionsModal(id) {
               oninput="updatePrintSummary(${subtotal})"
               class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
           </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
+          <input id="pp-received" type="number" min="0" step="0.01" value="${Number(sale.amount_received || 0)}" data-original="${Number(sale.amount_received || 0)}"
+            oninput="updatePrintSummary(${subtotal}, '${sale.order_type}')"
+            class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+          <p class="mt-1 text-[10px] font-medium text-slate-400">Customer name and phone become required when this is a partial payment.</p>
         </div>
         
         <div>
@@ -3707,10 +4146,14 @@ async function showPrintOptionsModal(id) {
             <span class="text-slate-500 font-black uppercase tracking-widest text-[10px]">Grand Total</span>
             <span id="ps-total" class="text-lg font-black text-indigo-600 dark:text-indigo-400">Rs. ${Number(sale.total).toLocaleString()}</span>
           </div>
+          <div class="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700">
+            <span class="text-slate-500 font-black uppercase tracking-widest text-[10px]">Remaining Due</span>
+            <span id="ps-due" class="text-lg font-black text-rose-500">Rs. ${Math.max(Number(sale.total) - Number(sale.amount_received || 0), 0).toLocaleString()}</span>
+          </div>
         </div>
 
         <div class="pt-2">
-          <button onclick="updateAndPrintBill(${id})" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg shadow-indigo-600/25 transition-all">
+          <button onclick="updateAndPrintBill(${id}, '${sale.order_type}')" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg shadow-indigo-600/25 transition-all">
             🖨️ Update & Print Unpaid Bill
           </button>
         </div>
@@ -3720,7 +4163,7 @@ async function showPrintOptionsModal(id) {
     // Initial sync
     setTimeout(() => {
       applyLinkedTax(subtotal);
-      updatePrintSummary(subtotal);
+      updatePrintSummary(subtotal, '${sale.order_type}');
     }, 0);
   } catch (err) {
     console.error(err);
@@ -3771,7 +4214,7 @@ function applyLinkedTax(subtotal) {
 
 
 
-function updatePrintSummary(subtotal) {
+function updatePrintSummary(subtotal, orderType = '') {
   const discInp = document.getElementById('pp-discount');
   const taxInp = document.getElementById('pp-tax');
   if (!discInp || !taxInp) return;
@@ -3781,22 +4224,55 @@ function updatePrintSummary(subtotal) {
 
   const taxAmt = (subtotal - discount) * (taxPct / 100);
   const total = subtotal - discount + taxAmt;
+  const received = Math.max(parseFloat(document.getElementById('pp-received')?.value) || 0, 0);
+  const due = Math.max(total - received, 0);
 
   const ds = document.getElementById('ps-discount');
   const ts = document.getElementById('ps-tax');
   const gs = document.getElementById('ps-total');
+  const dueEl = document.getElementById('ps-due');
 
   if (ds) ds.textContent = `- PKR ${discount.toLocaleString()}`;
   if (ts) ts.textContent = `PKR ${taxAmt.toLocaleString()}`;
   if (gs) gs.textContent = `PKR ${total.toLocaleString()}`;
+  if (dueEl) dueEl.textContent = `PKR ${due.toLocaleString()}`;
+
+  const partialPayment = received > 0.01 && received < total - 0.01;
+  const identityRequired = orderType === 'delivery' || partialPayment;
+  ['pp-customer-name', 'pp-customer-phone'].forEach((id) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.classList.toggle('border-rose-500', identityRequired && !input.value.trim());
+  });
 }
 
-async function updateAndPrintBill(id) {
+async function updateAndPrintBill(id, orderType) {
+  const customerName = $c('pp-customer-name').value.trim();
+  const customerPhone = $c('pp-customer-phone').value.trim();
+  const receivedInput = $c('pp-received');
+  const amountReceived = Math.max(parseFloat(receivedInput.value) || 0, 0);
+  const discount = parseFloat($c('pp-discount').value) || 0;
+  const taxPercentage = parseFloat($c('pp-tax').value) || 0;
+  const finalTotal = Number($c('ps-total').textContent.replace(/[^0-9.-]/g, '')) || 0;
+  const partialPayment = amountReceived > 0.01 && amountReceived < finalTotal - 0.01;
+  const identityRequired = orderType === 'delivery' || partialPayment;
+
+  if (identityRequired && (!customerName || !customerPhone)) {
+    if (!customerName) $c('pp-customer-name').focus();
+    else $c('pp-customer-phone').focus();
+    return toast("Customer name and phone are required for delivery or partial payment", "error");
+  }
+
   const data = {
+    customer_name: customerName,
+    customer_phone: customerPhone,
     payment_method: $c('pp-method').value,
-    tax_percentage: parseFloat($c('pp-tax').value) || 0,
-    discount: parseFloat($c('pp-discount').value) || 0
+    tax_percentage: taxPercentage,
+    discount
   };
+  if (Math.abs(amountReceived - Number(receivedInput.dataset.original || 0)) > 0.01) {
+    data.amount_received = amountReceived;
+  }
 
   try {
     await api(`/api/sales/${id}/details`, 'PATCH', data);
@@ -3817,27 +4293,26 @@ function escapeOrderValue(value) {
     .replace(/'/g, "&#39;");
 }
 
-function renderOrderVariants(variantsJson) {
-  if (!variantsJson) return "";
-
+function parseOrderOptionList(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  if (typeof value === "object") return Object.values(value);
   try {
-    const parsed = JSON.parse(variantsJson);
-    const values = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
-    const text = values
-      .map((variant) => {
-        if (variant && typeof variant === "object") {
-          return variant.name || variant.label || variant.value || "";
-        }
-        return variant;
-      })
-      .filter(Boolean)
-      .map(escapeOrderValue)
-      .join(", ");
-
-    return text ? `<div class="text-[10px] text-slate-400">${text}</div>` : "";
-  } catch (e) {
-    return "";
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+  } catch (_) {
+    return [];
   }
+}
+
+function configuredOrderItemName(baseName, variants, addons) {
+  const variantNames = parseOrderOptionList(variants)
+    .map(variant => variant?.name || variant?.label || variant?.value || variant)
+    .filter(Boolean);
+  const addonNames = parseOrderOptionList(addons)
+    .map(addon => addon?.name || addon?.label || addon)
+    .filter(Boolean);
+  return `${baseName || "Item"}${variantNames.length ? ` ${variantNames.join(" ")}` : ""}${addonNames.length ? ` — ${addonNames.join(", ")} (Add-ons)` : ""}`;
 }
 
 async function renderPOSOrders() {
@@ -3894,7 +4369,7 @@ async function renderPOSOrders() {
         : '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider">Unpaid</span>';
       const primaryAction = s.order_type === 'delivery' && s.order_status !== 'ready'
         ? `<button onclick="viewOrderItems(${s.id})" class="px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold text-[10px] uppercase hover:bg-blue-600 transition-all shadow-sm">Out</button>`
-        : `<button onclick="showOrderCompleteModal(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">${s.order_type === 'delivery' ? 'Delivered' : 'Complete'}</button>`;
+        : `<button onclick="showOrderCompleteModal(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Payment</button>`;
 
       return `
         <tr class="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
@@ -3977,8 +4452,7 @@ async function viewOrderItems(id) {
               ${item.quantity}x
             </div>
             <div>
-              <div class="text-sm font-bold text-slate-800 dark:text-slate-200">${escapeOrderValue(item.product_name)}</div>
-              ${renderOrderVariants(item.variants_json)}
+              <div class="text-sm font-bold text-slate-800 dark:text-slate-200">${escapeOrderValue(configuredOrderItemName(item.product_name, item.variants_json, item.addons_json))}</div>
               ${item.special_instructions ? `<div class="text-[10px] italic text-amber-500">${escapeOrderValue(item.special_instructions)}</div>` : ''}
             </div>
           </div>
@@ -4112,6 +4586,7 @@ async function editOrder(id) {
         addons: item.addons_json ? JSON.parse(item.addons_json) : [],
         product: p || null,
         batch_id: item.batch_id,
+        stock_variant_id: item.stock_variant_id,
         parent_id: item.parent_id
       };
     });
@@ -4131,9 +4606,8 @@ function renderEditOrderModal(id) {
           ${item.quantity}x
         </div>
         <div>
-          <div class="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">${item.name}</div>
+          <div class="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">${escapeOrderValue(configuredOrderItemName(item.name, item.variants, item.addons))}</div>
           <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">PKR ${item.selling_price.toLocaleString()} / unit</div>
-          ${item.variants.length ? `<div class="text-[10px] text-indigo-500 font-bold mt-1 uppercase tracking-tighter">Variants: ${item.variants.map(v => v.name || v).join(', ')}</div>` : ''}
           ${item.special_instructions ? `<div class="text-[10px] italic text-amber-500 font-medium mt-0.5">"${item.special_instructions}"</div>` : ''}
         </div>
       </div>
@@ -4188,6 +4662,7 @@ function proceedToPOSUpdate(id) {
 
   cart = [..._tempEditCart];
   _editingOrderId = id;
+  window._posEntryOrderType = _tempEditSaleDetails.order_type || 'dine_in';
   _posSelectedCustomer = _tempEditSaleDetails.customer_id ? { 
     id: _tempEditSaleDetails.customer_id, 
     name: _tempEditSaleDetails.customer_name, 
@@ -4226,13 +4701,16 @@ function cancelEdit() {
 }
 
 async function completeOrderFromPOS(id, skipConfirm = false) {
-  if (!skipConfirm && !confirm('Are you sure you want to complete this order and move it to sales history?')) return;
+  if (!skipConfirm && !confirm('Are you sure you want to complete this order and move it to sales history?')) return false;
   try {
-    await api(_currentPage === 'delivery' ? `/api/delivery/${id}/status` : `/api/kds/${id}/status`, 'PATCH', { status: 'completed' });
+    const result = await api(_currentPage === 'delivery' ? `/api/delivery/${id}/status` : `/api/kds/${id}/status`, 'PATCH', { status: 'completed' });
+    if (result?.error) throw new Error(result.error);
     toast('Order completed!');
     renderPOSOrders();
+    return true;
   } catch (e) {
     toast(e.message, 'error');
+    return false;
   }
 }
 
@@ -4242,12 +4720,10 @@ function showOrderCompleteModal(id) {
 
   const name = s.customer_name || '';
   const phone = s.customer_phone || '';
-  const method = s.payment_method || 'cash';
   const total = s.total;
-  const isDeliveryPanel = _currentPage === 'delivery';
-  const received = isDeliveryPanel ? Number(s.amount_received || 0) : (s.amount_received || s.total);
+  const received = Number(s.amount_received || 0) > 0.01 ? Number(s.amount_received) : Number(s.total);
 
-  openModal('Finish Order & Payment', `
+  openModal('Collect Payment', `
     <div class="space-y-4">
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -4268,15 +4744,6 @@ function showOrderCompleteModal(id) {
         </div>
       </div>
 
-      ${isDeliveryPanel ? `
-      <label class="flex items-center justify-between gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 cursor-pointer">
-        <div>
-          <div class="text-xs font-black text-blue-800 dark:text-blue-300">Money received</div>
-          <div class="text-[10px] font-bold text-blue-600/70 dark:text-blue-400/70">The payment is credited to the person who first confirmed receipt</div>
-        </div>
-        <input id="op-money-received" type="checkbox" ${Number(s.amount_received || 0) > 0.01 ? 'checked' : ''} onchange="$c('op-received').value=this.checked?'${Number(total)}':'0';updateCompleteOrderSummary(${Number(total)})" class="w-5 h-5 rounded border-blue-300 text-blue-600 focus:ring-blue-500" />
-      </label>` : ''}
-
       <div class="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-2">
         <div class="flex justify-between text-xs">
           <span class="text-slate-500 font-bold uppercase tracking-wider">Order Total</span>
@@ -4294,7 +4761,7 @@ function showOrderCompleteModal(id) {
 
       <div class="pt-2">
         <button onclick="updateAndCompleteOrder(${id})" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/25 transition-all">
-          ✅ Update & Complete Order
+          Collect Payment
         </button>
       </div>
     </div>
@@ -4333,37 +4800,48 @@ function updateCompleteOrderSummary(total) {
 async function updateAndCompleteOrder(id) {
   const nameEl = $c('op-name');
   if (!nameEl) return;
-  const isDeliveryPanel = _currentPage === 'delivery';
-  if (!isDeliveryPanel && !(await ensureOpenShiftForPayment())) return;
-
   const s = _posActiveOrders.find(o => o.id === id);
+  if (!s) return toast('Order not found', 'error');
+
+  const customerName = nameEl.value.trim();
+  const customerPhone = $c('op-phone').value.trim();
+  const amountReceived = Math.max(parseFloat($c('op-received').value) || 0, 0);
+  const previousReceived = Number(s.amount_received || 0);
+  const total = Number(s.total || 0);
+  const fullyPaid = amountReceived >= total - 0.01;
+  const partialPayment = amountReceived > 0.01 && !fullyPaid;
+
+  if ((s.order_type === 'delivery' || partialPayment) && (!customerName || !customerPhone)) {
+    if (!customerName) nameEl.focus();
+    else $c('op-phone').focus();
+    return toast('Customer name and phone are required for delivery or partial payment', 'error');
+  }
+
+  if (amountReceived > previousReceived + 0.01 && !(await ensureOpenShiftForPayment())) return;
+
   const data = {
-    customer_name: nameEl.value.trim(),
-    customer_phone: $c('op-phone').value.trim(),
-    payment_method: s ? (s.payment_method || 'cash') : 'cash',
-    amount_received: parseFloat($c('op-received').value) || 0
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    payment_method: s.payment_method || 'cash'
   };
+  if (Math.abs(amountReceived - previousReceived) > 0.01) data.amount_received = amountReceived;
 
   try {
-    if (isDeliveryPanel) {
-      await api(`/api/sales/${id}/details`, 'PATCH', {
-        customer_name: data.customer_name,
-        customer_phone: data.customer_phone,
-        payment_method: data.payment_method
-      });
-      await api(`/api/delivery/${id}/status`, 'PATCH', {
-        status: 'completed',
-        money_received: !!$c('op-money-received')?.checked,
-        payment_method: data.payment_method
-      });
-      toast('Delivery completed!');
+    const updateResult = await api(`/api/sales/${id}/details`, 'PATCH', data);
+    if (updateResult?.error) throw new Error(updateResult.error);
+
+    if (!fullyPaid) {
+      toast('Partial payment saved. Order remains active.', 'success');
+      closeModal();
       renderPOSOrders();
-    } else {
-      await api(`/api/sales/${id}/details`, 'PATCH', data);
-      await completeOrderFromPOS(id, true);
+      return;
     }
+
+    const completed = await completeOrderFromPOS(id, true);
+    if (!completed) return;
     await printCustomerBill(id);
     closeModal();
+    toast('Payment complete. Paid bill printed and order completed.', 'success');
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -4422,7 +4900,7 @@ function renderPOSProducts(products, requestedPage = 1) {
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
           ${products.map((p) => {
-            const isRecipe = !!(p.ingredients && p.ingredients.length > 0);
+            const isRecipe = inventoryIsRecipeProduct(p);
             const available = p.stock > 0 || isRecipe;
             const cartQty = cart.filter((item) => item.product_id === p.id).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
             return `
@@ -4459,21 +4937,21 @@ function renderPOSProducts(products, requestedPage = 1) {
     products
       .map(
         (p) => `
-    <button onclick="addToCart(${p.id})" ${(p.stock === 0 && !(p.ingredients && p.ingredients.length > 0)) ? "disabled" : ""}
-      class="product-card group relative bg-white dark:bg-slate-900 rounded-3xl text-left flex flex-col p-4 border border-slate-100 dark:border-slate-800 ${(p.stock === 0 && !(p.ingredients && p.ingredients.length > 0)) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} transition-all overflow-hidden shadow-sm">
+    <button onclick="addToCart(${p.id})" ${getProductMenuStock(p) <= 0 ? "disabled" : ""}
+      class="product-card group relative bg-white dark:bg-slate-900 rounded-3xl text-left flex flex-col p-4 border border-slate-100 dark:border-slate-800 ${getProductMenuStock(p) <= 0 ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} transition-all overflow-hidden shadow-sm">
       
       <!-- Top Absolute Badges -->
-      <div class="absolute top-3 left-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full ${p.stock > 0 || (p.ingredients && p.ingredients.length > 0) ? 'bg-emerald-50 dark:bg-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/30'}">
-        <div class="w-1.5 h-1.5 rounded-full ${p.stock > 0 || (p.ingredients && p.ingredients.length > 0) ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-rose-600 dark:bg-rose-500'}"></div>
-        <span class="text-[10px] font-bold ${p.stock > 0 || (p.ingredients && p.ingredients.length > 0) ? 'text-emerald-800 dark:text-emerald-400' : 'text-rose-800 dark:text-rose-400'} pt-[0.5px]">
-          ${(p.stock > 0 || (p.ingredients && p.ingredients.length > 0)) ? 'In Stock' : 'Out of stock'}
+      <div class="absolute top-3 left-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full ${getProductMenuStock(p) > 0 ? 'bg-emerald-50 dark:bg-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/30'}">
+        <div class="w-1.5 h-1.5 rounded-full ${getProductMenuStock(p) > 0 ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-rose-600 dark:bg-rose-500'}"></div>
+        <span class="text-[10px] font-bold ${getProductMenuStock(p) > 0 ? 'text-emerald-800 dark:text-emerald-400' : 'text-rose-800 dark:text-rose-400'} pt-[0.5px]">
+          ${getProductMenuStock(p) > 0 ? 'Available' : 'Out of stock'}
         </span>
       </div>
 
-      <div class="absolute top-3 right-3 z-10 flex flex-col items-center justify-center px-2 py-1.5 rounded-xl ${p.stock > 0 || (p.ingredients && p.ingredients.length > 0) ? 'bg-emerald-50/90 dark:bg-emerald-900/40' : 'bg-rose-50/90 dark:bg-rose-900/40'} min-w-[2.5rem]">
-        ${(p.ingredients && p.ingredients.length > 0)
+      <div class="absolute top-3 right-3 z-10 flex flex-col items-center justify-center px-2 py-1.5 rounded-xl ${getProductMenuStock(p) > 0 ? 'bg-emerald-50/90 dark:bg-emerald-900/40' : 'bg-rose-50/90 dark:bg-rose-900/40'} min-w-[2.5rem]">
+        ${inventoryIsRecipeProduct(p)
             ? `<span class="text-xl font-black text-amber-500 leading-none">🍳</span>`
-            : `<span class="text-xl font-black ${p.stock > 0 ? 'text-emerald-800 dark:text-emerald-400' : 'text-rose-800 dark:text-rose-400'} leading-none tracking-tight">${p.stock}</span>`
+            : `<span class="text-xl font-black ${getProductMenuStock(p) > 0 ? 'text-emerald-800 dark:text-emerald-400' : 'text-rose-800 dark:text-rose-400'} leading-none tracking-tight">${getProductMenuStock(p)}</span>`
           }
       </div>
 
@@ -4521,8 +4999,8 @@ function renderPOSProducts(products, requestedPage = 1) {
           <!-- Bottom Price Bar -->
           <div class="flex items-center justify-between">
             <div class="flex flex-col">
-              <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Price</span>
-              <span class="text-[1.2rem] font-black text-emerald-950 dark:text-emerald-400 tracking-tight leading-none">Rs. <span class="pl-0.5">${p.selling_price}</span></span>
+              <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">${getProductMenuVariants(p).length > 1 ? 'Prices by size' : 'Price'}</span>
+              <span class="text-[1.2rem] font-black text-emerald-950 dark:text-emerald-400 tracking-tight leading-none">${getProductMenuVariants(p).length > 1 ? `${getProductMenuVariants(p).length} options` : `Rs. <span class="pl-0.5">${getProductMenuVariants(p)[0]?.price ?? p.selling_price}</span>`}</span>
             </div>
             
             <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-800 dark:text-emerald-400 transition-colors duration-300 pointer-events-none">
@@ -4610,8 +5088,8 @@ var filterPOSProducts = debounce(() => {
 function addToCart(productId) {
   const product = productMap[productId];
   if (!product) return;
-  const isRecipe = product.ingredients && product.ingredients.length > 0;
-  if (!isRecipe && product.stock <= 0) return toast("Out of stock", "error");
+  const isRecipe = (product.ingredients && product.ingredients.length > 0) || (product.variants || []).some(v => (v.ingredients || []).length > 0);
+  if (!isRecipe && getProductMenuStock(product) <= 0) return toast("Out of stock", "error");
 
   // COMPOSITE PRODUCTS STILL NEED MODAL
   if (product.components && product.components.length > 0) {
@@ -4701,7 +5179,7 @@ function addToCart(productId) {
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Sell Quantity</label>
             <input id="add-cart-qty" type="number" value="1" min="1" ${isRecipe ? '' : `max="${product.stock}"`} class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-black text-center text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
           </div>
-          <div class="space-y-1.5">
+          <div class="hidden">
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Bundle Price (Rs)</label>
             <input id="add-cart-price" type="number" value="${product.selling_price || 0}" min="0" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-black text-center text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
           </div>
@@ -4722,6 +5200,13 @@ function addToCart(productId) {
   }
 
   // STANDARD MODAL FOR REGULAR PRODUCTS
+  const configuredVariants = isRecipe
+    ? (product.variants || [])
+    : (product.stock_variants || []).filter(variant => variant.is_on_menu).map(variant => ({ ...variant, price: Number(variant.selling_price) }));
+  const configuredAddons = isRecipe ? (product.addons || []) : [];
+  const defaultVariant = isRecipe
+    ? (configuredVariants.find(v => v.is_default) || configuredVariants[0])
+    : (configuredVariants.find(v => v.is_default && Number(v.stock) > 0) || configuredVariants.find(v => Number(v.stock) > 0));
   const content = `
     <div class="space-y-4 py-1">
       <div class="flex items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
@@ -4737,6 +5222,20 @@ function addToCart(productId) {
         </div>
       </div>
 
+      ${configuredVariants.length ? `<div>
+        <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Select size <span class="text-rose-500">*</span></label>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          ${configuredVariants.map((variant) => `<label class="${!isRecipe && Number(variant.stock) <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}"><input type="radio" name="pos-product-variant" value="${escapeOrderValue(variant.id)}" ${variant.id === defaultVariant?.id && (isRecipe || Number(variant.stock) > 0) ? 'checked' : ''} ${!isRecipe && Number(variant.stock) <= 0 ? 'disabled' : ''} onchange="updateConfiguredProductPrice(${productId})" class="peer sr-only"><span class="block p-3 text-center rounded-xl border border-slate-200 dark:border-slate-700 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-950/30"><strong class="block text-xs">${escapeOrderValue(variant.name)}</strong><small class="text-[10px] text-slate-500">Rs. ${Number(variant.price).toLocaleString()}${!isRecipe ? ` · ${Number(variant.stock)} left` : ''}</small></span></label>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${configuredAddons.length ? `<div>
+        <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Optional add-ons</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          ${configuredAddons.map((addon) => `<label class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"><span class="flex items-center gap-2"><input type="checkbox" name="pos-product-addon" value="${escapeOrderValue(addon.id)}" onchange="updateConfiguredProductPrice(${productId})" class="rounded text-indigo-600"><span class="text-xs font-bold">${escapeOrderValue(addon.name)}</span></span><span class="text-xs font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()}</span></label>`).join('')}
+        </div>
+      </div>` : ''}
+
       <div class="grid grid-cols-2 gap-6">
         <div class="space-y-2">
           <label class="block text-sm font-bold text-slate-700 dark:text-slate-300">Quantity</label>
@@ -4746,9 +5245,9 @@ function addToCart(productId) {
             <button type="button" onclick="$c('add-cart-qty').stepUp()" class="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 text-slate-600 dark:text-slate-400 font-black">+</button>
           </div>
         </div>
-        <div class="space-y-2">
+        <div class="hidden">
           <label class="block text-sm font-bold text-slate-700 dark:text-slate-300">Selling Price (Rs)</label>
-          <input id="add-cart-price" type="number" value="${product.selling_price || 0}" min="0" class="w-full p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-center text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" />
+          <input id="add-cart-price" type="number" value="${defaultVariant ? Number(defaultVariant.price) : Number(product.selling_price || 0)}" min="0" class="w-full p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold text-center text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" />
         </div>
       </div>
 
@@ -4762,25 +5261,49 @@ function addToCart(productId) {
   setTimeout(() => $c("add-cart-qty").focus(), 100);
 }
 
+function getConfiguredProductSelection(product) {
+  const variants = inventoryIsRecipeProduct(product)
+    ? (product.variants || [])
+    : (product.stock_variants || []).filter(variant => variant.is_on_menu).map(variant => ({ ...variant, price: Number(variant.selling_price) }));
+  const selectedVariantId = document.querySelector('input[name="pos-product-variant"]:checked')?.value;
+  const variant = variants.length ? variants.find(v => String(v.id) === String(selectedVariantId)) : null;
+  const selectedAddonIds = [...document.querySelectorAll('input[name="pos-product-addon"]:checked')].map(el => el.value);
+  const addons = (product.addons || []).filter(addon => selectedAddonIds.includes(addon.id));
+  return { variant, addons };
+}
+
+function updateConfiguredProductPrice(productId) {
+  const product = productMap[productId];
+  const priceInput = $c('add-cart-price');
+  if (!product || !priceInput) return;
+  const { variant, addons } = getConfiguredProductSelection(product);
+  priceInput.value = (Number(variant?.price ?? product.selling_price ?? 0) + addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0)).toFixed(2);
+}
+
 function commitAddCart(productId) {
   const qtyInput = $c("add-cart-qty");
   const priceInput = $c("add-cart-price");
   const qty = parseInt(qtyInput.value);
   const price = parseFloat(priceInput.value);
   const product = allProducts.find((p) => p.id === productId);
+  const isRecipe = inventoryIsRecipeProduct(product);
+  const selection = getConfiguredProductSelection(product);
+
+  if ((product.variants || []).length && !selection.variant) return toast('Select a size variant', 'error');
+  if (!isRecipe && (product.stock_variants || []).length && !selection.variant) return toast('Select an available product variant', 'error');
 
   if (isNaN(qty) || qty <= 0) return toast("Invalid quantity", "error");
   if (isNaN(price) || price <= 0)
     return toast("Selling price must be greater than 0", "error");
-  const isRecipe = product.ingredients && product.ingredients.length > 0;
-
   if (!isRecipe) {
-    if (qty > product.stock)
-      return toast(`Only ${product.stock} items available`, "error");
+    const availableStock = selection.variant ? Number(selection.variant.stock) : Number(product.stock);
+    if (qty > availableStock)
+      return toast(`Only ${availableStock} items available`, "error");
 
-    const existing = cart.find((c) => c.product_id === productId);
+    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}`;
+    const existing = cart.find((c) => c.product_id === productId && c.selection_key === selectionKey);
     if (existing) {
-      if (existing.quantity + qty > product.stock)
+      if (existing.quantity + qty > availableStock)
         return toast("Exceeds available stock", "error");
       existing.quantity += qty;
       existing.selling_price = price;
@@ -4789,7 +5312,8 @@ function commitAddCart(productId) {
     }
   } else {
     // Recipe item bypasses stock checks
-    const existing = cart.find((c) => c.product_id === productId);
+    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}`;
+    const existing = cart.find((c) => c.product_id === productId && c.selection_key === selectionKey);
     if (existing) {
       existing.quantity += qty;
       existing.selling_price = price;
@@ -4805,7 +5329,11 @@ function commitAddCart(productId) {
       quantity: qty,
       selling_price: price,
       product,
-      batch_id: defaultBatch
+      batch_id: defaultBatch,
+      selection_key: `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}`,
+      variants: selection.variant ? [{ id: selection.variant.id, name: selection.variant.name, price: Number(selection.variant.price) }] : null,
+      addons: selection.addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price) })),
+      stock_variant_id: !isRecipe && selection.variant ? Number(selection.variant.id) : null
     });
   }
 
@@ -4936,7 +5464,7 @@ async function harvestBuild(id) {
 
 function updateCartQty(productId, qty) {
   const product = productMap[productId];
-  const isRecipe = product.ingredients && product.ingredients.length > 0;
+  const isRecipe = inventoryIsRecipeProduct(product);
   if (!isRecipe && product && qty > product.stock) return toast("Exceeds stock", "error");
 
   // Don't allow qty < 1. User must use delete button to remove.
@@ -4959,6 +5487,23 @@ function removeFromCart(productId) {
   renderCart();
 }
 
+function updateCartLineQty(index, qty) {
+  const item = cart[index];
+  if (!item) return;
+  const product = item.product || productMap[item.product_id];
+  const isRecipe = (product?.ingredients || []).length > 0 || (product?.variants || []).some(v => (v.ingredients || []).length > 0);
+  const stockVariant = item.stock_variant_id ? (product?.stock_variants || []).find(v => Number(v.id) === Number(item.stock_variant_id)) : null;
+  if (!isRecipe && product && qty > Number(stockVariant?.stock ?? product.stock)) return toast('Exceeds stock', 'error');
+  if (qty < 1) return toast('Quantity cannot be less than 1', 'warning');
+  item.quantity = qty;
+  renderCart();
+}
+
+function removeCartLine(index) {
+  cart.splice(index, 1);
+  renderCart();
+}
+
 function renderCart() {
   const cartEl = $c("cart-items");
   if (!cartEl) return;
@@ -4977,40 +5522,25 @@ function renderCart() {
 
   cartEl.innerHTML = `
     <div class="${compactCart ? 'space-y-1' : 'space-y-3'}">
-      ${cart.map((item) => `
+      ${cart.map((item, itemIndex) => `
         <div class="flex items-center justify-between ${compactCart ? 'p-1' : 'p-3'} rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative group">
           
           <div class="flex flex-col flex-1 ${compactCart ? 'pr-1' : 'pr-2'}">
-            <span class="font-bold ${compactCart ? 'text-[11px]' : 'text-sm'} text-slate-800 dark:text-slate-200 leading-tight">${item.product ? item.product.name : item.name}</span>
-            <span class="${compactCart ? 'hidden' : 'text-[10px] mt-1'} font-bold text-slate-400 uppercase tracking-tight">Rs. ${item.selling_price}</span>
-            
-            ${item.product && item.product.batches && item.product.batches.length > 1
-              ? `
-                <div class="${compactCart ? 'mt-1' : 'mt-2'}">
-                  <select onchange="updateCartBatch(${item.product_id}, this.value); renderCart();" class="text-[9px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1 font-bold text-indigo-600 dark:text-indigo-400 w-full max-w-[150px]">
-                    ${item.product.batches.map(b => `<option value="${b.id}" ${item.batch_id == b.id ? 'selected' : ''}>Cost: Rs. ${b.buying_price}</option>`).join('')}
-                  </select>
-                </div>
-              `
-              : (item.product && item.product.batches && item.product.batches.length === 1)
-                ? (compactCart ? '' : `<span class="text-[9px] text-slate-400 font-medium mt-1">Cost: Rs. ${item.product.batches[0].buying_price}</span>`)
-                : ''
-            }
+            <span class="font-bold ${compactCart ? 'text-[11px]' : 'text-sm'} text-slate-800 dark:text-slate-200 leading-tight">${escapeOrderValue(configuredOrderItemName(item.product ? item.product.name : item.name, item.variants, item.addons))}</span>
           </div>
 
           <div class="flex flex-col items-end ${compactCart ? 'gap-1' : 'gap-2'}">
             <div class="flex items-center ${compactCart ? 'gap-0.5 p-0' : 'gap-2 p-1'} bg-slate-50 dark:bg-slate-800 rounded-lg">
-              <button onclick="if(${item.quantity} > 1) { updateCartQty(${item.product_id}, ${item.quantity - 1}); renderCart(); } else { toast('Use delete button to remove', 'info'); }"
+              <button onclick="if(${item.quantity} > 1) { updateCartLineQty(${itemIndex}, ${item.quantity - 1}); } else { toast('Use delete button to remove', 'info'); }"
                 class="${compactCart ? 'w-4 h-4 text-[9px]' : 'w-6 h-6 text-xs'} flex items-center justify-center rounded bg-white dark:bg-slate-700 hover:bg-rose-50 text-slate-500 hover:text-rose-500 shadow-sm transition-all font-bold">−</button>
               <span class="${compactCart ? 'w-3 text-[10px]' : 'w-4 text-xs'} text-center font-black text-slate-800 dark:text-slate-200">${item.quantity}</span>
-              <button onclick="updateCartQty(${item.product_id}, ${item.quantity + 1}); renderCart();"
+              <button onclick="updateCartLineQty(${itemIndex}, ${item.quantity + 1});"
                 class="${compactCart ? 'w-4 h-4 text-[9px]' : 'w-6 h-6 text-xs'} flex items-center justify-center rounded bg-white dark:bg-slate-700 hover:bg-emerald-50 text-slate-500 hover:text-emerald-500 shadow-sm transition-all font-bold">+</button>
             </div>
-            <span class="font-black ${compactCart ? 'text-[10px]' : 'text-sm'} text-indigo-600 dark:text-indigo-400">Rs. ${(item.selling_price * item.quantity).toFixed(0)}</span>
           </div>
 
           <!-- Delete Button -->
-          <button onclick="removeFromCart(${item.product_id});" class="absolute ${compactCart ? '-top-1.5 -right-1.5 w-5 h-5' : '-top-2 -right-2 w-6 h-6'} bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400 hover:text-rose-500 hover:border-rose-200 dark:hover:border-rose-900 shadow-sm flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100">
+          <button onclick="removeCartLine(${itemIndex});" class="absolute ${compactCart ? '-top-1.5 -right-1.5 w-5 h-5' : '-top-2 -right-2 w-6 h-6'} bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400 hover:text-rose-500 hover:border-rose-200 dark:hover:border-rose-900 shadow-sm flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
@@ -5054,7 +5584,7 @@ function showCartModal() {
           }
                   </div>
                   <div>
-                    <div class="font-bold text-slate-800 dark:text-slate-200 leading-tight">${item.product ? item.product.name : item.name}</div>
+                    <div class="font-bold text-slate-800 dark:text-slate-200 leading-tight">${escapeOrderValue(configuredOrderItemName(item.product ? item.product.name : item.name, item.variants, item.addons))}</div>
                 ${item.product && item.product.batches && item.product.batches.length > 1
             ? `
                   <div class="mt-2">
@@ -5389,14 +5919,13 @@ function toggleQuotationMode(isQuotation) {
  * Auto-fills Amount Received if method is Card or Online
  */
 function handlePOSMethodChange(method) {
-  const linkedTaxApplied = applyPOSLinkedTaxPreset(method);
   if (method === "card" || method === "online") {
     const total = parseFloat($c("cart-total").dataset.total) || 0;
     if (total > 0) {
       $c("pos-received").value = total.toFixed(2);
       calculateRemaining();
     }
-  } else if (!linkedTaxApplied) {
+  } else {
     calculateRemaining();
   }
 }
@@ -5480,13 +6009,10 @@ async function checkout(status = 'completed') {
     customer_name = '';
     customer_phone = '';
   } else if (orderType === 'delivery') {
-    customer_name = $c('pos-delivery-name')?.value.trim() || '';
-    customer_phone = $c('pos-delivery-phone')?.value.trim() || '';
     delivery_address = $c('pos-delivery-addr')?.value.trim() || '';
     rider_id = parseInt($c('pos-rider')?.value) || null;
   } else if (orderType === 'takeaway') {
     token_number = $c('pos-token')?.value.trim() || `TK-${Date.now()}`;
-    customer_name = $c('pos-takeaway-name')?.value.trim() || '';
   }
 
   // Common field for all restaurant types
@@ -5501,12 +6027,12 @@ async function checkout(status = 'completed') {
   // Validate only after both delivery-specific and shared customer fields are synchronized.
   if (orderType === 'delivery') {
     if (!customer_name) {
-      ($c('pos-delivery-name') || $c('pos-cust-name'))?.focus();
+      $c('pos-cust-name')?.focus();
       resetPOSCheckoutSubmission(status, isEditing);
       return toast("Customer name required for delivery", "error");
     }
     if (!customer_phone) {
-      ($c('pos-delivery-phone') || $c('pos-cust-phone'))?.focus();
+      $c('pos-cust-phone')?.focus();
       resetPOSCheckoutSubmission(status, isEditing);
       return toast("Customer phone required for delivery", "error");
     }
@@ -5540,6 +6066,7 @@ async function checkout(status = 'completed') {
       special_instructions: c.special_instructions || null,
       variants: c.variants || null,
       addons: c.addons || null,
+      stock_variant_id: c.stock_variant_id || null,
     })),
     discount,
     tax_percentage,
@@ -5619,7 +6146,7 @@ async function checkout(status = 'completed') {
             </button>
             `}
           </div>
-          <button onclick="closeModal();renderPOS();" class="w-full py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm transition-all">New Order</button>
+          <button onclick="closeModal();startFreshPOSOrder();" class="w-full py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm transition-all">New Order</button>
         </div>
       </div>`,
       "max-w-md",
@@ -5712,32 +6239,15 @@ async function printKitchenBill(saleId) {
         </tr>
       </thead>
       <tbody>
-        ${items.map(i => {
-    let details = [];
-    if (i.variants_json) {
-      try {
-        const variants = JSON.parse(i.variants_json);
-        details.push(Object.values(variants).join(', '));
-      } catch (e) { }
-    }
-    if (i.addons_json) {
-      try {
-        const addons = JSON.parse(i.addons_json);
-        details.push('Addons: ' + addons.map(a => a.name).join(', '));
-      } catch (e) { }
-    }
-
-    return `
+        ${items.map(i => `
             <tr>
               <td class="qty text-center">x${i.quantity}</td>
               <td>
-                <div class="item-name">${i.product_name || i.custom_name}</div>
-                ${details.length ? `<div class="item-details">${details.join(' | ')}</div>` : ''}
+                <div class="item-name">${escapeOrderValue(configuredOrderItemName(i.product_name || i.custom_name, i.variants_json, i.addons_json))}</div>
                 ${i.special_instructions ? `<div class="special-note">NOTE: ${i.special_instructions}</div>` : ''}
               </td>
             </tr>
-          `;
-  }).join('')}
+          `).join('')}
       </tbody>
     </table>
 
@@ -8794,10 +9304,10 @@ async function generateQuotation() {
     customer_name = $c("pos-customer")?.value.trim() || "Valued Customer";
     customer_phone = $c("pos-phone")?.value.trim() || "";
   } else if (orderType === "delivery") {
-    customer_name = $c("pos-delivery-name")?.value.trim() || "Valued Customer";
-    customer_phone = $c("pos-delivery-phone")?.value.trim() || "";
+    customer_name = $c("pos-cust-name")?.value.trim() || "Valued Customer";
+    customer_phone = $c("pos-cust-phone")?.value.trim() || "";
   } else if (orderType === "takeaway") {
-    customer_name = $c("pos-takeaway-name")?.value.trim() || "Valued Customer";
+    customer_name = "Valued Customer";
   }
 
   // Fetch shop settings for proper branding

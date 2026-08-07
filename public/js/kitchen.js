@@ -132,10 +132,8 @@ function showKDSOrderModal(orderId) {
   const itemsHtml = (order.items || []).map(item => `
     <div class="flex items-start justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800">
       <div>
-        <div class="font-black text-slate-900 dark:text-white">${item.product_name || item.custom_name}</div>
+        <div class="font-black text-slate-900 dark:text-white">${escapeWasteValue(kdsConfiguredItemName(item))}</div>
         ${item.special_instructions ? `<div class="text-xs text-rose-500 italic mt-1 font-medium">📝 Note: ${item.special_instructions}</div>` : ''}
-        ${item.variants ? `<div class="text-[10px] text-slate-500 mt-1">Variants: ${Object.values(item.variants).join(', ')}</div>` : ''}
-        ${item.addons ? `<div class="text-[10px] text-slate-500 mt-0.5">Add-ons: ${item.addons.map(a => a.name).join(', ')}</div>` : ''}
       </div>
       <div class="flex flex-col items-end">
         <div class="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black">×${item.quantity}</div>
@@ -182,26 +180,42 @@ async function renderRawStock() {
   content.innerHTML = '<div class="flex items-center justify-center h-40 text-slate-600">Loading Ingredients…</div>';
 
   try {
-    const rawStocks = await api("/api/raw-stock");
+    const [rawStocks, products] = await Promise.all([api("/api/raw-stock"), api("/api/products")]);
+    const stockProducts = (Array.isArray(products) ? products : []).filter(product => product.product_type === 'stock_based' && product.is_component !== 1);
+    window._inventoryStockProducts = stockProducts;
 
     let html = `
       <div class="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
           <div>
-            <h3 class="text-3xl font-black text-slate-950 dark:text-white tracking-tight">Raw Ingredients</h3>
-            <p class="text-slate-500 text-sm mt-1">Manage base stock and track ingredient batches.</p>
+            <h3 class="text-3xl font-black text-slate-950 dark:text-white tracking-tight">Inventory</h3>
+            <p class="text-slate-500 text-sm mt-1">Manage raw ingredients and finished stock products.</p>
           </div>
           <div class="flex gap-3">
             <button onclick="showAddRawStockModal()" class="px-6 py-3.5 rounded-2xl bg-indigo-600 text-white text-sm font-bold shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all flex items-center gap-2">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
               Add New Ingredient
             </button>
+            <button onclick="openAddProductForm('stock_based')" class="px-6 py-3.5 rounded-2xl bg-emerald-600 text-white text-sm font-bold shadow-xl shadow-emerald-600/20 hover:bg-emerald-500 active:scale-95 transition-all">Add Stock Product</button>
           </div>
         </div>
 
+        <div class="flex flex-col lg:flex-row items-center justify-center gap-4">
+          <div class="inline-flex p-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm" role="group" aria-label="Inventory type filter">
+            <button id="inventory-filter-all" onclick="setInventoryCatalogFilter('all')" class="inventory-filter-pill px-5 py-2.5 rounded-full text-xs font-black transition-all">All Inventory</button>
+            <button id="inventory-filter-ingredients" onclick="setInventoryCatalogFilter('ingredients')" class="inventory-filter-pill px-5 py-2.5 rounded-full text-xs font-black transition-all">Raw Ingredients</button>
+            <button id="inventory-filter-stock" onclick="setInventoryCatalogFilter('stock')" class="inventory-filter-pill px-5 py-2.5 rounded-full text-xs font-black transition-all">Stock Products</button>
+          </div>
+          <div class="relative w-full max-w-sm">
+            <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m2.35-5.65a8 8 0 11-16 0 8 8 0 0116 0z"/></svg>
+            <input id="inventory-catalog-search" value="${escapeWasteValue(window._inventoryCatalogSearch || '')}" oninput="filterInventoryCatalog()" placeholder="Search ingredient, product, variant, SKU…" class="w-full pl-11 pr-4 py-3 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+
+        <section id="inventory-ingredients-section"><div class="mb-4"><h4 class="text-xl font-black text-slate-900 dark:text-white">Raw Ingredients</h4><p class="text-xs text-slate-500">Ingredients consumed by recipe products and add-ons.</p></div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           ${rawStocks.map(rs => `
-            <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition-all shadow-sm group">
+            <div data-inventory-search="${escapeWasteValue(`${rs.name} ${rs.unit} ${rs.usage_unit || ''}`.toLowerCase())}" class="inventory-catalog-item bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition-all shadow-sm group">
               <div class="flex justify-between items-start mb-4">
                 <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
@@ -225,10 +239,27 @@ async function renderRawStock() {
             </div>
           `).join('')}
           ${rawStocks.length === 0 ? '<div class="col-span-full py-20 text-center text-slate-500 italic">No ingredients found. Start by adding one!</div>' : ''}
-        </div>
+        </div></section>
+
+        <section id="inventory-stock-section"><div class="mb-4"><h4 class="text-xl font-black text-slate-900 dark:text-white">Finished Stock Products</h4><p class="text-xs text-slate-500">Purchase stock here, then publish individual variants to Menu.</p></div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            ${stockProducts.map(product => `
+              <div data-inventory-search="${escapeWasteValue(`${product.name} ${product.category} ${(product.stock_variants || []).map(v => `${v.name} ${v.sku} ${v.barcode || ''}`).join(' ')}`.toLowerCase())}" class="inventory-catalog-item bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div class="flex justify-between gap-3 mb-4"><div><h5 class="text-lg font-black text-slate-900 dark:text-white">${escapeWasteValue(product.name)}</h5><p class="text-[10px] uppercase tracking-widest text-slate-400">${escapeWasteValue(product.category)}</p></div><div class="flex gap-2"><button onclick="showProductVariantRestockModal(${product.id})" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Add Stock</button><button onclick="openEditProduct(${product.id})" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Edit</button></div></div>
+                <div class="flex flex-wrap gap-2">${(product.stock_variants || []).map(variant => `<button onclick="toggleInventoryVariantDetails(${variant.id})" class="px-3 py-2 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-xs font-bold text-slate-700 dark:text-slate-200 border border-transparent hover:border-indigo-200">${escapeWasteValue(variant.name)}</button>`).join('') || '<p class="text-xs text-slate-400">No active variants.</p>'}</div>
+                <div class="mt-3 space-y-2">${(product.stock_variants || []).map(variant => `
+                  <div id="inventory-variant-${variant.id}" class="hidden p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700">
+                    <div class="flex justify-between gap-3"><div><strong class="text-sm text-slate-900 dark:text-white">${escapeWasteValue(variant.name)}</strong><div class="text-[10px] text-slate-400">${escapeWasteValue(variant.sku)}${variant.barcode ? ` · ${escapeWasteValue(variant.barcode)}` : ''}</div></div><div class="text-right"><strong class="text-sm ${Number(variant.stock) <= Number(variant.min_stock_level) ? 'text-rose-500' : 'text-emerald-600'}">${Number(variant.stock)} in stock</strong><div class="text-[10px] text-slate-400">Cost Rs. ${Number(variant.buying_price).toLocaleString()} · Sell Rs. ${Number(variant.selling_price).toLocaleString()}</div></div></div>
+                    <button onclick="toggleStockVariantMenu(${product.id}, ${variant.id}, ${variant.is_on_menu ? 'false' : 'true'})" class="w-full mt-3 py-2 rounded-lg ${variant.is_on_menu ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'} text-xs font-bold">${variant.is_on_menu ? 'Remove from Menu' : 'Publish to Menu'}</button>
+                  </div>`).join('')}</div>
+              </div>`).join('')}
+            ${stockProducts.length ? '' : '<div class="col-span-full py-12 text-center text-slate-500 italic">No finished stock products yet.</div>'}
+          </div>
+        </section>
       </div>
     `;
     content.innerHTML = html;
+    setInventoryCatalogFilter(window._inventoryCatalogFilter || 'all');
   } catch (e) {
     content.innerHTML = `<div class="p-10 text-center text-rose-500">${e.message}</div>`;
   }
@@ -381,6 +412,74 @@ function showUpdateRawStockModal(id, name) {
       renderRawStock();
     } catch (e) { toast(e.message, "error"); }
   };
+}
+
+function kdsConfiguredItemName(item) {
+  const variants = Array.isArray(item.variants) ? item.variants : Object.values(item.variants || {});
+  const addons = Array.isArray(item.addons) ? item.addons : Object.values(item.addons || {});
+  const variantNames = variants.map(variant => variant?.name || variant?.label || variant?.value || variant).filter(Boolean);
+  const addonNames = addons.map(addon => addon?.name || addon?.label || addon).filter(Boolean);
+  const baseName = item.product_name || item.custom_name || "Item";
+  return `${baseName}${variantNames.length ? ` ${variantNames.join(" ")}` : ""}${addonNames.length ? ` — ${addonNames.join(", ")} (Add-ons)` : ""}`;
+}
+
+function setInventoryCatalogFilter(filter) {
+  window._inventoryCatalogFilter = ['ingredients', 'stock'].includes(filter) ? filter : 'all';
+  const ingredientsSection = document.getElementById('inventory-ingredients-section');
+  const stockSection = document.getElementById('inventory-stock-section');
+  if (ingredientsSection) ingredientsSection.classList.toggle('hidden', window._inventoryCatalogFilter === 'stock');
+  if (stockSection) stockSection.classList.toggle('hidden', window._inventoryCatalogFilter === 'ingredients');
+  document.querySelectorAll('.inventory-filter-pill').forEach(button => {
+    const active = button.id === `inventory-filter-${window._inventoryCatalogFilter}`;
+    button.className = `inventory-filter-pill px-5 py-2.5 rounded-full text-xs font-black transition-all ${active ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-indigo-600'}`;
+  });
+  filterInventoryCatalog();
+}
+
+function filterInventoryCatalog() {
+  const input = document.getElementById('inventory-catalog-search');
+  const query = (input?.value || '').trim().toLowerCase();
+  window._inventoryCatalogSearch = query;
+  document.querySelectorAll('.inventory-catalog-item').forEach(item => {
+    item.classList.toggle('hidden', !!query && !(item.dataset.inventorySearch || '').includes(query));
+  });
+}
+
+function toggleInventoryVariantDetails(variantId) {
+  document.getElementById(`inventory-variant-${variantId}`)?.classList.toggle('hidden');
+}
+
+function showProductVariantRestockModal(productId) {
+  const product = (window._inventoryStockProducts || []).find(item => Number(item.id) === Number(productId));
+  const variants = product?.stock_variants || [];
+  if (!variants.length) return toast('This product has no active variants', 'error');
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm';
+  modal.innerHTML = `<div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2rem] p-7 shadow-2xl border border-slate-200 dark:border-slate-800"><h3 class="text-xl font-black text-slate-900 dark:text-white">Add Stock</h3><p class="text-xs text-slate-500 mt-1 mb-5">${escapeWasteValue(product.name)}</p><div class="space-y-3"><label class="block text-xs font-bold text-slate-500">Which variant are you restocking?<select id="sv-product-variant" class="mt-1 w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">${variants.map(variant => `<option value="${variant.id}">${escapeWasteValue(variant.name)} — ${Number(variant.stock)} currently</option>`).join('')}</select></label><label class="block text-xs font-bold text-slate-500">Quantity to add<input id="sv-product-delta" type="number" min="0.01" step="1" class="mt-1 w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"></label><label class="block text-xs font-bold text-slate-500">Buying price for this stock<input id="sv-product-cost" type="number" min="0" step="0.01" class="mt-1 w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"></label></div><div class="flex gap-2 mt-6"><button onclick="this.closest('.fixed').remove()" class="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">Cancel</button><button onclick="restockSelectedProductVariant(${productId}, this)" class="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold">Add Stock</button></div></div>`;
+  document.body.appendChild(modal);
+}
+
+async function restockSelectedProductVariant(productId, button) {
+  const variantId = Number($c('sv-product-variant')?.value);
+  const delta = Number($c('sv-product-delta')?.value);
+  const buyingPriceValue = $c('sv-product-cost')?.value;
+  if (!variantId) return toast('Select a variant', 'error');
+  if (!Number.isFinite(delta) || delta <= 0) return toast('Enter a valid quantity', 'error');
+  button.disabled = true;
+  try {
+    await api(`/api/products/${productId}/variants/${variantId}/stock`, 'PATCH', { delta, buying_price: buyingPriceValue === '' ? undefined : Number(buyingPriceValue) });
+    button.closest('.fixed').remove();
+    toast('Variant stock updated', 'success');
+    renderRawStock();
+  } catch (error) { toast(error.message, 'error'); button.disabled = false; }
+}
+
+async function toggleStockVariantMenu(productId, variantId, isOnMenu) {
+  try {
+    await api(`/api/products/${productId}/variants/${variantId}/menu`, 'PATCH', { is_on_menu: isOnMenu });
+    toast(isOnMenu ? 'Variant published to Menu' : 'Variant removed from Menu', 'success');
+    renderRawStock();
+  } catch (error) { toast(error.message, 'error'); }
 }
 
 let _wasteContextCache = null;

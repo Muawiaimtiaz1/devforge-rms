@@ -1,6 +1,37 @@
 const db = require('../db/knex');
 const { z } = require('zod');
 
+const ingredientSchema = z.object({
+  raw_stock_id: z.number().int().positive(),
+  quantity: z.number().positive()
+});
+const variantSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1),
+  price: z.number().positive(),
+  is_default: z.boolean().optional().default(false),
+  ingredients: z.array(ingredientSchema).default([])
+});
+const addonSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1),
+  raw_stock_id: z.number().int().positive(),
+  quantity: z.number().positive(),
+  price: z.number().nonnegative()
+});
+const stockVariantSchema = z.object({
+  id: z.number().int().positive().optional(),
+  name: z.string().trim().min(1),
+  sku: z.string().trim().min(1),
+  barcode: z.string().trim().nullable().optional(),
+  buying_price: z.number().nonnegative(),
+  selling_price: z.number().positive(),
+  stock: z.number().nonnegative(),
+  min_stock_level: z.number().nonnegative().default(0),
+  is_default: z.boolean().optional().default(false),
+  is_on_menu: z.boolean().optional().default(false)
+});
+
 // Validation Schemas
 const productSchema = z.object({
   sku: z.string().min(1, "SKU is required"),
@@ -14,12 +45,42 @@ const productSchema = z.object({
   stock: z.number().int().default(0),
   min_stock_level: z.number().int().default(0),
   image_path: z.string().nullable().optional(),
+  product_type: z.enum(['recipe_based', 'stock_based']).optional().default('stock_based'),
   components: z.array(z.any()).nullable().optional(),
   ingredients: z.array(z.any()).nullable().optional(),
+  variants: z.array(variantSchema).nullable().optional(),
+  addons: z.array(addonSchema).nullable().optional(),
+  stock_variants: z.array(stockVariantSchema).nullable().optional(),
 });
+
+function parseConfig(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try { return JSON.parse(value); } catch (_) { return []; }
+}
 
 
 class ProductService {
+  async validateMenuOptions(trx, variants, addons, shopId) {
+    const variantList = variants || [];
+    const addonList = addons || [];
+    const unique = (values) => new Set(values).size === values.length;
+    if (!unique(variantList.map(v => v.id)) || !unique(variantList.map(v => v.name.toLowerCase()))) throw new Error('Variant names and identifiers must be unique');
+    if (!unique(addonList.map(a => a.id)) || !unique(addonList.map(a => a.name.toLowerCase()))) throw new Error('Add-on names and identifiers must be unique');
+    if (variantList.length) {
+      const selectedDefault = variantList.findIndex(v => v.is_default);
+      variantList.forEach((variant, index) => { variant.is_default = index === (selectedDefault >= 0 ? selectedDefault : 0); });
+    }
+    const rawStockIds = [...new Set([
+      ...variantList.flatMap(v => (v.ingredients || []).map(i => Number(i.raw_stock_id))),
+      ...addonList.map(a => Number(a.raw_stock_id))
+    ])];
+    if (rawStockIds.length) {
+      const rows = await trx('raw_stocks').where({ shop_id: shopId }).whereIn('id', rawStockIds).select('id');
+      if (rows.length !== rawStockIds.length) throw new Error('One or more selected inventory ingredients are invalid');
+    }
+  }
+
   /**
    * Get all products for a shop with their brands, components, ingredients, and batches.
    */
@@ -42,12 +103,26 @@ class ProductService {
       .where('p.shop_id', shopId)
       .where('p.is_deleted', 0)
       .orderBy('p.name', 'asc');
+    const stockVariantRows = products.length ? await db('product_stock_variants')
+      .where({ shop_id: shopId, is_active: true })
+      .whereIn('product_id', products.map(product => product.id))
+      .orderBy([{ column: 'is_default', order: 'desc' }, { column: 'name', order: 'asc' }]) : [];
+    const stockVariantsByProduct = new Map();
+    for (const variant of stockVariantRows) {
+      if (!stockVariantsByProduct.has(variant.product_id)) stockVariantsByProduct.set(variant.product_id, []);
+      stockVariantsByProduct.get(variant.product_id).push(variant);
+    }
 
     // To prevent the "n+1" query problem while maintaining the complex structure, 
     // we'll fetch related data in separate queries and merge them.
     // In a mature ERP, we'd use more optimized joins or specialized views.
 
     for (let p of products) {
+      p.variants = parseConfig(p.variants_config);
+      p.addons = parseConfig(p.addons_config);
+      delete p.variants_config;
+      delete p.addons_config;
+      p.stock_variants = stockVariantsByProduct.get(p.id) || [];
       // Components
       p.components = await db('product_compositions as pc')
         .select('pc.component_product_id as id', db.raw('COALESCE(cp.name, pc.custom_name) as name'), 'pc.quantity', 'pc.price', 'cp.sku', 'cp.stock')
@@ -81,7 +156,24 @@ class ProductService {
     const validatedData = productSchema.parse(data);
     
     return await db.transaction(async (trx) => {
-      const { components, ingredients, ...productData } = validatedData;
+      const { components, ingredients, variants, addons, stock_variants, ...productData } = validatedData;
+      await this.validateMenuOptions(trx, variants, addons, shopId);
+      if (productData.product_type === 'recipe_based') {
+        if (!variants?.length) throw new Error('Recipe-based products require at least one variant');
+        productData.buying_price = 0;
+        productData.stock = 0;
+        productData.min_stock_level = 0;
+      }
+      if (productData.product_type === 'stock_based' && !stock_variants?.length) throw new Error('Stock-based products require at least one variant');
+      productData.variants_config = JSON.stringify(variants || []);
+      productData.addons_config = JSON.stringify(addons || []);
+      if (productData.product_type === 'stock_based' && stock_variants?.length) {
+        const defaultVariant = stock_variants.find(v => v.is_default) || stock_variants[0];
+        productData.buying_price = defaultVariant.buying_price;
+        productData.selling_price = defaultVariant.selling_price;
+        productData.stock = stock_variants.reduce((sum, v) => sum + Number(v.stock), 0);
+        productData.min_stock_level = 0;
+      }
       
       // 1. Insert Product
       const [productIdObj] = await trx('products')
@@ -95,8 +187,19 @@ class ProductService {
       
       const productId = typeof productIdObj === 'object' ? productIdObj.id : productIdObj;
 
+      if (productData.product_type === 'stock_based' && stock_variants?.length) {
+        const defaultIndex = Math.max(stock_variants.findIndex(v => v.is_default), 0);
+        await trx('product_stock_variants').insert(stock_variants.map((variant, index) => ({
+          shop_id: shopId, product_id: productId, name: variant.name, sku: variant.sku,
+          barcode: variant.barcode || null, buying_price: variant.buying_price,
+          selling_price: variant.selling_price, stock: variant.stock,
+          min_stock_level: variant.min_stock_level, is_default: index === defaultIndex,
+          is_on_menu: !!variant.is_on_menu, is_active: true
+        })));
+      }
+
       // 2. Initial Batch
-      if (productData.stock > 0) {
+      if (productData.stock > 0 && !(productData.product_type === 'stock_based' && stock_variants?.length)) {
         await trx('product_batches').insert({
           product_id: productId,
           shop_id: shopId,
@@ -197,9 +300,50 @@ class ProductService {
     const validatedData = productSchema.partial().parse(data);
     
     return await db.transaction(async (trx) => {
-      const { components, ingredients, ...productData } = validatedData;
+      const { components, ingredients, variants, addons, stock_variants, ...productData } = validatedData;
+      await this.validateMenuOptions(trx, variants, addons, shopId);
+      if (variants !== undefined) productData.variants_config = JSON.stringify(variants || []);
+      if (addons !== undefined) productData.addons_config = JSON.stringify(addons || []);
       const product = await trx('products').where({ id: productId, shop_id: shopId }).first();
       if (!product) throw new Error('Product not found');
+      if (productData.product_type === 'recipe_based') {
+        if (!variants?.length) throw new Error('Recipe-based products require at least one variant');
+        productData.buying_price = 0;
+        productData.stock = 0;
+        productData.min_stock_level = 0;
+        await trx('product_batches').where({ product_id: productId, shop_id: shopId }).delete();
+        await trx('product_stock_variants').where({ product_id: productId, shop_id: shopId }).update({ is_active: false, is_on_menu: false });
+      }
+      if (productData.product_type === 'stock_based' && stock_variants !== undefined && !stock_variants.length) throw new Error('Stock-based products require at least one variant');
+      if (productData.product_type === 'stock_based' && stock_variants !== undefined) {
+        if (!stock_variants.length) throw new Error('Stock-based products require at least one variant');
+        const defaultIndex = Math.max(stock_variants.findIndex(v => v.is_default), 0);
+        const retainedIds = [];
+        for (let index = 0; index < stock_variants.length; index++) {
+          const variant = stock_variants[index];
+          const values = {
+            name: variant.name, sku: variant.sku, barcode: variant.barcode || null,
+            buying_price: variant.buying_price, selling_price: variant.selling_price,
+            stock: variant.stock, min_stock_level: variant.min_stock_level,
+            is_default: index === defaultIndex, is_on_menu: !!variant.is_on_menu,
+            is_active: true, updated_at: db.fn.now()
+          };
+          if (variant.id) {
+            const affected = await trx('product_stock_variants').where({ id: variant.id, product_id: productId, shop_id: shopId }).update(values);
+            if (!affected) throw new Error('Invalid stock variant');
+            retainedIds.push(variant.id);
+          } else {
+            const [created] = await trx('product_stock_variants').insert({ ...values, product_id: productId, shop_id: shopId }).returning('id');
+            retainedIds.push(typeof created === 'object' ? created.id : created);
+          }
+        }
+        await trx('product_stock_variants').where({ product_id: productId, shop_id: shopId }).whereNotIn('id', retainedIds).update({ is_active: false, is_on_menu: false });
+        const defaultVariant = stock_variants[defaultIndex];
+        productData.buying_price = defaultVariant.buying_price;
+        productData.selling_price = defaultVariant.selling_price;
+        productData.stock = stock_variants.reduce((sum, v) => sum + Number(v.stock), 0);
+        productData.min_stock_level = 0;
+      }
 
       // Update basic fields
       await trx('products')
@@ -293,6 +437,32 @@ class ProductService {
       const updated = await trx('products').select('stock').where({ id: productId }).first();
       return updated.stock;
     });
+  }
+
+  async adjustStockVariant(productId, variantId, shopId, { delta, buying_price }) {
+    return db.transaction(async (trx) => {
+      const variant = await trx('product_stock_variants').where({ id: variantId, product_id: productId, shop_id: shopId, is_active: true }).forUpdate().first();
+      if (!variant) throw new Error('Stock variant not found');
+      const adjustment = Number(delta);
+      if (!Number.isFinite(adjustment) || adjustment === 0) throw new Error('A non-zero stock adjustment is required');
+      if (Number(variant.stock) + adjustment < 0) throw new Error('Stock cannot become negative');
+      const nextCost = buying_price !== undefined && buying_price !== null && buying_price !== '' ? Number(buying_price) : Number(variant.buying_price);
+      if (!Number.isFinite(nextCost) || nextCost < 0) throw new Error('Invalid buying price');
+      await trx('product_stock_variants').where({ id: variant.id }).update({
+        stock: db.raw('stock + ?', [adjustment]), buying_price: nextCost, updated_at: db.fn.now()
+      });
+      const total = await trx('product_stock_variants').where({ product_id: productId, shop_id: shopId, is_active: true }).sum('stock as total').first();
+      await trx('products').where({ id: productId, shop_id: shopId }).update({ stock: Number(total?.total || 0) });
+      return trx('product_stock_variants').where({ id: variant.id }).first();
+    });
+  }
+
+  async setStockVariantMenuStatus(productId, variantId, shopId, isOnMenu) {
+    const affected = await db('product_stock_variants')
+      .where({ id: variantId, product_id: productId, shop_id: shopId, is_active: true })
+      .update({ is_on_menu: !!isOnMenu, updated_at: db.fn.now() });
+    if (!affected) throw new Error('Stock variant not found');
+    return db('product_stock_variants').where({ id: variantId }).first();
   }
 
   /**

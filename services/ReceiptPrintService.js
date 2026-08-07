@@ -118,7 +118,14 @@ function renderFooter(shop, baseUrl, isUnpaid) {
 }
 
 function itemName(item) {
-  return item.product_name || item.custom_name || item.name || "Item";
+  const baseName = item.product_name || item.custom_name || item.name || "Item";
+  const variants = parseJson(item.variants_json, item.variants || []);
+  const addons = parseJson(item.addons_json, item.addons || []);
+  const variantList = Array.isArray(variants) ? variants : Object.values(variants || {});
+  const addonList = Array.isArray(addons) ? addons : Object.values(addons || {});
+  const variantNames = variantList.map(v => v?.name || v?.label || v?.value || v).filter(Boolean);
+  const addonNames = addonList.map(a => a?.name || a?.label || a).filter(Boolean);
+  return `${baseName}${variantNames.length ? ` ${variantNames.join(" ")}` : ""}${addonNames.length ? ` — ${addonNames.join(", ")} (Add-ons)` : ""}`;
 }
 
 function renderCustomerReceipt(details, options) {
@@ -210,18 +217,7 @@ function renderCustomerReceipt(details, options) {
 }
 
 function renderItemDetails(item) {
-  const details = [];
-  const variants = parseJson(item.variants_json, item.variants || []);
-  const addons = parseJson(item.addons_json, item.addons || []);
-  if (Array.isArray(variants) && variants.length) {
-    details.push(variants.map((v) => v.name || v.value || v).join(", "));
-  } else if (variants && typeof variants === "object") {
-    details.push(Object.values(variants).join(", "));
-  }
-  if (Array.isArray(addons) && addons.length) {
-    details.push(`Addons: ${addons.map((a) => a.name || a).join(", ")}`);
-  }
-  return details.filter(Boolean).join(" | ");
+  return "";
 }
 
 function renderKitchenReceipt(details) {

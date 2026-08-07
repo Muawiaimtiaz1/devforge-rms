@@ -52,7 +52,7 @@ router.post('/', requireAuth, (req, res, next) => {
         next();
     });
 }, async (req, res) => {
-    const { components, ingredients } = req.body;
+    const { components, ingredients, variants, addons, stock_variants } = req.body;
     
     // Parse strings to arrays if needed (FormData sends strings)
     const parse = (val) => {
@@ -64,6 +64,7 @@ router.post('/', requireAuth, (req, res, next) => {
 
     const payload = {
       ...req.body,
+      product_type: req.body.product_type || 'stock_based',
       barcode: req.body.barcode || null,
       brand_id: parseInt(req.body.brand_id),
       buying_price: parseFloat(req.body.buying_price),
@@ -73,6 +74,9 @@ router.post('/', requireAuth, (req, res, next) => {
       min_stock_level: parseInt(req.body.min_stock_level) || 0,
       components: parse(components),
       ingredients: parse(ingredients),
+      variants: parse(variants),
+      addons: parse(addons),
+      stock_variants: parse(stock_variants),
       image_path: req.file ? "/uploads/products/" + req.file.filename : null
     };
 
@@ -88,7 +92,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
 
 // PUT /api/products/:id
 router.put('/:id', requireAuth, upload.single('image'), async (req, res) => {
-    const { components, ingredients } = req.body;
+    const { components, ingredients, variants, addons, stock_variants } = req.body;
     const parse = (val) => {
         if (typeof val === 'string') {
             try { return JSON.parse(val); } catch(e) { return []; }
@@ -97,6 +101,7 @@ router.put('/:id', requireAuth, upload.single('image'), async (req, res) => {
     }
     const payload = {
         ...req.body,
+        product_type: req.body.product_type || 'stock_based',
         barcode: req.body.barcode || null,
         brand_id: parseInt(req.body.brand_id),
         buying_price: parseFloat(req.body.buying_price),
@@ -106,6 +111,9 @@ router.put('/:id', requireAuth, upload.single('image'), async (req, res) => {
         min_stock_level: parseInt(req.body.min_stock_level) || 0,
         components: parse(components),
         ingredients: parse(ingredients),
+        variants: parse(variants),
+        addons: parse(addons),
+        stock_variants: parse(stock_variants),
     };
     if (req.file) payload.image_path = "/uploads/products/" + req.file.filename;
 
@@ -117,6 +125,16 @@ router.put('/:id', requireAuth, upload.single('image'), async (req, res) => {
 router.patch('/:id/stock', requireAuth, async (req, res) => {
     const newStock = await productService.adjustStock(req.params.id, req.session.user.shop_id, req.body);
     res.json({ ok: true, stock: newStock });
+});
+
+router.patch('/:productId/variants/:variantId/stock', requireAuth, async (req, res) => {
+  const variant = await productService.adjustStockVariant(req.params.productId, req.params.variantId, req.session.user.shop_id, req.body);
+  res.json({ ok: true, variant });
+});
+
+router.patch('/:productId/variants/:variantId/menu', requireAuth, async (req, res) => {
+  const variant = await productService.setStockVariantMenuStatus(req.params.productId, req.params.variantId, req.session.user.shop_id, req.body.is_on_menu === true);
+  res.json({ ok: true, variant });
 });
 
 // POST /api/products/:id/harvest
