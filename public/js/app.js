@@ -548,7 +548,20 @@ function isPanelAllowedForCurrentUser(panelId) {
     return (currentUser.allowed_panels || []).includes("logs");
   }
   if (currentUser.role === "superadmin") return PLATFORM_OWNER_PANELS.includes(panelId);
+  const permissionModules = {
+    dashboard: ['dashboard'], pos: ['orders'], delivery: ['delivery'], 'sales-history': ['orders'],
+    customers: ['customers'], products: ['products'], brands: ['brands'], 'raw-stock': ['raw_stock', 'recipes'],
+    'waste-management': ['waste'], kds: ['kitchen_orders'], expenses: ['expenses'], tables: ['tables'],
+    analytics: ['analytics'], register: ['register'], logs: ['activity_logs'], settings: ['settings'],
+    users: ['users', 'roles'], notifications: ['notifications']
+  };
+  const modules = permissionModules[panelId] || [];
   const allowedPanels = currentUser.allowed_panels || [];
+  const isCoreAdministration = panelId === 'settings' || panelId === 'users';
+  if (!isCoreAdministration && !allowedPanels.includes(panelId)) return false;
+  if (Array.isArray(currentUser.permissions)) {
+    return modules.some((module) => currentUser.permissions.some((key) => key.startsWith(`${module}.`)));
+  }
   if (currentUser.role === "admin" && (panelId === "settings" || panelId === "users")) return true;
   return allowedPanels.includes(panelId);
 }
@@ -816,7 +829,7 @@ function navigate(page) {
 
   const container = document.querySelector('main > div');
   const pageHeader = document.getElementById('page-header-wrap');
-  if (page === 'settings' || page === 'pos' || page === 'delivery' || page === 'register') {
+  if (page === 'settings' || page === 'pos' || page === 'delivery' || page === 'register' || page === 'kds') {
     container.classList.remove('container', 'mx-auto', 'px-6');
     container.classList.add('w-full', 'px-4', 'md:px-12');
     if (pageHeader) pageHeader.classList.add('hidden');
@@ -3360,32 +3373,40 @@ async function setPOSLayout(layout) {
 }
 
 function renderPOSLanding() {
+  const canCreateOrders = currentUserHasPermission('orders.create');
+  const canViewOrders = currentUserHasPermission('orders.view');
   $c("page-content").innerHTML = `
     <div class="min-h-[calc(100vh-7rem)] flex items-center justify-center px-4">
       <div class="w-full max-w-2xl text-center">
         <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Ready to take an order?</h2>
         <p class="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Start a new restaurant order or open the existing orders view.</p>
         <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <button type="button" onclick="showPOSOrderTypeChooser()" class="group p-7 rounded-3xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-600/25 transition-all hover:-translate-y-0.5 active:translate-y-0 text-left">
+          ${canCreateOrders ? `<button type="button" onclick="showPOSOrderTypeChooser()" class="group p-7 rounded-3xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-600/25 transition-all hover:-translate-y-0.5 active:translate-y-0 text-left">
             <span class="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mb-5">
               <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#ffffff" fill-opacity=".18"/><path d="M12 7v10M7 12h10" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/></svg>
             </span>
             <span class="block text-xl font-black">New Order</span>
             <span class="block mt-1 text-xs font-semibold text-indigo-100">Choose dine-in, takeaway, or delivery</span>
-          </button>
-          <button type="button" onclick="openPOSOrdersView()" class="group p-7 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-violet-500 hover:shadow-xl hover:shadow-violet-500/10 transition-all hover:-translate-y-0.5 active:translate-y-0 text-left">
+          </button>` : ''}
+          ${canViewOrders ? `<button type="button" onclick="openPOSOrdersView()" class="group p-7 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-violet-500 hover:shadow-xl hover:shadow-violet-500/10 transition-all hover:-translate-y-0.5 active:translate-y-0 text-left">
             <span class="w-14 h-14 rounded-2xl bg-violet-50 dark:bg-violet-950/50 flex items-center justify-center mb-5">
               <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="3" fill="#8b5cf6" fill-opacity=".16"/><path d="M9 9h6M9 13h6M9 17h4" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round"/><path d="M9 4.5h6" stroke="#c4b5fd" stroke-width="2.5" stroke-linecap="round"/></svg>
             </span>
             <span class="block text-xl font-black text-slate-900 dark:text-white">View Orders</span>
             <span class="block mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Open the Orders screen already inside POS</span>
-          </button>
+          </button>` : ''}
         </div>
       </div>
     </div>`;
 }
 
+function currentUserHasPermission(permission) {
+  if (currentUser?.role === 'superadmin') return true;
+  return Array.isArray(currentUser?.permissions) && currentUser.permissions.includes(permission);
+}
+
 function showPOSOrderTypeChooser() {
+  if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
   $c("page-content").innerHTML = `
     <div class="min-h-[calc(100vh-7rem)] flex items-center justify-center px-4 py-10">
       <div class="w-full max-w-4xl">
@@ -3424,6 +3445,7 @@ function showPOSOrderTypeChooser() {
 }
 
 async function startPOSOrder(orderType) {
+  if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
   const allowedTypes = ['dine_in', 'takeaway', 'delivery'];
   if (!allowedTypes.includes(orderType)) return;
   window._posEntryOrderType = orderType;
@@ -3431,6 +3453,7 @@ async function startPOSOrder(orderType) {
 }
 
 async function openPOSOrdersView() {
+  if (!currentUserHasPermission('orders.view')) return toast('You do not have permission to view orders.', 'error');
   window._posEntryOrderType = 'dine_in';
   await renderPOS();
   switchOrderType('orders');
@@ -3831,10 +3854,10 @@ async function renderPOS() {
               Active Orders
             </h3>
             <div class="flex flex-wrap items-center justify-end gap-3">
-              <button onclick="showPOSOrderTypeChooser()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2">
+              ${currentUserHasPermission('orders.create') ? `<button onclick="showPOSOrderTypeChooser()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M12 5v14m7-7H5"/></svg>
                 New Order
-              </button>
+              </button>` : ''}
               <div class="relative">
                 <input type="text" id="pos-orders-search" oninput="renderPOSOrders()" placeholder="Search Order ID..." class="px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold focus:outline-none focus:border-indigo-500 w-40 transition-all" />
                 <svg class="w-3.5 h-3.5 absolute right-3 top-2.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -3848,9 +3871,14 @@ async function renderPOS() {
               <button onclick="renderPOSOrders()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
               </button>
+              <div class="flex rounded-xl border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-800" aria-label="Order view">
+                <button id="orders-view-cards-btn" onclick="setOrdersView('cards')" class="px-3 py-1.5 rounded-lg text-[10px] font-black">Mobile</button>
+                <button id="orders-view-table-btn" onclick="setOrdersView('table')" class="px-3 py-1.5 rounded-lg text-[10px] font-black">Table</button>
+              </div>
             </div>
           </div>
-          <div class="overflow-x-auto">
+          <div id="pos-orders-cards" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-3"></div>
+          <div id="pos-orders-table" class="hidden overflow-x-auto">
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="bg-slate-50 dark:bg-slate-800/50">
@@ -4317,7 +4345,9 @@ function configuredOrderItemName(baseName, variants, addons) {
 
 async function renderPOSOrders() {
   const tbody = $c('pos-orders-table-body');
+  const cards = $c('pos-orders-cards');
   if (!tbody) return;
+  applyOrdersView();
 
   const searchQuery = $c('pos-orders-search')?.value || '';
   const typeFilter = $c('pos-orders-type-filter')?.value || '';
@@ -4343,8 +4373,11 @@ async function renderPOSOrders() {
 
     if (filteredOrders.length === 0) {
       tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-20 text-center text-slate-400">No active orders found</td></tr>`;
+      if (cards) cards.innerHTML = `<div class="sm:col-span-2 xl:col-span-3 py-20 text-center text-slate-400">No active orders found</div>`;
       return;
     }
+
+    if (cards) cards.innerHTML = filteredOrders.map(renderActiveOrderCard).join('');
 
     tbody.innerHTML = filteredOrders.map(s => {
       const date = new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -4369,7 +4402,10 @@ async function renderPOSOrders() {
         : '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider">Unpaid</span>';
       const primaryAction = s.order_type === 'delivery' && s.order_status !== 'ready'
         ? `<button onclick="viewOrderItems(${s.id})" class="px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold text-[10px] uppercase hover:bg-blue-600 transition-all shadow-sm">Out</button>`
-        : `<button onclick="showOrderCompleteModal(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Payment</button>`;
+        : currentUserHasPermission('orders.take_payment') && currentUserHasPermission('orders.complete')
+          ? `<button onclick="showOrderCompleteModal(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Payment & Complete</button>`
+          : currentUserHasPermission('orders.complete')
+            ? `<button onclick="completeOrderFromPOS(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Complete</button>` : '';
 
       return `
         <tr class="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
@@ -4388,15 +4424,15 @@ async function renderPOSOrders() {
           <td class="px-4 py-4 text-xs font-medium text-slate-400">${date}</td>
           <td class="px-4 py-4 text-right">
             <div class="flex justify-end gap-2">
-              <button onclick="viewOrderItems(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase hover:bg-emerald-100 transition-all">
+              ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase hover:bg-emerald-100 transition-all">
                 View
-              </button>
-              <button onclick="editOrder(${s.id})" class="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold text-[10px] uppercase hover:bg-indigo-100 transition-all">
+              </button>` : ''}
+              ${currentUserHasPermission('orders.update') ? `<button onclick="editOrder(${s.id})" class="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold text-[10px] uppercase hover:bg-indigo-100 transition-all">
                 Edit
-              </button>
-	              <button onclick="showReceiptPrintMenu(${s.id})" class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-[10px] uppercase hover:bg-slate-200 transition-all">
+              </button>` : ''}
+	              ${currentUserHasPermission('orders.view') ? `<button onclick="showReceiptPrintMenu(${s.id})" class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-[10px] uppercase hover:bg-slate-200 transition-all">
 	                Print
-	              </button>
+	              </button>` : ''}
 	              ${primaryAction}
 	            </div>
 	          </td>
@@ -4406,6 +4442,68 @@ async function renderPOSOrders() {
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-20 text-center text-rose-500">Failed to load orders: ${e.message}</td></tr>`;
   }
+}
+
+function ordersViewPreference() {
+  return localStorage.getItem('orders_view') === 'table' ? 'table' : 'cards';
+}
+
+function setOrdersView(view) {
+  localStorage.setItem('orders_view', view === 'table' ? 'table' : 'cards');
+  applyOrdersView();
+}
+
+function applyOrdersView() {
+  const view = ordersViewPreference();
+  const cards = $c('pos-orders-cards');
+  const table = $c('pos-orders-table');
+  if (cards) cards.classList.toggle('hidden', view !== 'cards');
+  if (table) table.classList.toggle('hidden', view !== 'table');
+  ['cards', 'table'].forEach(name => {
+    const button = $c(`orders-view-${name}-btn`);
+    if (!button) return;
+    const active = name === view;
+    button.className = `px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${active ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-400'}`;
+  });
+}
+
+function relativeOrderTime(value) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function renderActiveOrderCard(order) {
+  const type = order.order_type === 'dine_in' ? 'Dine-in' : order.order_type === 'takeaway' ? 'Takeaway' : 'Delivery';
+  const context = order.order_type === 'dine_in'
+    ? `Table ${escapeOrderValue(order.table_number || 'N/A')}`
+    : order.order_type === 'delivery'
+      ? escapeOrderValue(order.customer_name || order.delivery_address || 'Delivery customer')
+      : escapeOrderValue(order.customer_name || 'Counter order');
+  const statusTone = order.order_status === 'ready' ? 'bg-emerald-100 text-emerald-700' : order.order_status === 'preparing' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
+  const canPayAndComplete = currentUserHasPermission('orders.take_payment') && currentUserHasPermission('orders.complete');
+  return `<article class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm active:scale-[0.99] transition-all">
+    <div class="flex items-start justify-between gap-3">
+      <div><div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Order #${order.id}</div><div class="mt-1 text-lg font-black text-slate-900 dark:text-white">${context}</div></div>
+      <span class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${statusTone}">${escapeOrderValue(order.order_status || 'pending')}</span>
+    </div>
+    <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
+      <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Placed</span><span class="font-bold text-slate-700 dark:text-slate-200">${relativeOrderTime(order.created_at)}</span></div>
+      <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Service</span><span class="font-bold text-slate-700 dark:text-slate-200">${type}</span></div>
+      <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Waiter</span><span class="font-bold text-slate-700 dark:text-slate-200">${escapeOrderValue(order.waiter_name || '-')}</span></div>
+      <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Total</span><span class="font-black text-indigo-600 dark:text-indigo-300">PKR ${Number(order.total || 0).toLocaleString()}</span></div>
+    </div>
+    <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+      ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${order.id})" class="flex-1 min-w-[120px] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black">Order Details</button>` : ''}
+      ${currentUserHasPermission('orders.update') ? `<button onclick="editOrder(${order.id})" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-black">Edit</button>` : ''}
+      ${canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
+    </div>
+  </article>`;
 }
 
 async function updateDeliveryStatus(id, status) {
@@ -4429,7 +4527,8 @@ async function viewOrderItems(id) {
     const sale = data.sale;
     const isDelivery = sale.order_type === 'delivery';
     const isPaymentPaid = Number(sale.amount_received || 0) >= Number(sale.total || 0) - 0.01;
-    const canEditDelivery = isDelivery && !['ready', 'completed'].includes(sale.order_status);
+    const canEditOrder = currentUserHasPermission('orders.update');
+    const canEditDelivery = canEditOrder && isDelivery && !['ready', 'completed'].includes(sale.order_status);
     const serviceLabel = sale.order_type === 'dine_in' ? 'Dine-in' : sale.order_type === 'takeaway' ? 'Takeaway' : 'Delivery';
     const currentRiderId = Number(sale.rider_id || 0);
     const riderList = Array.isArray(assignableUsers) ? [...assignableUsers] : [];
@@ -4521,9 +4620,9 @@ async function viewOrderItems(id) {
           <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Total Amount</span>
           <span class="text-xl font-black text-indigo-700 dark:text-indigo-300">PKR ${data.sale.total.toLocaleString()}</span>
         </div>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid ${canEditOrder ? 'grid-cols-2' : 'grid-cols-1'} gap-3">
           <button onclick="closeModal()" class="py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-sm hover:bg-slate-200 transition-all">Close</button>
-          <button onclick="closeModal(); editOrder(${id})" class="py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">Edit Order</button>
+          ${canEditOrder ? `<button onclick="closeModal(); editOrder(${id})" class="py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">Edit Order</button>` : ''}
         </div>
       </div>
     `, "max-w-2xl");
@@ -4533,6 +4632,7 @@ async function viewOrderItems(id) {
 }
 
 async function saveDeliveryOrderInfo(id, nextStatus = null) {
+  if (!currentUserHasPermission('orders.update')) return toast('You do not have permission to edit orders.', 'error');
   const payload = {
     customer_name: $c('order-info-name')?.value.trim() || '',
     customer_phone: $c('order-info-phone')?.value.trim() || '',
@@ -4562,6 +4662,7 @@ async function saveDeliveryOrderInfo(id, nextStatus = null) {
 }
 
 async function editOrder(id) {
+  if (!currentUserHasPermission('orders.update')) return toast('You do not have permission to edit orders.', 'error');
   try {
     if (!allProducts || allProducts.length === 0) {
       const products = await api("/api/products");
@@ -4579,6 +4680,7 @@ async function editOrder(id) {
         product_id: item.product_id,
         name: item.product_name,
         quantity: item.quantity,
+        original_quantity: Number(item.quantity),
         selling_price: Number(item.price_at_sale),
         buying_price: Number(item.buying_price_at_sale),
         special_instructions: item.special_instructions,
@@ -4613,9 +4715,9 @@ function renderEditOrderModal(id) {
       </div>
       <div class="flex items-center gap-4">
         <div class="text-sm font-black text-slate-900 dark:text-white">PKR ${(item.quantity * item.selling_price).toLocaleString()}</div>
-        <button onclick="removeTempOrderItem(${index}, ${id})" class="p-2 rounded-xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all opacity-0 group-hover:opacity-100" title="Delete Item">
+        ${currentUserHasPermission('orders.remove_items') ? `<button onclick="removeTempOrderItem(${index}, ${id})" class="p-2 rounded-xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all opacity-0 group-hover:opacity-100" title="Delete Item">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-        </button>
+        </button>` : ''}
       </div>
     </div>
   `).join('');
@@ -4651,6 +4753,7 @@ function renderEditOrderModal(id) {
 }
 
 function removeTempOrderItem(index, id) {
+  if (!currentUserHasPermission('orders.remove_items')) return toast('You may add items, but cannot remove existing order items.', 'error');
   _tempEditCart.splice(index, 1);
   renderEditOrderModal(id);
 }
@@ -4701,6 +4804,7 @@ function cancelEdit() {
 }
 
 async function completeOrderFromPOS(id, skipConfirm = false) {
+  if (!currentUserHasPermission('orders.complete')) return toast('You do not have permission to complete orders.', 'error');
   if (!skipConfirm && !confirm('Are you sure you want to complete this order and move it to sales history?')) return false;
   try {
     const result = await api(_currentPage === 'delivery' ? `/api/delivery/${id}/status` : `/api/kds/${id}/status`, 'PATCH', { status: 'completed' });
@@ -4715,6 +4819,9 @@ async function completeOrderFromPOS(id, skipConfirm = false) {
 }
 
 function showOrderCompleteModal(id) {
+  if (!currentUserHasPermission('orders.take_payment') || !currentUserHasPermission('orders.complete')) {
+    return toast('Payment and complete permissions are required for this action.', 'error');
+  }
   const s = _posActiveOrders.find(o => o.id === id);
   if (!s) return toast('Order not found', 'error');
 
@@ -5471,6 +5578,9 @@ function updateCartQty(productId, qty) {
   if (qty < 1) return toast("Quantity cannot be less than 1", "warning");
 
   const item = cart.find((c) => c.product_id === productId);
+  if (_editingOrderId && item?.original_quantity && qty < Number(item.original_quantity) && !currentUserHasPermission('orders.remove_items')) {
+    return toast('You may increase quantity, but reducing the original quantity requires Remove Order Items access.', 'error');
+  }
   if (item) item.quantity = qty;
 
   renderCart();
@@ -5483,6 +5593,8 @@ function updateCartBatch(productId, batchId) {
 }
 
 function removeFromCart(productId) {
+  const item = cart.find((c) => c.product_id === productId);
+  if (!canRemoveCartItem(item)) return toast('You cannot remove an existing item from this order.', 'error');
   cart = cart.filter((c) => c.product_id !== productId);
   renderCart();
 }
@@ -5490,6 +5602,9 @@ function removeFromCart(productId) {
 function updateCartLineQty(index, qty) {
   const item = cart[index];
   if (!item) return;
+  if (_editingOrderId && item.original_quantity && qty < Number(item.original_quantity) && !currentUserHasPermission('orders.remove_items')) {
+    return toast('You may increase quantity, but reducing the original quantity requires Remove Order Items access.', 'error');
+  }
   const product = item.product || productMap[item.product_id];
   const isRecipe = (product?.ingredients || []).length > 0 || (product?.variants || []).some(v => (v.ingredients || []).length > 0);
   const stockVariant = item.stock_variant_id ? (product?.stock_variants || []).find(v => Number(v.id) === Number(item.stock_variant_id)) : null;
@@ -5500,8 +5615,13 @@ function updateCartLineQty(index, qty) {
 }
 
 function removeCartLine(index) {
+  if (!canRemoveCartItem(cart[index])) return toast('You cannot remove an existing item from this order.', 'error');
   cart.splice(index, 1);
   renderCart();
+}
+
+function canRemoveCartItem(item) {
+  return !_editingOrderId || currentUserHasPermission('orders.remove_items') || !item?.original_quantity;
 }
 
 function renderCart() {
@@ -5540,7 +5660,7 @@ function renderCart() {
           </div>
 
           <!-- Delete Button -->
-          <button onclick="removeCartLine(${itemIndex});" class="absolute ${compactCart ? '-top-1.5 -right-1.5 w-5 h-5' : '-top-2 -right-2 w-6 h-6'} bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400 hover:text-rose-500 hover:border-rose-200 dark:hover:border-rose-900 shadow-sm flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100">
+          <button onclick="removeCartLine(${itemIndex});" class="${canRemoveCartItem(item) ? '' : 'hidden'} absolute ${compactCart ? '-top-1.5 -right-1.5 w-5 h-5' : '-top-2 -right-2 w-6 h-6'} bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400 hover:text-rose-500 hover:border-rose-200 dark:hover:border-rose-900 shadow-sm flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
@@ -5626,7 +5746,7 @@ function showCartModal() {
               </td>
               <td class="py-2 px-2 text-right">
                 <button onclick="removeFromCart(${item.product_id}); cart.length ? showCartModal() : closeModal();"
-                  class="p-2 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all" title="Remove">
+                  class="${canRemoveCartItem(item) ? '' : 'hidden'} p-2 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all" title="Remove">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 </button>
               </td>

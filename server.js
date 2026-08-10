@@ -115,9 +115,13 @@ app.use(
   }),
 );
 
+const { enforceApiPermissions } = require('./authorization/api-policy');
+app.use(enforceApiPermissions);
+
 // API Routes
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/users"));
+app.use("/api/roles", require("./routes/roles"));
 app.use("/api/brands", require("./routes/brands"));
 app.use("/api/products", require("./routes/products"));
 app.use("/api/sales", require("./routes/sales"));
@@ -205,6 +209,7 @@ if (require.main === module) {
     } else {
       require("./db/db");
     }
+    await require('./authorization/service').ensureAuthorizationSchema();
     startServer();
   })();
 }

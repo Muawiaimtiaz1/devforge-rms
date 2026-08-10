@@ -885,9 +885,19 @@ async function renderShopManagement(shopId) {
   _managedShopId = shopId;
 
   // Refresh data just in case
-  const result = await api(`/api/admin/hierarchy-data?t=${Date.now()}`);
+  const [result, scopedRoles, permissionCatalog, detailedUsers] = await Promise.all([
+    api(`/api/admin/hierarchy-data?t=${Date.now()}`),
+    api(`/api/roles?shop_id=${Number(shopId)}`).catch(() => []),
+    api('/api/roles/catalog').catch(() => []),
+    api('/api/users').catch(() => [])
+  ]);
   if (result.error) return toast(result.error, "error");
   hierarchyData = result;
+  _rbacRoles = Array.isArray(scopedRoles) ? scopedRoles : [];
+  _rbacPermissionCatalog = Array.isArray(permissionCatalog) ? permissionCatalog : [];
+  _rbacUsers = Array.isArray(detailedUsers) ? detailedUsers : [];
+  const detailedById = new Map(_rbacUsers.map(user => [Number(user.id), user]));
+  hierarchyData.users = hierarchyData.users.map(user => ({ ...user, roles: detailedById.get(Number(user.id))?.roles || [] }));
 
   const shop = hierarchyData.shops.find(s => s.id === shopId);
   if (!shop) {
@@ -976,7 +986,10 @@ async function renderShopManagement(shopId) {
           <div id="shop-tab-employees" class="space-y-6 hidden">
              <div class="flex items-center justify-between">
                 <h4 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Staff & Employees</h4>
-                <button onclick="openCreateUser(${shop.id}, 'user')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md">+ Add Employee</button>
+                <div class="flex items-center gap-2">
+                  <button onclick="openRoleManager()" class="px-4 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 text-xs font-bold transition-all">Roles & Permissions</button>
+                  <button onclick="openCreateUser(${shop.id}, 'user')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md">+ Add Employee</button>
+                </div>
              </div>
              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 ${shopEmployees.map(u => renderShopUserCard(u)).join('')}
@@ -1072,12 +1085,12 @@ function renderShopUserCard(u) {
       </div>
       
       <div class="text-[10px] text-slate-500 font-medium flex gap-2 items-center">
-        <span class="uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">${u.role.replace('_', ' ')}</span>
+        <span class="uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">${(u.roles || []).map(role => role.name).join(', ') || u.role.replace('_', ' ')}</span>
         ${u.allowed_panels && u.allowed_panels.length ? `<span>• ${u.allowed_panels.length} Modules</span>` : ''}
       </div>
       
       <div class="flex items-center gap-2 mt-auto pt-2 border-t border-slate-100 dark:border-slate-800/60">
-         <button onclick="openEditUser(${u.id},'${(u.name || "").replace(/'/g, "\\'")}', '${u.username}', '${u.email || ""}', '${u.phone || ""}', '${u.role}', ${JSON.stringify(u.allowed_panels || []).replace(/"/g, "&quot;")}, ${u.shop_id || "null"}, '${u.status || "active"}')" class="flex-1 py-2 text-xs font-bold rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors text-center">Edit Profile</button>
+         <button onclick="openEditUser(${u.id},'${(u.name || "").replace(/'/g, "\\'")}', '${u.username}', '${u.email || ""}', '${u.phone || ""}', '${u.role}', ${JSON.stringify(u.allowed_panels || []).replace(/"/g, "&quot;")}, ${u.shop_id || "null"}, '${u.status || "active"}', false, ${JSON.stringify(u.roles || []).replace(/"/g, "&quot;")})" class="flex-1 py-2 text-xs font-bold rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors text-center">Edit Access & Profile</button>
          ${u.role !== 'superadmin' ? `
          <button onclick="toggleUserStatus(${u.id}, '${u.status || "active"}')" class="p-2 rounded-lg transition-colors flex items-center justify-center ${u.status === 'active' || !u.status ? 'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20' : 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}" title="${u.status === 'active' || !u.status ? 'Suspend Account' : 'Reactivate'}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${u.status === 'active' || !u.status ? 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' : 'M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z'}"/></svg>

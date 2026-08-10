@@ -1,4 +1,23 @@
 const db = require('../db/knex');
+let kitchenSchemaReady;
+
+async function ensureKitchenWorkflowSchema() {
+  if (kitchenSchemaReady) return kitchenSchemaReady;
+  kitchenSchemaReady = (async () => {
+    if (!(await db.schema.hasColumn('sales', 'preparing_at'))) {
+      await db.schema.alterTable('sales', table => table.timestamp('preparing_at').nullable());
+    }
+    if (!(await db.schema.hasColumn('sales', 'kitchen_completed_at'))) {
+      await db.schema.alterTable('sales', table => table.timestamp('kitchen_completed_at').nullable());
+    }
+    const hasUpdatedAt = await db.schema.hasColumn('sales', 'updated_at');
+    await db('sales')
+      .whereIn('order_status', ['ready', 'completed'])
+      .whereNull('kitchen_completed_at')
+      .update({ kitchen_completed_at: hasUpdatedAt ? db.raw('COALESCE(updated_at, created_at)') : db.ref('created_at') });
+  })().catch(error => { kitchenSchemaReady = null; throw error; });
+  return kitchenSchemaReady;
+}
 
 class InfrastructureService {
   // --- Floors ---
@@ -38,15 +57,17 @@ class InfrastructureService {
 
   // --- Kitchen Display System (KDS) ---
   async listActiveKitchenOrders(shopId, kitchenUserId = null) {
+    await ensureKitchenWorkflowSchema();
     let query = db('sales as s')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .leftJoin('users as u', 's.waiter_id', 'u.id')
+      .leftJoin('users as cb', 's.user_id', 'cb.id')
       .where('s.shop_id', shopId)
       .whereIn('s.order_status', ['pending', 'preparing', 'ready', 'completed'])
       .select(
-        's.id', 's.order_type', 's.order_status', 's.table_id', 's.token_number', 
-        's.guest_count', 's.created_at', 's.special_instructions as order_notes',
-        't.table_number', 'u.name as waiter_name'
+        's.id', 's.user_id as punched_by_user_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
+        's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.special_instructions as order_notes',
+        't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username'
       );
 
     if (kitchenUserId) {
@@ -56,6 +77,16 @@ class InfrastructureService {
     const orders = await query.orderBy('s.created_at', 'asc');
 
     for (let order of orders) {
+      if (!String(order.punched_by_name || '').trim() && !String(order.punched_by_username || '').trim() && order.punched_by_user_id) {
+        const creator = await db('users')
+          .select('name', 'username')
+          .where({ id: order.punched_by_user_id })
+          .first();
+        if (creator) {
+          order.punched_by_name = String(creator.name || '').trim() || null;
+          order.punched_by_username = String(creator.username || '').trim() || null;
+        }
+      }
       const items = await db('sale_items as si')
         .leftJoin('products as p', 'si.product_id', 'p.id')
         .where('si.sale_id', order.id)
@@ -76,13 +107,14 @@ class InfrastructureService {
   }
 
   async updateOrderStatus(saleId, status, shopId, userId = null) {
+    await ensureKitchenWorkflowSchema();
     if (status === 'completed') {
       const sale = await db('sales')
         .where({ id: saleId, shop_id: shopId })
         .first();
       if (!sale) throw new Error('Sale not found');
 
-      const updateData = { order_status: status };
+      const updateData = { order_status: status, kitchen_completed_at: db.fn.now() };
       if (!sale.shift_id) {
         const activeShift = userId
           ? await db('shifts')
@@ -105,9 +137,12 @@ class InfrastructureService {
       return;
     }
 
+    const updateData = { order_status: status };
+    if (status === 'preparing') updateData.preparing_at = db.fn.now();
+    if (status === 'ready') updateData.kitchen_completed_at = db.fn.now();
     await db('sales')
       .where({ id: saleId, shop_id: shopId })
-      .update({ order_status: status });
+      .update(updateData);
   }
 }
 

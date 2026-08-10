@@ -1,22 +1,18 @@
 const express = require("express");
 const salesService = require("../services/SalesService");
-const { requireAuth, hasPanelAccess } = require("../middleware/auth");
+const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
 
 // POST /api/sales — create a sale (checkout)
 router.post("/", requireAuth, async (req, res) => {
-  const canUsePos = hasPanelAccess(req.session.user, "pos");
-  const canUseDelivery = hasPanelAccess(req.session.user, "delivery");
-  if (!canUsePos && !(canUseDelivery && req.body.order_type === "delivery")) {
-    return res.status(403).json({ error: "You do not have permission to create this order." });
-  }
   const result = await salesService.createSale(req.body, req.session.user.shop_id, req.session.user.id);
   res.json({ ok: true, ...result });
 });
 
 // PUT /api/sales/:id/items — update an existing sale items/details
 router.put("/:id/items", requireAuth, async (req, res) => {
-  const result = await salesService.updateSaleItems(req.params.id, req.body, req.session.user.shop_id, req.session.user.id);
+  const canRemoveItems = (req.permissions || []).includes('orders.remove_items');
+  const result = await salesService.updateSaleItems(req.params.id, req.body, req.session.user.shop_id, req.session.user.id, { canRemoveItems });
   res.json({ ok: true, ...result });
 });
 

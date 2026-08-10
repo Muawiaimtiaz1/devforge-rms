@@ -913,8 +913,23 @@ function statCard(label, value, sub, color = "blue", info = "") {
 
 
 // ─── Users (Admin) ────────────────────────────────────────────────────
+let _rbacRoles = [];
+let _rbacPermissionCatalog = [];
+let _rbacUsers = [];
+function hasPermission(key) {
+  if (currentUser?.role === 'superadmin') return true;
+  if ((currentUser?.permissions || []).includes(key)) return true;
+  // Compatibility for sessions created before RBAC migration; refreshed sessions use permissions.
+  return ['admin', 'manager'].includes(currentUser?.role) && ['users.', 'roles.'].some(prefix => key.startsWith(prefix));
+}
+
 async function renderUsers() {
-  const users = await api("/api/users");
+  const [users, roles, permissionCatalog] = await Promise.all([
+    api("/api/users"), api('/api/roles').catch(() => []), api('/api/roles/catalog').catch(() => [])
+  ]);
+  _rbacRoles = Array.isArray(roles) ? roles : [];
+  _rbacPermissionCatalog = Array.isArray(permissionCatalog) ? permissionCatalog : [];
+  _rbacUsers = Array.isArray(users) ? users : [];
   const isMaster = currentUser.role === "superadmin";
 
   // ── Shop Admin: Card view (read + edit only, no create/delete) ──
@@ -972,7 +987,7 @@ async function renderUsers() {
           </div>
 
           <div class="px-5 py-2 rounded-2xl ${badge} text-[9px] font-black uppercase tracking-[0.25em] shadow-sm relative z-10 transition-transform group-hover:scale-110">
-            ${u.role.replace("_", " ")}
+            ${(u.roles || []).map(role => role.name).join(', ') || u.role.replace("_", " ")}
           </div>
 
           <div class="mt-2 w-full pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center">
@@ -997,14 +1012,16 @@ async function renderUsers() {
           <h3 class="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">Staff Directory</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">Manage ${users.length} verified operators in your shop</p>
         </div>
-        ${isMaster ? `
+        <div class="flex gap-3">
+        ${hasPermission('roles.view') ? `<button onclick="openRoleManager()" class="h-14 px-6 rounded-2xl border border-slate-200 dark:border-slate-700 text-sm font-black">Roles & Permissions</button>` : ''}
+        ${hasPermission('users.create') ? `
         <button onclick="openCreateUser()" class="h-14 px-8 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-black shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-1 active:scale-95 transition-all flex items-center gap-3">
           <div class="w-6 h-6 rounded-lg bg-white/20 dark:bg-slate-900/10 flex items-center justify-center">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
           </div>
           Add New Member
         </button>
-        ` : ''}
+        ` : ''}</div>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-32">
         ${cardsHtml || `<div class="col-span-full py-24 text-center text-gray-400 italic">No staff members found.</div>`}
@@ -1074,9 +1091,21 @@ async function renderUsers() {
 
 function userFormHtml(u = {}) {
   const isMaster = currentUser.role === "superadmin";
+  const customPermissionKeys = u.permission_keys || [];
+  const permissionModules = [...new Set(_rbacPermissionCatalog.map(permission => permission.module).filter(module => !module.startsWith('platform_')))];
 
   return `
     <div class="space-y-4">
+      ${_rbacRoles.length ? `<div><label class="block text-xs text-slate-500 mb-2 font-bold">Assigned role(s)</label><div class="grid grid-cols-2 gap-2">${_rbacRoles.map(role => `<label class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold"><input class="uf-role-id mr-2" type="checkbox" value="${role.id}" ${(u.roles || []).some(r => Number(r.id) === Number(role.id)) ? 'checked' : ''}>${role.name}</label>`).join('')}</div></div>` : ''}
+      ${permissionModules.length ? `<div class="rounded-2xl border border-indigo-200 dark:border-indigo-900 p-4">
+        <label class="flex items-center gap-3 font-black text-sm"><input id="uf-use-custom-permissions" type="checkbox" ${u.use_custom_permissions ? 'checked' : ''}> Customize this employee's exact access</label>
+        <p class="text-xs text-slate-500 mt-1 mb-4">When enabled, only the actions checked below are allowed. Role permissions are replaced for this employee.</p>
+        <div id="uf-permission-store" class="hidden">${_rbacPermissionCatalog.map(permission => `<input class="uf-permission-key" type="checkbox" value="${permission.key}" ${customPermissionKeys.includes(permission.key) ? 'checked' : ''}>`).join('')}</div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${permissionModules.map(module => {
+          const count = _rbacPermissionCatalog.filter(permission => permission.module === module && customPermissionKeys.includes(permission.key)).length;
+          return `<button type="button" onclick="openEmployeePermissionPanel('${module}')" class="p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-left hover:border-indigo-500 transition-all"><span class="block text-xs font-black capitalize">${module.replace(/_/g, ' ')}</span><span id="permission-count-${module}" class="text-[10px] text-indigo-500">${count} selected</span></button>`;
+        }).join('')}</div>
+      </div>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="sm:col-span-2 lg:col-span-1">
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Full Name *</label>
@@ -1134,7 +1163,7 @@ function userFormHtml(u = {}) {
         </div>
         `
     }
-    ${u.role === "superadmin" || !isMaster
+    ${u.role === "superadmin" || !isMaster || _rbacPermissionCatalog.length
       ? ""
       : `
         <div class="sm:col-span-2 lg:col-span-3" id="uf-panels-container" style="display: ${u.role === "admin" ? "none" : "block"}">
@@ -1266,8 +1295,11 @@ function openEditUser(
   allowed_panels,
   shop_id,
   status,
-  can_manage_register
+  can_manage_register,
+  roles
 ) {
+  const detailedUser = _rbacUsers.find(user => Number(user.id) === Number(id)) || {};
+  const assignedRoles = roles || detailedUser.roles || [];
   openModal(
     "Edit User",
     userFormHtml({
@@ -1281,6 +1313,9 @@ function openEditUser(
       shop_id,
       status,
       can_manage_register
+      ,roles: assignedRoles,
+      permission_keys: detailedUser.permission_keys || [],
+      use_custom_permissions: !!detailedUser.use_custom_permissions
     }) +
     `<button onclick="saveUser(${id})" class="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all">Update User</button>`,
     "max-w-2xl",
@@ -1298,6 +1333,9 @@ async function saveUser(id) {
     status: $c("uf-status").value,
     shop_id: $c("uf-shop").value,
     can_manage_register: document.getElementById("uf-can-manage-register")?.checked || false,
+    role_ids: Array.from(document.querySelectorAll('.uf-role-id:checked')).map(el => Number(el.value)),
+    use_custom_permissions: !!document.getElementById('uf-use-custom-permissions')?.checked,
+    permission_keys: Array.from(document.querySelectorAll('.uf-permission-key:checked')).map(el => el.value),
     allowed_panels:
       $c("uf-role").value === "admin"
         ? []
@@ -1319,6 +1357,54 @@ async function saveUser(id) {
   } else {
     renderUsers();
   }
+}
+
+function openEmployeePermissionPanel(module) {
+  const permissions = _rbacPermissionCatalog.filter(permission => permission.module === module);
+  const selected = new Set(Array.from(document.querySelectorAll('.uf-permission-key:checked')).map(el => el.value));
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm';
+  modal.innerHTML = `<div class="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl"><div class="flex justify-between items-center mb-5"><div><h3 class="text-xl font-black capitalize">${module.replace(/_/g, ' ')}</h3><p class="text-xs text-slate-500">Select exactly what this employee may do.</p></div><button onclick="this.closest('.fixed').remove()" class="text-2xl text-slate-400">&times;</button></div><div class="space-y-2">${permissions.map(permission => `<label class="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700"><span class="font-bold capitalize text-sm">${permission.action.replace(/_/g, ' ')}</span><input class="permission-popup-check w-5 h-5" type="checkbox" value="${permission.key}" ${selected.has(permission.key) ? 'checked' : ''}></label>`).join('')}</div><button onclick="applyEmployeePermissionPanel('${module}', this)" class="w-full mt-5 py-3 rounded-xl bg-indigo-600 text-white font-black">Apply Access</button></div>`;
+  document.body.appendChild(modal);
+}
+
+function applyEmployeePermissionPanel(module, button) {
+  const modal = button.closest('.fixed');
+  const chosen = new Set(Array.from(modal.querySelectorAll('.permission-popup-check:checked')).map(el => el.value));
+  document.querySelectorAll('.uf-permission-key').forEach(input => {
+    if (input.value.startsWith(`${module}.`)) input.checked = chosen.has(input.value);
+  });
+  const count = document.getElementById(`permission-count-${module}`);
+  if (count) count.textContent = `${chosen.size} selected`;
+  const customToggle = document.getElementById('uf-use-custom-permissions');
+  if (customToggle) customToggle.checked = true;
+  modal.remove();
+}
+
+function rolePermissionGroups(selected = []) {
+  const groups = {};
+  _rbacPermissionCatalog.forEach(permission => (groups[permission.module] ||= []).push(permission));
+  return Object.entries(groups).map(([module, permissions]) => `<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div class="font-black capitalize mb-3">${module.replace(/_/g, ' ')}</div><div class="grid sm:grid-cols-2 gap-2">${permissions.map(permission => `<label class="text-xs"><input class="role-permission mr-2" type="checkbox" value="${permission.key}" ${selected.includes(permission.key) ? 'checked' : ''}>${permission.action.replace(/_/g, ' ')}</label>`).join('')}</div></div>`).join('');
+}
+
+function openRoleManager() {
+  openModal('Roles & Permissions', `<div class="space-y-3">${_rbacRoles.map(role => `<button onclick="openRoleEditor(${role.id})" class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between"><span class="font-black">${role.name}</span><span class="text-xs text-slate-400">${role.user_count} users · ${role.permissions.length} permissions</span></button>`).join('') || '<p>No roles yet.</p>'}${hasPermission('roles.create') ? '<button onclick="openRoleEditor()" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Create role</button>' : ''}</div>`, 'max-w-2xl');
+}
+
+function openRoleEditor(id) {
+  const role = _rbacRoles.find(item => Number(item.id) === Number(id)) || { permissions: [] };
+  openModal(id ? 'Edit Role' : 'Create Role', `<div class="space-y-4"><input id="rf-name" value="${role.name || ''}" placeholder="Role name" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900"><textarea id="rf-description" placeholder="Description" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900">${role.description || ''}</textarea><div class="grid md:grid-cols-2 gap-3 max-h-[55vh] overflow-y-auto">${rolePermissionGroups(role.permissions)}</div><button onclick="saveRole(${id || 'null'})" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Save role</button></div>`, 'max-w-5xl');
+}
+
+async function saveRole(id) {
+  const payload = { name: $c('rf-name').value.trim(), description: $c('rf-description').value.trim(), permissions: Array.from(document.querySelectorAll('.role-permission:checked')).map(el => el.value) };
+  if (!payload.name) return toast('Role name is required', 'error');
+  const shopScope = currentUser?.role === 'superadmin' && typeof _managedShopId !== 'undefined' && _managedShopId
+    ? `?shop_id=${Number(_managedShopId)}` : '';
+  await api(id ? `/api/roles/${id}${shopScope}` : `/api/roles${shopScope}`, id ? 'PUT' : 'POST', payload);
+  closeModal(); toast('Role saved');
+  if (typeof _managedShopId !== 'undefined' && _managedShopId) renderShopManagement(_managedShopId);
+  else renderUsers();
 }
 
 async function deleteUser(id) {
@@ -1989,11 +2075,11 @@ function openUserAccess(user) {
       Manage Permissions
     ` : `
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-      Change Password
+      Manage Employee & Roles
     `;
     editBtn.onclick = () => {
       toggleUserAccessMenu();
-      openEditUser(user.id, user.name, user.username, user.email, user.phone, user.role, (user.allowed_panels || []), user.shop_id, user.status, !!user.can_manage_register);
+      openEditUser(user.id, user.name, user.username, user.email, user.phone, user.role, (user.allowed_panels || []), user.shop_id, user.status, !!user.can_manage_register, user.roles || []);
     };
   }
 

@@ -750,7 +750,34 @@ class SalesService {
     });
   }
 
-  async updateSaleItems(saleId, payload, shopId, userId) {
+  orderLineIdentity(item, stored = false) {
+    const parse = value => {
+      if (Array.isArray(value)) return value;
+      try { return JSON.parse(value || '[]'); } catch { return []; }
+    };
+    const compact = value => parse(value).map(entry => String(entry?.id ?? entry?.name ?? entry?.label ?? entry)).sort().join(',');
+    const product = item.product_id ? `p:${item.product_id}` : `c:${String(stored ? item.custom_name : item.name || '').trim().toLowerCase()}`;
+    return [product, item.stock_variant_id || '', compact(stored ? item.variants_json : item.variants), compact(stored ? item.addons_json : item.addons)].join('|');
+  }
+
+  assertOrderItemsNotReduced(oldItems, newItems) {
+    const totals = (items, stored) => items.reduce((map, item) => {
+      const key = this.orderLineIdentity(item, stored);
+      map.set(key, (map.get(key) || 0) + Number(item.quantity || 0));
+      return map;
+    }, new Map());
+    const before = totals(oldItems, true);
+    const after = totals(newItems, false);
+    for (const [key, quantity] of before) {
+      if (Number(after.get(key) || 0) + 0.000001 < quantity) {
+        const error = new Error('You may add items to this order, but removing items or reducing existing quantities requires Remove Order Items access.');
+        error.status = 403;
+        throw error;
+      }
+    }
+  }
+
+  async updateSaleItems(saleId, payload, shopId, userId, options = {}) {
     const data = checkoutSchema.parse(payload);
     
     return await db.transaction(async (trx) => {
@@ -773,6 +800,7 @@ class SalesService {
 
       // 1. Fetch previous items to restore stock
       const oldItems = await trx('sale_items').where({ sale_id: saleId });
+      if (!options.canRemoveItems) this.assertOrderItemsNotReduced(oldItems, data.items);
 
       // 2. Restore Stock for Old Items
       for (const item of oldItems) {

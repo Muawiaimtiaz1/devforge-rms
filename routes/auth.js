@@ -40,7 +40,9 @@ router.get('/me', async (req, res) => {
         subscription: freshUser.subscription,
         name: freshUser.name,
         role: freshUser.role,
-        can_manage_register: freshUser.can_manage_register
+        can_manage_register: freshUser.can_manage_register,
+        permissions: freshUser.permissions,
+        roles: freshUser.roles
     };
 
     // Statistical counts for dashboard

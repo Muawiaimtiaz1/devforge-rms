@@ -58,8 +58,42 @@ CREATE TABLE IF NOT EXISTS users (
   status TEXT DEFAULT 'active', -- active, blocked
   allowed_panels TEXT, -- JSON array of panel IDs (subset of shop's allowed_panels)
   can_manage_register INTEGER DEFAULT 0,
+  use_custom_permissions INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  is_system INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(shop_id, name)
+);
+CREATE TABLE IF NOT EXISTS permissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE,
+  module TEXT NOT NULL,
+  action TEXT NOT NULL,
+  label TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS role_permissions (
+  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+  PRIMARY KEY(role_id, permission_id)
+);
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  PRIMARY KEY(user_id, role_id)
+);
+CREATE TABLE IF NOT EXISTS user_permissions (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+  PRIMARY KEY(user_id, permission_id)
 );
 
 CREATE TABLE IF NOT EXISTS brands (
@@ -157,6 +191,8 @@ CREATE TABLE IF NOT EXISTS sales (
   shift_id INTEGER,
   payment_receiver_id INTEGER,
   payment_received_at TEXT,
+  preparing_at TEXT,
+  kitchen_completed_at TEXT,
   guest_count INTEGER DEFAULT 1,
   token_number TEXT,
   created_at TEXT DEFAULT (datetime('now')),
