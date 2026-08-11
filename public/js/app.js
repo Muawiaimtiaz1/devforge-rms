@@ -96,6 +96,12 @@ function toggleTheme() {
     document.documentElement.classList.add("dark");
     localStorage.setItem("theme", "dark");
   }
+  updateProfileThemeLabel();
+}
+
+function updateProfileThemeLabel() {
+  const label = document.getElementById("profile-theme-label");
+  if (label) label.textContent = document.documentElement.classList.contains("dark") ? "Switch to light mode" : "Switch to dark mode";
 }
 
 function toggleSettingsNav() {
@@ -118,7 +124,16 @@ function toggleSettingsNav() {
 function toggleUserDropdown(e) {
   if (e) e.stopPropagation();
   const dropdown = document.getElementById("profile-dropdown");
-  if (dropdown) dropdown.classList.toggle("active");
+  const trigger = document.getElementById("profile-trigger");
+  if (!dropdown) return;
+  const isOpen = dropdown.classList.toggle("active");
+  if (trigger) trigger.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) dropdown.querySelector('[role="menuitem"]')?.focus();
+}
+
+function closeUserDropdown() {
+  document.getElementById("profile-dropdown")?.classList.remove("active");
+  document.getElementById("profile-trigger")?.setAttribute("aria-expanded", "false");
 }
 
 window.addEventListener("click", (e) => {
@@ -126,8 +141,15 @@ window.addEventListener("click", (e) => {
   const trigger = document.getElementById("profile-trigger");
   if (dropdown && dropdown.classList.contains("active")) {
     if (!dropdown.contains(e.target) && !trigger.contains(e.target)) {
-      dropdown.classList.remove("active");
+      closeUserDropdown();
     }
+  }
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.getElementById("profile-dropdown")?.classList.contains("active")) {
+    closeUserDropdown();
+    document.getElementById("profile-trigger")?.focus();
   }
 });
 
@@ -682,13 +704,18 @@ async function init() {
 
     const nameSidebar = document.getElementById("user-name-sidebar");
     const roleSidebar = document.getElementById("user-role-sidebar");
+    const profileMenuName = document.getElementById("profile-menu-name");
+    const profileMenuRole = document.getElementById("profile-menu-role");
     const avatarHeader = document.getElementById("user-avatar");
 
     if (nameSidebar) nameSidebar.textContent = currentUser.name || currentUser.username;
     if (roleSidebar) roleSidebar.textContent = currentUser.role;
+    if (profileMenuName) profileMenuName.textContent = currentUser.name || currentUser.username;
+    if (profileMenuRole) profileMenuRole.textContent = currentUser.role;
     if (avatarHeader) {
       avatarHeader.textContent = (currentUser.name || currentUser.username)[0].toUpperCase();
     }
+    updateProfileThemeLabel();
 
     // Display Shop Name in header
     const shopNameHeader = document.getElementById("header-shop-name");
