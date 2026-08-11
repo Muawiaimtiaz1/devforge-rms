@@ -29,14 +29,15 @@ router.delete('/push/unsubscribe', requireAuth, async (req, res) => {
 });
 
 router.post('/push/test', requireAuth, async (req, res) => {
-  const delivered = await pushNotificationService.sendToUser(req.session.user.id, {
+  const delivery = await pushNotificationService.sendToUser(req.session.user.id, {
     title: 'RMS test notification',
     body: `Notifications are working for ${req.session.user.username || req.session.user.name}.`,
     tag: `rms-test-${Date.now()}`,
     url: '/dashboard',
   });
-  if (!delivered) return res.status(409).json({ error: 'This user has no registered notification device.' });
-  res.json({ ok: true, devices: delivered });
+  if (!delivery.attempted) return res.status(409).json({ error: 'This user has no registered notification device.' });
+  if (!delivery.delivered) return res.status(502).json({ error: 'Push providers rejected every registered device.', delivery });
+  res.json({ ok: true, devices: delivery.delivered, delivery });
 });
 
 router.get('/', requireAuth, async (req, res) => {

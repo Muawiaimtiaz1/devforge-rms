@@ -4453,7 +4453,7 @@ async function renderPOSOrders() {
   try {
     const deliveryPanel = _currentPage === 'delivery';
     const sales = await api(deliveryPanel ? '/api/delivery' : '/api/sales');
-    // Show active orders (pending, preparing, ready) but hide fully completed ones
+    // Keep operational states visible until payment/order completion.
     let filteredOrders = (sales || []).filter(s => s.order_status !== 'completed');
     if (deliveryPanel) filteredOrders = filteredOrders.filter(s => s.order_type === 'delivery');
 
@@ -4494,11 +4494,14 @@ async function renderPOSOrders() {
       if (s.order_status === 'pending') statusColor = 'bg-amber-100 text-amber-600';
       if (s.order_status === 'preparing') statusColor = 'bg-blue-100 text-blue-600';
       if (s.order_status === 'ready') statusColor = 'bg-emerald-100 text-emerald-600';
+      if (s.order_status === 'served') statusColor = 'bg-violet-100 text-violet-700';
       const paymentPaid = Number(s.amount_received || 0) >= Number(s.total || 0) - 0.01;
       const paymentBadge = paymentPaid
         ? '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">Paid</span>'
         : '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider">Unpaid</span>';
-      const primaryAction = s.order_type === 'delivery' && s.order_status !== 'ready'
+      const primaryAction = s.order_type === 'dine_in' && s.order_status === 'ready' && (currentUserHasPermission('orders.update') || currentUserHasPermission('orders.complete'))
+        ? `<button onclick="markOrderServed(${s.id})" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white font-bold text-[10px] uppercase hover:bg-violet-500 transition-all shadow-sm">Mark Served</button>`
+        : s.order_type === 'delivery' && s.order_status !== 'ready'
         ? `<button onclick="viewOrderItems(${s.id})" class="px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold text-[10px] uppercase hover:bg-blue-600 transition-all shadow-sm">Out</button>`
         : currentUserHasPermission('orders.take_payment') && currentUserHasPermission('orders.complete')
           ? `<button onclick="showOrderCompleteModal(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Payment & Complete</button>`
@@ -4583,7 +4586,7 @@ function renderActiveOrderCard(order) {
     : order.order_type === 'delivery'
       ? escapeOrderValue(order.customer_name || order.delivery_address || 'Delivery customer')
       : escapeOrderValue(order.customer_name || 'Counter order');
-  const statusTone = order.order_status === 'ready' ? 'bg-emerald-100 text-emerald-700' : order.order_status === 'preparing' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
+  const statusTone = order.order_status === 'served' ? 'bg-violet-100 text-violet-700' : order.order_status === 'ready' ? 'bg-emerald-100 text-emerald-700' : order.order_status === 'preparing' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
   const canPayAndComplete = currentUserHasPermission('orders.take_payment') && currentUserHasPermission('orders.complete');
   return `<article class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm active:scale-[0.99] transition-all">
     <div class="flex items-start justify-between gap-3">
@@ -4599,9 +4602,24 @@ function renderActiveOrderCard(order) {
     <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
       ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${order.id})" class="flex-1 min-w-[120px] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black">Order Details</button>` : ''}
       ${currentUserHasPermission('orders.update') ? `<button onclick="editOrder(${order.id})" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-black">Edit</button>` : ''}
-      ${canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
+      ${order.order_type === 'dine_in' && order.order_status === 'ready' && (currentUserHasPermission('orders.update') || currentUserHasPermission('orders.complete')) ? `<button onclick="markOrderServed(${order.id})" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">Mark Served</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
     </div>
   </article>`;
+}
+
+async function markOrderServed(id) {
+  if (!currentUserHasPermission('orders.update') && !currentUserHasPermission('orders.complete')) {
+    return toast('You do not have permission to mark orders as served.', 'error');
+  }
+  if (!confirm('Confirm that this order has been handed to the guest?')) return;
+  try {
+    const result = await api(`/api/kds/${id}/status`, 'PATCH', { status: 'served' });
+    if (result?.error) throw new Error(result.error);
+    toast('Order marked as served.', 'success');
+    renderPOSOrders();
+  } catch (error) {
+    toast(error.message || 'Could not mark the order as served.', 'error');
+  }
 }
 
 async function updateDeliveryStatus(id, status) {

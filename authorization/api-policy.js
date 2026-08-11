@@ -68,6 +68,9 @@ function enforceApiPermissions(req, res, next) {
   if (resource === 'kds' && req.method === 'PATCH' && /ready|completed/i.test(JSON.stringify(req.body || {}))) {
     return requirePermission('kitchen_orders.complete', 'orders.complete')(req, res, next);
   }
+  if (resource === 'kds' && req.method === 'PATCH' && /served/i.test(JSON.stringify(req.body || {}))) {
+    return requirePermission('orders.update', 'orders.complete')(req, res, next);
+  }
   if (resource === 'admin' && /financial-logs/.test(req.path)) return requirePermission(`platform_finance.${action}`)(req, res, next);
   return requirePermission(`${module}.${action}`, ...supportingOrderReads)(req, res, next);
 }

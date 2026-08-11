@@ -30,6 +30,9 @@ class PushNotificationService {
   async configureVapid() {
     let publicKey = process.env.VAPID_PUBLIC_KEY;
     let privateKey = process.env.VAPID_PRIVATE_KEY;
+    if ((publicKey && !privateKey) || (!publicKey && privateKey)) {
+      throw new Error('VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be configured together');
+    }
     if (!publicKey || !privateKey) {
       const rows = await db('push_settings').whereIn('key', ['vapid_public_key', 'vapid_private_key']);
       const saved = Object.fromEntries(rows.map(row => [row.key, row.value]));
@@ -85,17 +88,22 @@ class PushNotificationService {
   }
 
   async sendToUser(userId, payload) {
+    await this.ensureSchema();
     const rows = await db('push_subscriptions').where({ user_id: userId, enabled: true });
     const body = JSON.stringify(payload);
-    await Promise.allSettled(rows.map(async row => {
+    const results = await Promise.all(rows.map(async row => {
       try {
-        await webpush.sendNotification({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }, body, { TTL: 300, urgency: 'high' });
+        await webpush.sendNotification({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }, body, { TTL: 86400, urgency: 'high' });
+        await db('push_subscriptions').where({ id: row.id }).update({ updated_at: db.fn.now() });
+        return { delivered: true, deviceId: row.id };
       } catch (error) {
         if ([404, 410].includes(error.statusCode)) await db('push_subscriptions').where({ id: row.id }).del();
-        else console.error('Push delivery failed:', error.message);
+        else console.error(`Push delivery failed for device ${row.id}:`, error.message);
+        return { delivered: false, deviceId: row.id, statusCode: error.statusCode || null, error: error.message };
       }
     }));
-    return rows.length;
+    const delivered = results.filter(result => result.delivered).length;
+    return { attempted: rows.length, delivered, failed: rows.length - delivered, results };
   }
 }
 

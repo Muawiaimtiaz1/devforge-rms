@@ -56,6 +56,27 @@ async function enableRMSNotifications() {
   await loadRMSPushStatus();
 }
 
+async function syncRMSPushSubscription() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || Notification.permission !== 'granted') return;
+  const registration = await navigator.serviceWorker.ready;
+  const keyResponse = await fetch('/api/notifications/push/public-key');
+  if (!keyResponse.ok) return;
+  const { publicKey } = await keyResponse.json();
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
+  const response = await fetch('/api/notifications/push/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subscription: subscription.toJSON(), device_name: navigator.userAgent }),
+  });
+  if (!response.ok) throw new Error('Could not synchronize notification registration.');
+}
+
 async function disableRMSNotifications() {
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
@@ -119,7 +140,10 @@ function playOrderReadyBeep() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service-worker.js').then(() => refreshPWAButton()).catch(console.error);
+  navigator.serviceWorker.register('/service-worker.js').then(async () => {
+    refreshPWAButton();
+    await syncRMSPushSubscription();
+  }).catch(error => console.error('Notification registration failed:', error));
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data?.type !== 'RMS_PUSH') return;
     playOrderReadyBeep();

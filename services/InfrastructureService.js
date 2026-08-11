@@ -12,6 +12,9 @@ async function ensureKitchenWorkflowSchema() {
     if (!(await db.schema.hasColumn('sales', 'kitchen_completed_at'))) {
       await db.schema.alterTable('sales', table => table.timestamp('kitchen_completed_at').nullable());
     }
+    if (!(await db.schema.hasColumn('sales', 'served_at'))) {
+      await db.schema.alterTable('sales', table => table.timestamp('served_at').nullable());
+    }
     const hasUpdatedAt = await db.schema.hasColumn('sales', 'updated_at');
     await db('sales')
       .whereIn('order_status', ['ready', 'completed'])
@@ -68,7 +71,7 @@ class InfrastructureService {
       .whereIn('s.order_status', ['pending', 'preparing', 'ready', 'completed'])
       .select(
         's.id', 's.user_id as punched_by_user_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
-        's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.special_instructions as order_notes',
+        's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',
         't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username'
       );
 
@@ -110,6 +113,21 @@ class InfrastructureService {
 
   async updateOrderStatus(saleId, status, shopId, userId = null) {
     await ensureKitchenWorkflowSchema();
+    const allowedStatuses = new Set(['pending', 'preparing', 'ready', 'served', 'completed']);
+    if (!allowedStatuses.has(status)) throw new Error('Invalid order status');
+
+    if (status === 'served') {
+      const sale = await db('sales').where({ id: saleId, shop_id: shopId }).first();
+      if (!sale) throw new Error('Sale not found');
+      if (!['ready', 'served'].includes(sale.order_status)) {
+        throw new Error('Only a ready order can be marked as served.');
+      }
+      await db('sales')
+        .where({ id: saleId, shop_id: shopId })
+        .update({ order_status: 'served', served_at: sale.served_at || db.fn.now() });
+      return;
+    }
+
     if (status === 'completed') {
       const sale = await db('sales')
         .where({ id: saleId, shop_id: shopId })

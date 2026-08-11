@@ -1,5 +1,7 @@
 const db = require('../db/knex');
 const customerService = require('./CustomerService');
+const notificationService = require('./NotificationService');
+const pushNotificationService = require('./PushNotificationService');
 const { z } = require('zod');
 
 // Validation Schemas
@@ -35,6 +37,60 @@ const checkoutSchema = z.object({
 });
 
 class SalesService {
+  async notifyNewOrder({ saleId, shopId, creatorId, waiterId, orderType, tableId }) {
+    try {
+      const creator = await db('users').where({ id: creatorId, shop_id: shopId }).first();
+      if (!creator) return;
+
+      const recipientIds = new Set([Number(creatorId)]);
+      if (waiterId) recipientIds.add(Number(waiterId));
+
+      const creatorIsOrderTaker = ['waiter', 'order_taker'].includes(String(creator.role || '').toLowerCase());
+      if (creatorIsOrderTaker) {
+        const receptionists = await db('users')
+          .where({ shop_id: shopId, role: 'receptionist' })
+          .where(builder => builder.whereNull('status').orWhere('status', 'active'))
+          .pluck('id');
+        receptionists.forEach(id => recipientIds.add(Number(id)));
+      }
+
+      const table = tableId ? await db('tables').where({ id: tableId, shop_id: shopId }).first() : null;
+      const creatorName = creator.name || creator.username || 'Staff member';
+      const serviceLabel = orderType === 'dine_in' && table
+        ? `Table ${table.table_number}`
+        : String(orderType || 'order').replace('_', '-');
+      const title = `New order #${saleId}`;
+      const message = `${creatorName} created a ${serviceLabel} order.`;
+
+      await Promise.all([...recipientIds].map(async targetUserId => {
+        await notificationService.create({
+          shop_id: shopId,
+          target_user_id: targetUserId,
+          type: 'system',
+          priority: 'high',
+          title,
+          message,
+          action_label: 'View order',
+          action_url: '/dashboard',
+          status: 'active',
+        }, { id: creatorId });
+        const delivery = await pushNotificationService.sendToUser(targetUserId, {
+          title,
+          body: message,
+          tag: `new-order-${saleId}-${targetUserId}`,
+          orderId: saleId,
+          url: '/dashboard',
+          requireInteraction: true,
+        });
+        if (delivery.failed) {
+          console.error(`New order #${saleId} push failed on ${delivery.failed}/${delivery.attempted} device(s) for user ${targetUserId}`);
+        }
+      }));
+    } catch (error) {
+      console.error(`New order #${saleId} notification failed:`, error.message);
+    }
+  }
+
   parseMenuConfig(value) {
     if (Array.isArray(value)) return value;
     if (!value) return [];
@@ -470,8 +526,8 @@ class SalesService {
    */
   async createSale(payload, shopId, userId) {
     const data = checkoutSchema.parse(payload);
-    
-    return await db.transaction(async (trx) => {
+
+    const result = await db.transaction(async (trx) => {
       // 0. Shift Resolution
       let shiftId = data.order_status === 'payment_pending' ? null : payload.shift_id;
       if (!shiftId && data.order_status !== 'payment_pending') {
@@ -748,6 +804,15 @@ class SalesService {
         printer_configured: printResult.printer_configured
       };
     });
+    await this.notifyNewOrder({
+      saleId: result.saleId,
+      shopId,
+      creatorId: userId,
+      waiterId: data.waiter_id,
+      orderType: data.order_type,
+      tableId: data.table_id,
+    });
+    return result;
   }
 
   orderLineIdentity(item, stored = false) {
