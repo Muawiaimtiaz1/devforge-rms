@@ -46,7 +46,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 router.get('/unread-count', requireAuth, async (req, res) => {
-  const count = await notificationService.unreadCount(req.session.user);
+  const count = await notificationService.unreadCount(req.session.user, req.query);
   res.json({ count });
 });
 
@@ -66,7 +66,7 @@ router.post('/', requireSuperAdmin, async (req, res) => {
 });
 
 router.patch('/read-all', requireAuth, async (req, res) => {
-  const count = await notificationService.markAllRead(req.session.user);
+  const count = await notificationService.markAllRead(req.session.user, { channel: req.body?.channel });
   res.json({ ok: true, count });
 });
 

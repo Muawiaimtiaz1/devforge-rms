@@ -57,6 +57,15 @@ function enforceApiPermissions(req, res, next) {
   const resource = req.path.split('/')[2];
   const module = RESOURCE_MODULE[resource];
   if (!module) return next();
+  // My Inbox is intrinsic to every authenticated shop user. Only requests
+  // explicitly scoped to the private inbox bypass optional notification-panel
+  // permissions; platform communication continues through notifications.*.
+  if (resource === 'notifications') {
+    const inboxChannel = req.query?.channel === 'inbox' || req.body?.channel === 'inbox';
+    const inboxRead = req.method === 'GET' && inboxChannel;
+    const inboxReadState = req.method === 'PATCH' && inboxChannel && /\/read(?:-all)?$|\/\d+\/read$/.test(req.path);
+    if (inboxRead || inboxReadState) return next();
+  }
   let action = actionFor(req, resource);
   const supportingOrderReads = [];
   if (req.method === 'GET' && ['products', 'product-categories', 'tables', 'customers'].includes(resource)) {
@@ -69,7 +78,8 @@ function enforceApiPermissions(req, res, next) {
     return requirePermission('kitchen_orders.complete', 'orders.complete')(req, res, next);
   }
   if (resource === 'kds' && req.method === 'PATCH' && /served/i.test(JSON.stringify(req.body || {}))) {
-    return requirePermission('orders.update', 'orders.complete')(req, res, next);
+    // The service validates that the actor is the assigned order taker or reception.
+    return next();
   }
   if (resource === 'admin' && /financial-logs/.test(req.path)) return requirePermission(`platform_finance.${action}`)(req, res, next);
   return requirePermission(`${module}.${action}`, ...supportingOrderReads)(req, res, next);

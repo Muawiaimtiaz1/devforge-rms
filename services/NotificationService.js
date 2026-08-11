@@ -35,10 +35,6 @@ function parseLimit(value, fallback = 100) {
   return Math.min(parseInt(value, 10) || fallback, 250);
 }
 
-function isShopOwner(user) {
-  return ['admin', 'manager'].includes(user?.role);
-}
-
 class NotificationService {
   baseVisibleQuery(user, filters = {}) {
     const query = db('notifications as n')
@@ -47,6 +43,9 @@ class NotificationService {
       .leftJoin('users as target', 'n.target_user_id', 'target.id');
 
     if (user.role === 'superadmin') {
+      // The platform inbox contains platform/shop broadcasts only. Operational
+      // notifications with a target user belong exclusively to that user's inbox.
+      query.whereNull('n.target_user_id');
       if (filters.shop_id) {
         if (String(filters.shop_id) === 'global') query.whereNull('n.shop_id');
         else query.where('n.shop_id', filters.shop_id);
@@ -69,15 +68,20 @@ class NotificationService {
           this.whereNull('n.expires_at').orWhere('n.expires_at', '>=', currentTimestampRaw());
         });
 
-      if (!isShopOwner(user)) {
-        query.where(function () {
-          this.whereNull('n.target_user_id').orWhere('n.target_user_id', user.id);
-        });
-      }
+      // A shop-wide/platform broadcast has no target. Any targeted notification
+      // is private, including from shop admins, managers, and other employees.
+      query.where(function () {
+        this.whereNull('n.target_user_id').orWhere('n.target_user_id', user.id);
+      });
     }
 
     if (filters.type && filters.type !== 'all') query.where('n.type', filters.type);
     if (filters.priority && filters.priority !== 'all') query.where('n.priority', filters.priority);
+    if (filters.channel === 'platform') {
+      query.where('creator.role', 'superadmin');
+    } else if (filters.channel === 'inbox') {
+      query.where('n.target_user_id', user.id).whereNot('creator.role', 'superadmin');
+    }
     if (filters.unread_only) query.whereNull('nr.read_at');
 
     return query;
@@ -106,8 +110,8 @@ class NotificationService {
     return query;
   }
 
-  async unreadCount(user) {
-    const row = await this.baseVisibleQuery(user, {})
+  async unreadCount(user, filters = {}) {
+    const row = await this.baseVisibleQuery(user, filters)
       .leftJoin('notification_reads as nr', function () {
         this.on('nr.notification_id', '=', 'n.id').andOn('nr.user_id', '=', db.raw('?', [user.id]));
       })
@@ -211,8 +215,8 @@ class NotificationService {
       .merge({ read_at: db.fn.now() });
   }
 
-  async markAllRead(user) {
-    const rows = await this.baseVisibleQuery(user, {})
+  async markAllRead(user, filters = {}) {
+    const rows = await this.baseVisibleQuery(user, filters)
       .leftJoin('notification_reads as nr', function () {
         this.on('nr.notification_id', '=', 'n.id').andOn('nr.user_id', '=', db.raw('?', [user.id]));
       })

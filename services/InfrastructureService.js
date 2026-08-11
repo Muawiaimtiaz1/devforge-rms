@@ -119,6 +119,14 @@ class InfrastructureService {
     if (status === 'served') {
       const sale = await db('sales').where({ id: saleId, shop_id: shopId }).first();
       if (!sale) throw new Error('Sale not found');
+      const actor = userId ? await db('users').where({ id: userId, shop_id: shopId }).first() : null;
+      const isAssignedOrderTaker = Number(sale.waiter_id) === Number(userId);
+      const isReceptionist = String(actor?.role || '').toLowerCase() === 'receptionist';
+      if (!isAssignedOrderTaker && !isReceptionist) {
+        const error = new Error('Only the assigned order taker or a receptionist can mark this order served.');
+        error.status = 403;
+        throw error;
+      }
       if (!['ready', 'served'].includes(sale.order_status)) {
         throw new Error('Only a ready order can be marked as served.');
       }

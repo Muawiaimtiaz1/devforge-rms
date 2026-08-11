@@ -1143,6 +1143,7 @@ class SalesService {
         .first();
       query.andWhere(function() {
         this.where('s.user_id', currentUser.id);
+        this.orWhere('s.waiter_id', currentUser.id);
         if (activeShift) this.orWhere('s.shift_id', activeShift.id);
         this.orWhere('s.order_status', 'payment_pending');
         this.orWhereRaw('(s.total - s.amount_received) > 0.01');

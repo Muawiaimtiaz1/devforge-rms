@@ -262,6 +262,12 @@ async function fetchActiveShift() {
     return;
   }
 
+  if (!currentUserHasPermission('register.view')) {
+    currentShift = null;
+    updateShiftStatusUI();
+    return;
+  }
+
   try {
     const shift = await api("/api/shifts/active");
     currentShift = shift && shift.status === 'open' ? shift : null;
@@ -480,6 +486,12 @@ const AVAILABLE_PANELS = [
     desc: "Platform releases, assignments, and restaurant notices from the owner."
   },
   {
+    id: "notification-inbox",
+    icon: `<rect x="3" y="5" width="18" height="15" rx="3" fill="#6366F1" opacity="0.18"/><path d="M5 8l7 5 7-5M7 17h10" stroke="#6366F1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    label: "My Inbox",
+    desc: "Private order updates and operational messages relevant to you."
+  },
+  {
     id: "settings",
     icon: `<path d="M12 15a3 3 0 100-6 3 3 0 000 6z" fill="#8B5CF6"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1h.09a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" fill="#8B5CF6" opacity="0.3"/>`,
     label: "Settings",
@@ -543,10 +555,11 @@ function canCurrentUserAccessRegister() {
 }
 
 function isPanelAllowedForCurrentUser(panelId) {
+  // Every signed-in user receives a private, relevance-filtered notification inbox.
+  if (panelId === "notification-inbox") return !!currentUser && currentUser.role !== 'superadmin';
   if (panelId === "register") return canCurrentUserAccessRegister();
   if (panelId === "logs") {
-    if (["admin", "superadmin", "manager"].includes(currentUser?.role)) return true;
-    return (currentUser.allowed_panels || []).includes("logs");
+    return currentUser?.role === 'superadmin' || currentUserHasPermission('activity_logs.view');
   }
   if (currentUser.role === "superadmin") return PLATFORM_OWNER_PANELS.includes(panelId);
   const permissionModules = {
@@ -808,6 +821,7 @@ function navigate(page) {
     register: "Register Shift",
     customers: "Customer Ledger",
     notifications: "Notifications",
+    "notification-inbox": "My Inbox",
     settings: "System Settings",
     users: "Staff Directory",
     subscriptions: "Platform Payments",
@@ -853,6 +867,7 @@ function navigate(page) {
     register: renderRegister,
     customers: renderCustomers,
     notifications: renderNotifications,
+    "notification-inbox": renderNotificationInbox,
     settings: renderSettings,
     users: renderUsers,
     subscriptions: renderSubscriptions,
@@ -911,14 +926,19 @@ async function logout() {
 }
 
 async function fetchCategories() {
-  try {
-    const pc = await api("/api/product-categories");
-    _productCategories = Array.isArray(pc) ? pc : [];
-    const ec = await api("/api/expense-categories");
-    _expenseCategories = Array.isArray(ec) ? ec : [];
-  } catch (e) {
-    console.warn("Failed to fetch categories:", e);
-  }
+  const canReadProductCategories = [
+    'products.view', 'orders.view', 'orders.create'
+  ].some(permission => currentUserHasPermission(permission));
+  const canReadExpenseCategories = currentUserHasPermission('expenses.view');
+
+  const [productResult, expenseResult] = await Promise.allSettled([
+    canReadProductCategories ? api('/api/product-categories') : Promise.resolve([]),
+    canReadExpenseCategories ? api('/api/expense-categories') : Promise.resolve([]),
+  ]);
+  _productCategories = productResult.status === 'fulfilled' && Array.isArray(productResult.value)
+    ? productResult.value : [];
+  _expenseCategories = expenseResult.status === 'fulfilled' && Array.isArray(expenseResult.value)
+    ? expenseResult.value : [];
 }
 
 let _activeSettingsTab = localStorage.getItem("active_settings_tab") || "profile";
@@ -4499,7 +4519,8 @@ async function renderPOSOrders() {
       const paymentBadge = paymentPaid
         ? '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">Paid</span>'
         : '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider">Unpaid</span>';
-      const primaryAction = s.order_type === 'dine_in' && s.order_status === 'ready' && (currentUserHasPermission('orders.update') || currentUserHasPermission('orders.complete'))
+      const canMarkServed = Number(s.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist';
+      const primaryAction = s.order_type === 'dine_in' && s.order_status === 'ready' && canMarkServed
         ? `<button onclick="markOrderServed(${s.id})" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white font-bold text-[10px] uppercase hover:bg-violet-500 transition-all shadow-sm">Mark Served</button>`
         : s.order_type === 'delivery' && s.order_status !== 'ready'
         ? `<button onclick="viewOrderItems(${s.id})" class="px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold text-[10px] uppercase hover:bg-blue-600 transition-all shadow-sm">Out</button>`
@@ -4602,15 +4623,12 @@ function renderActiveOrderCard(order) {
     <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
       ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${order.id})" class="flex-1 min-w-[120px] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black">Order Details</button>` : ''}
       ${currentUserHasPermission('orders.update') ? `<button onclick="editOrder(${order.id})" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-black">Edit</button>` : ''}
-      ${order.order_type === 'dine_in' && order.order_status === 'ready' && (currentUserHasPermission('orders.update') || currentUserHasPermission('orders.complete')) ? `<button onclick="markOrderServed(${order.id})" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">Mark Served</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
+      ${order.order_type === 'dine_in' && order.order_status === 'ready' && (Number(order.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist') ? `<button onclick="markOrderServed(${order.id})" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">Mark Served</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
     </div>
   </article>`;
 }
 
 async function markOrderServed(id) {
-  if (!currentUserHasPermission('orders.update') && !currentUserHasPermission('orders.complete')) {
-    return toast('You do not have permission to mark orders as served.', 'error');
-  }
   if (!confirm('Confirm that this order has been handed to the guest?')) return;
   try {
     const result = await api(`/api/kds/${id}/status`, 'PATCH', { status: 'served' });
@@ -8882,7 +8900,11 @@ function notificationAction(notification) {
 
 function setNotificationFilter(filter) {
   _notificationFilter = filter;
-  renderNotifications();
+  renderNotifications(_currentPage === 'notification-inbox' ? 'inbox' : 'platform');
+}
+
+function currentNotificationChannel() {
+  return _currentPage === 'notification-inbox' ? 'inbox' : 'platform';
 }
 
 function notificationFilterButton(id, label, count = null) {
@@ -8957,7 +8979,16 @@ function renderNotificationCards(notifications) {
   }).join("");
 }
 
-async function renderNotifications() {
+function renderNotificationInbox() {
+  return renderNotifications('inbox');
+}
+
+async function renderNotifications(channel = 'platform') {
+  const isInbox = channel === 'inbox';
+  const availableFilters = isInbox
+    ? new Set(['all', 'unread', 'assignment', 'system', 'announcement', 'support'])
+    : new Set(['all', 'unread', 'assignment', 'release', 'announcement', 'billing', 'maintenance']);
+  if (!availableFilters.has(_notificationFilter)) _notificationFilter = 'all';
   const content = document.getElementById("page-content");
   content.innerHTML = `
     <div class="flex items-center justify-center h-52 text-slate-400 font-bold">
@@ -8965,7 +8996,7 @@ async function renderNotifications() {
     </div>
   `;
 
-  const params = new URLSearchParams({ limit: "150" });
+  const params = new URLSearchParams({ limit: "150", channel });
   if (_notificationFilter === "unread") params.set("unread_only", "1");
   else if (_notificationFilter !== "all") params.set("type", _notificationFilter);
   if (currentUser.role === "superadmin") params.set("include_archived", "1");
@@ -8973,7 +9004,7 @@ async function renderNotifications() {
   try {
     const [notifications, unreadData] = await Promise.all([
       api(`/api/notifications?${params.toString()}`),
-      api("/api/notifications/unread-count").catch(() => ({ count: 0 })),
+      api(`/api/notifications/unread-count?channel=${channel}`).catch(() => ({ count: 0 })),
     ]);
 
     _notificationsData = Array.isArray(notifications) ? notifications : [];
@@ -8981,17 +9012,18 @@ async function renderNotifications() {
     updateNotificationTopbarBadge();
     const assignmentCount = _notificationsData.filter((n) => n.type === "assignment").length;
     const releaseCount = _notificationsData.filter((n) => n.type === "release").length;
+    const systemCount = _notificationsData.filter((n) => n.type === "system").length;
 
     content.innerHTML = `
       <div class="space-y-6">
         <section class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div>
-            <div class="text-xs font-black uppercase tracking-[0.2em] text-teal-600 dark:text-teal-300">Restaurant Communication</div>
-            <h2 class="text-3xl font-black text-slate-950 dark:text-white tracking-tight mt-1">Notification Center</h2>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Platform notices, assigned work, release updates, billing reminders, and shop-specific messages.</p>
+            <div class="text-xs font-black uppercase tracking-[0.2em] ${isInbox ? 'text-indigo-600 dark:text-indigo-300' : 'text-teal-600 dark:text-teal-300'}">${isInbox ? 'Personal Operations' : 'Restaurant Communication'}</div>
+            <h2 class="text-3xl font-black text-slate-950 dark:text-white tracking-tight mt-1">${isInbox ? 'My Notification Inbox' : 'Notification Center'}</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">${isInbox ? 'Private order updates and messages from people in your restaurant, visible only when relevant to you.' : 'Platform notices, assigned work, release updates, billing reminders, and messages from the master owner.'}</p>
           </div>
           <div class="flex flex-wrap gap-2">
-            ${currentUser.role === "superadmin" ? `
+            ${!isInbox && currentUser.role === "superadmin" ? `
               <button onclick="openNotificationComposer()" class="px-5 py-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-black uppercase tracking-widest shadow-lg shadow-teal-600/20 transition-all">
                 New Notice
               </button>
@@ -9009,12 +9041,12 @@ async function renderNotifications() {
             <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${unreadCount}</div>
           </div>
           <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-            <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Assignments</div>
-            <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${assignmentCount}</div>
+            <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">${isInbox ? 'Order Updates' : 'Assignments'}</div>
+            <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${isInbox ? systemCount : assignmentCount}</div>
           </div>
           <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-            <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Releases</div>
-            <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${releaseCount}</div>
+            <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">${isInbox ? 'Assignments' : 'Releases'}</div>
+            <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${isInbox ? assignmentCount : releaseCount}</div>
           </div>
         </section>
 
@@ -9022,10 +9054,10 @@ async function renderNotifications() {
           ${notificationFilterButton("all", "All", _notificationsData.length)}
           ${notificationFilterButton("unread", "Unread", unreadCount)}
           ${notificationFilterButton("assignment", "Assignments")}
-          ${notificationFilterButton("release", "Releases")}
+          ${isInbox ? notificationFilterButton("system", "Order Updates") : notificationFilterButton("release", "Releases")}
           ${notificationFilterButton("announcement", "Announcements")}
-          ${notificationFilterButton("billing", "Billing")}
-          ${notificationFilterButton("maintenance", "Maintenance")}
+          ${!isInbox ? notificationFilterButton("billing", "Billing") : ''}
+          ${!isInbox ? notificationFilterButton("maintenance", "Maintenance") : notificationFilterButton("support", "Support")}
         </section>
 
         <section class="space-y-3">
@@ -9189,9 +9221,9 @@ async function submitNotification() {
 
 async function markNotificationRead(id) {
   try {
-    await api(`/api/notifications/${id}/read`, "PATCH");
+    await api(`/api/notifications/${id}/read`, "PATCH", { channel: currentNotificationChannel() });
     updateNotificationTopbarBadge();
-    renderNotifications();
+    renderNotifications(currentNotificationChannel());
   } catch (error) {
     toast(error.message || "Failed to mark notification read", "error");
   }
@@ -9199,10 +9231,10 @@ async function markNotificationRead(id) {
 
 async function markAllNotificationsRead() {
   try {
-    const res = await api("/api/notifications/read-all", "PATCH");
+    const res = await api("/api/notifications/read-all", "PATCH", { channel: currentNotificationChannel() });
     toast(`${Number(res.count || 0)} notifications marked read`);
     updateNotificationTopbarBadge();
-    renderNotifications();
+    renderNotifications(currentNotificationChannel());
   } catch (error) {
     toast(error.message || "Failed to mark notifications read", "error");
   }
