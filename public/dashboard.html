@@ -5,6 +5,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/uploads/devforge_os.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>POS System — Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -598,6 +602,12 @@
                     class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-teal-600 text-white text-[10px] font-black leading-[18px] text-center shadow-md shadow-teal-900/20"></span>
             </button>
 
+            <button onclick="openPWASetup()" id="pwa-device-btn"
+                class="hidden flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-800"
+                title="Install app and notifications" aria-label="Install app and notification settings">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
+            </button>
+
             <!-- Switch Module (Icon Only) -->
             <button id="switch-module-btn" onclick="returnToNavigationHome()"
                 class="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-800" title="Switch Module">
@@ -741,5 +751,6 @@
     <script src="/js/kitchen.js?v=1.2.6"></script>
     <script src="/js/products/product-image-tools.js?v=1.0.0"></script>
     <script src="/js/app.js?v=1.0.29"></script>
+    <script src="/js/pwa.js?v=1.0.2"></script>
 </body>
 </html>

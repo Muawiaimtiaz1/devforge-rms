@@ -1,9 +1,43 @@
 const express = require('express');
 const notificationService = require('../services/NotificationService');
 const activityLogService = require('../services/ActivityLogService');
+const pushNotificationService = require('../services/PushNotificationService');
 const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.get('/push/public-key', requireAuth, async (req, res) => {
+  await pushNotificationService.ensureSchema();
+  res.json({ publicKey: pushNotificationService.publicKey });
+});
+
+router.get('/push/status', requireAuth, async (req, res) => {
+  await pushNotificationService.ensureSchema();
+  const devices = await pushNotificationService.listDevices(req.session.user.id);
+  res.json({ enabled: devices.length > 0, devices });
+});
+
+router.post('/push/subscribe', requireAuth, async (req, res) => {
+  await pushNotificationService.ensureSchema();
+  await pushNotificationService.subscribe(req.session.user, req.body.subscription, req.body.device_name);
+  res.json({ ok: true });
+});
+
+router.delete('/push/unsubscribe', requireAuth, async (req, res) => {
+  await pushNotificationService.unsubscribe(req.session.user.id, req.body.endpoint);
+  res.json({ ok: true });
+});
+
+router.post('/push/test', requireAuth, async (req, res) => {
+  const delivered = await pushNotificationService.sendToUser(req.session.user.id, {
+    title: 'RMS test notification',
+    body: `Notifications are working for ${req.session.user.username || req.session.user.name}.`,
+    tag: `rms-test-${Date.now()}`,
+    url: '/dashboard',
+  });
+  if (!delivered) return res.status(409).json({ error: 'This user has no registered notification device.' });
+  res.json({ ok: true, devices: delivered });
+});
 
 router.get('/', requireAuth, async (req, res) => {
   const notifications = await notificationService.list(req.session.user, req.query);

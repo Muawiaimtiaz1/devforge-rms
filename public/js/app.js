@@ -182,6 +182,7 @@ let _expenseMonth = new Date().toISOString().slice(0, 7);
 let _expensePage = 1;
 let _posFloors = [];
 let _posAllTables = [];
+let _posTableSelectionView = "map";
 let _posActiveOrders = [];
 let _expenseCategories = [];
 let _productCategories = [];
@@ -3343,7 +3344,7 @@ function getPOSLayout() {
 
 function capturePOSLayoutState() {
   const ids = [
-    "pos-floor", "pos-table", "pos-waiter", "pos-kitchen", "pos-rider", "pos-delivery-addr",
+    "pos-table", "pos-waiter", "pos-kitchen", "pos-rider", "pos-delivery-addr",
     "pos-token", "pos-discount", "pos-discount-preset", "pos-tax", "pos-tax-preset",
     "pos-method", "pos-received", "pos-cust-name", "pos-cust-phone"
   ];
@@ -3448,7 +3449,107 @@ async function startPOSOrder(orderType) {
   if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
   const allowedTypes = ['dine_in', 'takeaway', 'delivery'];
   if (!allowedTypes.includes(orderType)) return;
+  if (orderType === 'dine_in') return renderPOSTableSelection();
+  window._posSelectedTableId = null;
   window._posEntryOrderType = orderType;
+  await renderPOS();
+}
+
+async function renderPOSTableSelection() {
+  if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
+  let tables = [];
+  let floors = [];
+  try {
+    [tables, floors] = await Promise.all([
+      api('/api/tables').catch(() => []),
+      api('/api/tables/floors').catch(() => [])
+    ]);
+  } catch (error) {
+    return toast('Unable to load tables', 'error');
+  }
+  _posAllTables = Array.isArray(tables) ? tables : [];
+  _posFloors = Array.isArray(floors) ? floors : [];
+  renderPOSTableSelectionContent();
+}
+
+async function changePOSTable() {
+  window._posLayoutRestore = { cart: cart.slice(), form: capturePOSLayoutState() };
+  await renderPOSTableSelection();
+}
+
+function setPOSTableSelectionView(view) {
+  _posTableSelectionView = view === 'cards' ? 'cards' : 'map';
+  renderPOSTableSelectionContent();
+}
+
+function getPOSTableStatusStyle(status, selected = false) {
+  if (selected) return 'border-indigo-600 bg-indigo-600 text-white shadow-xl shadow-indigo-600/25 ring-4 ring-indigo-100 dark:ring-indigo-950';
+  if (status === 'occupied') return 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300';
+  if (status === 'reserved') return 'border-amber-300 bg-amber-50 text-amber-900 hover:border-amber-500 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:border-emerald-500 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300';
+}
+
+function renderPOSTableSelectionContent() {
+  const selectedId = Number(window._posSelectedTableId || 0);
+  const floorGroups = _posFloors.length
+    ? _posFloors.map(floor => ({ ...floor, tables: _posAllTables.filter(table => Number(table.floor_id) === Number(floor.id)) }))
+    : [{ id: 'all', name: 'Dining Area', tables: _posAllTables }];
+  const unassigned = _posFloors.length ? _posAllTables.filter(table => !table.floor_id) : [];
+  if (unassigned.length) floorGroups.push({ id: 'unassigned', name: 'Other Tables', tables: unassigned });
+  const availableCount = _posAllTables.filter(table => table.status === 'available').length;
+  const reservedCount = _posAllTables.filter(table => table.status === 'reserved').length;
+  const occupiedCount = _posAllTables.filter(table => table.status === 'occupied').length;
+
+  const tableButton = (table, mapView) => {
+    const selected = Number(table.id) === selectedId;
+    const disabled = table.status === 'occupied';
+    const style = getPOSTableStatusStyle(table.status, selected);
+    return `<button type="button" ${disabled ? 'disabled aria-disabled="true"' : ''} onclick="selectPOSTable(${table.id})"
+      class="${mapView ? 'min-h-28 min-w-32' : 'min-h-36'} relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${style} ${disabled ? 'cursor-not-allowed opacity-70' : 'hover:-translate-y-0.5 hover:shadow-lg'}">
+      <span class="absolute right-3 top-3 h-2.5 w-2.5 rounded-full ${table.status === 'available' ? 'bg-emerald-500' : table.status === 'reserved' ? 'bg-amber-500' : 'bg-rose-500'}"></span>
+      <span class="block text-[10px] font-black uppercase tracking-[0.16em] opacity-70">${escapeOrderValue(table.status || 'available')}</span>
+      <span class="mt-2 block text-xl font-black">Table ${escapeOrderValue(table.table_number)}</span>
+      <span class="mt-1 block text-xs font-bold opacity-70">Up to ${Number(table.capacity || 4)} guests</span>
+      ${selected ? '<span class="mt-3 inline-flex rounded-full bg-white/20 px-2 py-1 text-[10px] font-black uppercase">Selected</span>' : ''}
+    </button>`;
+  };
+
+  const mapHtml = floorGroups.map(group => `
+    <section class="rounded-3xl border border-slate-200 bg-slate-100/70 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+      <div class="mb-4 flex items-center justify-between border-b border-dashed border-slate-300 pb-3 dark:border-slate-700">
+        <div><h3 class="font-black text-slate-900 dark:text-white">${escapeOrderValue(group.name)}</h3><p class="text-xs font-medium text-slate-500">${group.tables.length} tables</p></div>
+        <span class="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-700 dark:bg-slate-900">Floor map</span>
+      </div>
+      <div class="flex min-h-40 flex-wrap items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 p-5 dark:border-slate-800 dark:bg-slate-900/50">
+        ${group.tables.length ? group.tables.map(table => tableButton(table, true)).join('') : '<p class="text-sm font-bold text-slate-400">No tables on this floor</p>'}
+      </div>
+    </section>`).join('');
+
+  const cardsHtml = `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    ${_posAllTables.length ? _posAllTables.map(table => tableButton(table, false)).join('') : '<div class="col-span-full rounded-3xl border-2 border-dashed border-slate-200 py-20 text-center text-sm font-bold text-slate-400 dark:border-slate-800">No tables configured</div>'}
+  </div>`;
+
+  $c('page-content').innerHTML = `
+    <div class="mx-auto max-w-7xl space-y-5 animate-in fade-in slide-in-from-bottom-3 duration-300">
+      <header class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-6">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div><button type="button" onclick="renderPOSLanding()" class="mb-3 text-xs font-black text-slate-400 hover:text-indigo-600">&larr; Order types</button><h2 class="text-2xl font-black tracking-tight text-slate-950 dark:text-white">Choose a table</h2><p class="mt-1 text-sm font-medium text-slate-500">Select an available or reserved table to begin the dine-in order.</p></div>
+          <div class="flex flex-wrap gap-2"><span class="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">${availableCount} Available</span><span class="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">${reservedCount} Reserved</span><span class="rounded-xl bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">${occupiedCount} Occupied</span></div>
+        </div>
+        <div class="mt-5 flex w-full rounded-xl bg-slate-100 p-1 dark:bg-slate-800 sm:ml-auto sm:w-fit">
+          <button type="button" onclick="setPOSTableSelectionView('map')" class="flex-1 rounded-lg px-5 py-2 text-xs font-black transition ${_posTableSelectionView === 'map' ? 'bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-300' : 'text-slate-500'}">Map view</button>
+          <button type="button" onclick="setPOSTableSelectionView('cards')" class="flex-1 rounded-lg px-5 py-2 text-xs font-black transition ${_posTableSelectionView === 'cards' ? 'bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-300' : 'text-slate-500'}">Card view</button>
+        </div>
+      </header>
+      <main class="space-y-5">${_posTableSelectionView === 'map' ? mapHtml : cardsHtml}</main>
+    </div>`;
+}
+
+async function selectPOSTable(tableId) {
+  const table = _posAllTables.find(item => Number(item.id) === Number(tableId));
+  if (!table || table.status === 'occupied') return toast('This table is currently occupied', 'error');
+  window._posSelectedTableId = Number(table.id);
+  window._posEntryOrderType = 'dine_in';
   await renderPOS();
 }
 
@@ -3516,9 +3617,11 @@ async function renderPOS() {
     cart = layoutRestore.cart;
   }
   _posCustomerResults = [];
-  const waiterList = (waiters || []).filter(u => ['admin', 'user', 'waiter'].includes(u.role));
+  const waiterList = (waiters || []).filter(u => u.role === 'waiter');
   const kitchenList = (waiters || []).filter(u => u.role === 'kitchen');
   const riderList = (waiters || []).filter(u => u.role === 'rider');
+  const loggedInWaiter = currentUser?.role === 'waiter' ? currentUser : null;
+  const selectedPOSTable = (tables || []).find(table => Number(table.id) === Number(window._posSelectedTableId));
 
   let baseShopType = currentUser.shop_type;
   if (currentUser.role === 'superadmin' && managedShopId) {
@@ -3606,29 +3709,12 @@ async function renderPOS() {
               <span class="block text-[11px] font-black uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 mb-3">Grand Total</span>
               <span id="pos-checkout-overlay-total" class="block text-5xl md:text-7xl font-black tracking-tighter text-slate-900 dark:text-white mb-10">Rs. 0.00</span>
               
-              <div id="pos-primary-action-wrap" class="grid grid-cols-1 gap-3 px-4">
-                ${isRetail || deliveryOnly ? `
-                <button onclick="checkout('${deliveryOnly ? 'pending' : 'completed'}')" id="checkout-btn"
-                  class="${splitLayout ? 'py-1 text-xs h-9' : 'py-4 text-xl h-20'} rounded-xl bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-100 text-white dark:text-slate-900 font-black shadow-2xl transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2">
-                  <span>${deliveryOnly ? 'Place Delivery Order' : 'Place Order'}</span>
-                </button>
-                ` : `
-                <button onclick="sendToKitchen()" id="kitchen-btn"
-                  class="${splitLayout ? 'py-1 text-xs h-9' : 'py-4 text-xl h-20'} rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-black border border-slate-200 dark:border-slate-700 shadow-xl transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2">
-                  <span>Kitchen</span>
-                </button>
-                `}
-              </div>
               <p class="mt-8 text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-widest opacity-50">Click background to return to cart</p>
             </div>
           </div>
           <div id="pos-checkout-drawer"
             class="${splitLayout ? 'relative w-full translate-x-0 rounded-none border overflow-hidden p-1.5' : 'absolute right-0 top-0 w-full sm:w-[440px] md:w-[480px] lg:w-1/3 translate-x-full border-l overflow-y-auto p-4'} h-full bg-white dark:bg-slate-900 flex flex-col shadow-2xl border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-out">
-          <div class="${splitLayout ? 'mb-1 pb-1' : 'mb-3 pb-3'} flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800">
-            <h3 class="font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-tighter ${splitLayout ? 'text-sm' : 'text-base'}">
-              <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-              ${splitLayout ? 'Cart' : 'Current Order'}
-            </h3>
+          <div class="${splitLayout ? 'mb-1 pb-1 hidden' : 'mb-3 pb-3'} flex items-center justify-end gap-3 border-b border-slate-100 dark:border-slate-800">
             <button type="button" onclick="closePOSCheckout()" class="${splitLayout ? 'hidden' : 'flex'} w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 transition-all items-center justify-center" title="Close checkout">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -3637,7 +3723,7 @@ async function renderPOS() {
           <div id="pos-order-type-selector" class="${isRetail || deliveryOnly ? 'hidden' : 'block'} ${splitLayout ? 'mb-1 p-1' : 'mb-3 p-3'} rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40">
             <div class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Order Type</div>
             <div class="grid grid-cols-3 ${splitLayout ? 'gap-1' : 'gap-2'}">
-              <button id="otype-dine_in" onclick="switchOrderType('dine_in')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-indigo-600 text-white font-bold text-xs transition-all">
+              <button id="otype-dine_in" onclick="startPOSOrder('dine_in')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-indigo-600 text-white font-bold text-xs transition-all">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="13" cy="12" r="6" fill="currentColor" fill-opacity=".2"/><path d="M5 4v7m-2-7v4c0 2 1 3 2 3s2-1 2-3V4m-2 7v9M20 4c-3 2-3 7-1 9h1v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Dine-in</span>
               </button>
               <button id="otype-takeaway" onclick="switchOrderType('takeaway')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-slate-500 dark:text-slate-400 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
@@ -3655,28 +3741,29 @@ async function renderPOS() {
           <div id="pos-restaurant-fields" class="${isRetail ? 'hidden' : ''} mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
             <!-- Dine-in specific: Table & Waiter -->
             <div id="pos-dine-fields" class="mb-2 space-y-2">
-              <div class="${(_posFloors || []).length ? '' : 'hidden'}">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Floor</label>
-                <select id="pos-floor" onchange="onPosFloorChange()" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
-                  <option value="">-- All Floors --</option>
-                  ${(_posFloors || []).map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
-                </select>
-              </div>
               <div class="grid grid-cols-1 gap-2">
                 <div>
                   <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Table</label>
-                  <select id="pos-table" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
-                    <option value="">-- Select Table --</option>
-                    ${(tables || []).filter(t => t.status === 'available' || t.status === 'reserved').map(t => `<option value="${t.id}">${t.table_number} (${t.status})</option>`).join('')}
-                  </select>
+                  <input id="pos-table" type="hidden" value="${selectedPOSTable?.id || ''}" />
+                  <div class="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 dark:border-indigo-800 dark:bg-indigo-950/30">
+                    <div><span class="block text-sm font-black text-indigo-800 dark:text-indigo-200">${selectedPOSTable ? `Table ${escapeOrderValue(selectedPOSTable.table_number)}` : 'No table selected'}</span><span class="block text-[10px] font-bold uppercase tracking-wider text-indigo-500">${selectedPOSTable ? `${Number(selectedPOSTable.capacity || 4)} guests &middot; ${escapeOrderValue(selectedPOSTable.status)}` : 'Choose a table before checkout'}</span></div>
+                    <button type="button" onclick="changePOSTable()" class="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-black text-indigo-700 shadow-sm hover:bg-indigo-100 dark:bg-slate-900 dark:text-indigo-300">Change</button>
+                  </div>
                 </div>
               </div>
               <div>
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Waiter</label>
-                <select id="pos-waiter" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
-                  <option value="">-- Select Waiter --</option>
-                  ${waiterList.map(w => `<option value="${w.id}">${w.name}</option>`).join('')}
-                </select>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Assigned Waiter</label>
+                ${loggedInWaiter ? `
+                  <input id="pos-waiter" type="hidden" value="${loggedInWaiter.id}" />
+                  <div class="w-full px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-sm font-bold">
+                    ${escapeOrderValue(loggedInWaiter.name || loggedInWaiter.username || 'Waiter')}
+                  </div>
+                ` : `
+                  <select id="pos-waiter" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
+                    <option value="">-- Select Waiter --</option>
+                    ${waiterList.map(w => `<option value="${w.id}">${escapeOrderValue(w.name || w.username || 'Waiter')}</option>`).join('')}
+                  </select>
+                `}
               </div>
             </div>
 
@@ -3836,10 +3923,21 @@ async function renderPOS() {
             ${splitLayout ? `
             <div id="pos-split-action-host" class="z-20 shrink-0 space-y-1 border-t border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 p-1.5 shadow-[0_-8px_20px_rgba(15,23,42,0.1)] backdrop-blur"></div>
             ` : `
-            <div class="pt-2 text-center">
-              <p class="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">Actions available on left panel</p>
-            </div>
+            <div class="pt-2"></div>
             `}
+            <div id="pos-primary-action-wrap" class="grid grid-cols-1 gap-3">
+              ${isRetail || deliveryOnly ? `
+              <button onclick="checkout('${deliveryOnly ? 'pending' : 'completed'}')" id="checkout-btn"
+                class="${splitLayout ? 'py-1 text-xs h-9' : 'py-3 text-base h-14'} rounded-xl bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-100 text-white dark:text-slate-900 font-black shadow-xl transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2">
+                <span>${deliveryOnly ? 'Place Delivery Order' : 'Place Order'}</span>
+              </button>
+              ` : `
+              <button onclick="sendToKitchen()" id="kitchen-btn"
+                class="${splitLayout ? 'py-1 text-xs h-9' : 'py-3 text-base h-14'} rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black shadow-xl transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2">
+                <span>Kitchen</span>
+              </button>
+              `}
+            </div>
           </div>
         </div>
       </div>
@@ -4965,22 +5063,6 @@ function filterPOSByCategory(cat) {
     ? allProducts.filter(p => p.is_component !== 1 && p.category === cat)
     : allProducts.filter(p => p.is_component !== 1);
   renderPOSProducts(filtered, 1);
-}
-
-function onPosFloorChange() {
-  const floorId = $c('pos-floor').value;
-  const tableSelect = $c('pos-table');
-  if (!tableSelect) return;
-
-  const filteredTables = _posAllTables.filter(t =>
-    (!floorId || t.floor_id == floorId) &&
-    (t.status === 'available' || t.status === 'reserved')
-  );
-
-  tableSelect.innerHTML = `
-    <option value="">-- Select Table --</option>
-    ${filteredTables.map(t => `<option value="${t.id}">${t.table_number} (${t.status})</option>`).join('')}
-  `;
 }
 
 function renderPOSProducts(products, requestedPage = 1) {
@@ -6128,6 +6210,11 @@ async function checkout(status = 'completed') {
     guest_count = 1;
     customer_name = '';
     customer_phone = '';
+    if (!table_id) {
+      resetPOSCheckoutSubmission(status, isEditing);
+      toast('Please choose a table for this dine-in order', 'error');
+      return renderPOSTableSelection();
+    }
   } else if (orderType === 'delivery') {
     delivery_address = $c('pos-delivery-addr')?.value.trim() || '';
     rider_id = parseInt($c('pos-rider')?.value) || null;

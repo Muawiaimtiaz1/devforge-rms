@@ -210,6 +210,7 @@ if (require.main === module) {
       require("./db/db");
     }
     await require('./authorization/service').ensureAuthorizationSchema();
+    await require('./services/PushNotificationService').ensureSchema();
     startServer();
   })();
 }

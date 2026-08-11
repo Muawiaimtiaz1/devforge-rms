@@ -1,0 +1,14 @@
+{
+  "id": "/dashboard",
+  "name": "Restaurant Management System",
+  "short_name": "RMS",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "description": "Restaurant orders, POS and kitchen management.",
+  "icons": [
+    { "src": "/uploads/devforge_os.png", "sizes": "any", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

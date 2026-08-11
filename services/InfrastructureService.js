@@ -1,4 +1,6 @@
 const db = require('../db/knex');
+const notificationService = require('./NotificationService');
+const pushNotificationService = require('./PushNotificationService');
 let kitchenSchemaReady;
 
 async function ensureKitchenWorkflowSchema() {
@@ -137,12 +139,42 @@ class InfrastructureService {
       return;
     }
 
+    const sale = status === 'ready'
+      ? await db('sales').where({ id: saleId, shop_id: shopId }).first()
+      : null;
     const updateData = { order_status: status };
     if (status === 'preparing') updateData.preparing_at = db.fn.now();
     if (status === 'ready') updateData.kitchen_completed_at = db.fn.now();
     await db('sales')
       .where({ id: saleId, shop_id: shopId })
       .update(updateData);
+
+    if (status === 'ready' && sale?.user_id && !['ready', 'completed'].includes(sale.order_status)) {
+      const payload = {
+        shop_id: shopId,
+        target_user_id: sale.user_id,
+        type: 'system',
+        priority: 'high',
+        title: `Order #${saleId} is ready`,
+        message: `Kitchen has completed order #${saleId}.`,
+        action_label: 'View order',
+        action_url: '/dashboard',
+        status: 'active',
+      };
+      try {
+        await notificationService.create(payload, { id: userId || sale.user_id });
+        await pushNotificationService.sendToUser(sale.user_id, {
+          title: payload.title,
+          body: payload.message,
+          tag: `order-ready-${saleId}`,
+          orderId: saleId,
+          url: '/dashboard',
+          requireInteraction: true,
+        });
+      } catch (error) {
+        console.error('Order ready notification failed:', error.message);
+      }
+    }
   }
 }
 

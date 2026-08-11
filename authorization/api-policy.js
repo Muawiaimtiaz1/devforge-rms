@@ -51,6 +51,7 @@ function actionFor(req, resource) {
 
 function enforceApiPermissions(req, res, next) {
   if (!req.path.startsWith('/api/') || req.path.startsWith('/api/auth/')) return next();
+  if (req.path.startsWith('/api/notifications/push/')) return next();
   // Print agents authenticate using per-job tokens rather than employee sessions.
   if (req.path.startsWith('/api/print-jobs/') || req.path === '/api/download-print-agent') return next();
   const resource = req.path.split('/')[2];
