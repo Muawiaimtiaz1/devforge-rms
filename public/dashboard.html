@@ -4,9 +4,11 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="/uploads/devforge_os.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#4f46e5" />
+    <link rel="stylesheet" href="/css/app-launch.css?v=1.0.0" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>POS System — Dashboard</title>
@@ -486,6 +488,15 @@
 
 <body class="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200 transition-colors duration-300">
 
+    <div id="app-launch-screen" role="status" aria-label="DevForge OS is starting">
+        <div class="app-launch__content">
+            <div class="app-launch__icon-wrap"><img src="/icons/icon-192.png" alt="" class="app-launch__icon" /></div>
+            <div class="app-launch__brand">DevForge <span>OS</span></div>
+            <div class="app-launch__tagline">Restaurant management, refined</div>
+            <div class="app-launch__progress" aria-hidden="true"></div>
+        </div>
+    </div>
+
     <aside id="saas-command-sidebar"
         class="saas-command-sidebar fixed left-0 top-0 z-40 h-screen w-[86px] p-4 flex-col items-center gap-4 bg-gray-50/95 dark:bg-gray-950/95 border-r border-slate-200/70 dark:border-slate-800/80 backdrop-blur-xl">
         <div class="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto hide-scrollbar pb-1">
@@ -751,6 +762,7 @@
     <script src="/js/kitchen.js?v=1.2.6"></script>
     <script src="/js/products/product-image-tools.js?v=1.0.0"></script>
     <script src="/js/app.js?v=1.0.34"></script>
-    <script src="/js/pwa.js?v=1.0.3"></script>
+    <script src="/js/pwa.js?v=1.0.4"></script>
+    <script src="/js/app-launch.js?v=1.0.0"></script>
 </body>
 </html>

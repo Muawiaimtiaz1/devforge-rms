@@ -87,6 +87,14 @@ class PushNotificationService {
       .orderBy('updated_at', 'desc');
   }
 
+  async hasDeviceEndpoint(userId, endpoint) {
+    if (!endpoint) return false;
+    const row = await db('push_subscriptions')
+      .where({ user_id: userId, endpoint, enabled: true })
+      .first('id');
+    return !!row;
+  }
+
   async sendToUser(userId, payload) {
     await this.ensureSchema();
     const rows = await db('push_subscriptions').where({ user_id: userId, enabled: true });

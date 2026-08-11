@@ -7,8 +7,8 @@ self.addEventListener('push', event => {
   const title = data.title || 'RMS notification';
   const options = {
     body: data.body || '',
-    icon: '/uploads/devforge_os.png',
-    badge: '/uploads/devforge_os.png',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-96.png',
     tag: data.tag || 'rms-notification',
     renotify: true,
     requireInteraction: Boolean(data.requireInteraction),

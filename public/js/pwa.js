@@ -36,6 +36,29 @@ function urlBase64ToUint8Array(value) {
   return Uint8Array.from(atob(base64), char => char.charCodeAt(0));
 }
 
+function pushKeysMatch(subscription, publicKey) {
+  const currentKey = subscription?.options?.applicationServerKey;
+  if (!currentKey) return true;
+  const expected = urlBase64ToUint8Array(publicKey);
+  const actual = new Uint8Array(currentKey);
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+
+async function ensureRMSPushSubscription(registration, publicKey) {
+  let subscription = await registration.pushManager.getSubscription();
+  if (subscription && !pushKeysMatch(subscription, publicKey)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
+  return subscription;
+}
+
 async function enableRMSNotifications() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push notifications are not supported on this device.');
   const permission = await Notification.requestPermission();
@@ -44,8 +67,7 @@ async function enableRMSNotifications() {
   const keyResponse = await fetch('/api/notifications/push/public-key');
   if (!keyResponse.ok) throw new Error('Could not load notification configuration.');
   const { publicKey } = await keyResponse.json();
-  let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+  const subscription = await ensureRMSPushSubscription(registration, publicKey);
   const response = await fetch('/api/notifications/push/subscribe', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subscription: subscription.toJSON(), device_name: navigator.userAgent }),
@@ -62,13 +84,7 @@ async function syncRMSPushSubscription() {
   const keyResponse = await fetch('/api/notifications/push/public-key');
   if (!keyResponse.ok) return;
   const { publicKey } = await keyResponse.json();
-  let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    });
-  }
+  const subscription = await ensureRMSPushSubscription(registration, publicKey);
   const response = await fetch('/api/notifications/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -103,11 +119,23 @@ async function loadRMSPushStatus(errorMessage = '') {
     return;
   }
   try {
-    const response = await fetch('/api/notifications/push/status');
+    const permission = 'Notification' in window ? Notification.permission : 'unsupported';
+    const registration = 'serviceWorker' in navigator ? await navigator.serviceWorker.ready : null;
+    const subscription = registration ? await registration.pushManager.getSubscription() : null;
+    const params = new URLSearchParams();
+    if (subscription?.endpoint) params.set('endpoint', subscription.endpoint);
+    const response = await fetch(`/api/notifications/push/status?${params.toString()}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Status check failed');
-    box.className = `p-3 rounded-xl text-sm font-bold ${data.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`;
-    box.textContent = data.enabled ? `Registered: ${data.devices.length} notification device(s)` : 'Not registered for RMS notifications';
+    const healthy = permission === 'granted' && !!subscription && data.current_device;
+    box.className = `p-3 rounded-xl text-sm font-bold ${healthy ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`;
+    box.textContent = healthy
+      ? `This device is active. ${data.devices.length} registered device(s) on your account.`
+      : permission === 'denied'
+        ? 'Notifications are blocked in this phone/browser settings.'
+        : permission !== 'granted'
+          ? 'Notification permission is not enabled on this device.'
+          : 'Permission is enabled, but this device needs to be registered again.';
   } catch (error) {
     box.className = 'p-3 rounded-xl bg-rose-50 text-rose-700 text-sm font-bold';
     box.textContent = error.message;
@@ -152,4 +180,18 @@ if ('serviceWorker' in navigator) {
     if (typeof updateNotificationTopbarBadge === 'function') updateNotificationTopbarBadge();
   });
 }
+let rmsPushSyncInFlight = false;
+async function reconcileRMSPushSubscription() {
+  if (rmsPushSyncInFlight || document.visibilityState === 'hidden') return;
+  rmsPushSyncInFlight = true;
+  try { await syncRMSPushSubscription(); }
+  catch (error) { console.error('Notification reconciliation failed:', error); }
+  finally { rmsPushSyncInFlight = false; }
+}
+window.addEventListener('online', reconcileRMSPushSubscription);
+window.addEventListener('focus', reconcileRMSPushSubscription);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') reconcileRMSPushSubscription();
+});
+setInterval(reconcileRMSPushSubscription, 15 * 60 * 1000);
 document.addEventListener('DOMContentLoaded', refreshPWAButton);

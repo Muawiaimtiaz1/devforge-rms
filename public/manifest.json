@@ -1,14 +1,17 @@
 {
   "id": "/dashboard",
-  "name": "Restaurant Management System",
-  "short_name": "RMS",
+  "name": "DevForge OS Restaurant Management",
+  "short_name": "DevForge OS",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
+  "background_color": "#ffffff",
   "theme_color": "#4f46e5",
   "description": "Restaurant orders, POS and kitchen management.",
   "icons": [
-    { "src": "/uploads/devforge_os.png", "sizes": "any", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

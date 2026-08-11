@@ -4,7 +4,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/uploads/devforge_os.png" />
+  <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/css/app-launch.css?v=1.0.0" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>POS System — Professional Inventory Management</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -73,11 +79,48 @@
       -webkit-box-shadow: 0 0 0 1000px #1e293b inset !important;
       -webkit-text-fill-color: #f8fafc !important;
     }
+
+    @media (max-width: 767px) {
+      .animated-bg {
+        background: radial-gradient(circle at 50% 8%, rgba(15, 23, 42, 0.06), transparent 34%), #ffffff;
+      }
+
+      .mobile-login-shell {
+        min-height: 100dvh;
+        border: 0;
+        border-radius: 0;
+        background: linear-gradient(180deg, #ffffff, #f8fafc);
+      }
+
+      .dark .mobile-login-shell {
+        background: linear-gradient(180deg, #ffffff, #f8fafc);
+        color: #0f172a;
+        border-color: transparent;
+      }
+
+      .mobile-login-shell label {
+        color: #475569 !important;
+      }
+
+      .dark .mobile-login-shell input {
+        background: #ffffff !important;
+        color: #0f172a !important;
+      }
+    }
   </style>
 </head>
 
 <body
-  class="min-h-screen flex items-center justify-center font-sans antialiased text-slate-900 dark:text-slate-100 overflow-hidden relative selection:bg-indigo-500/30">
+  class="min-h-screen flex items-center justify-center font-sans antialiased text-slate-900 dark:text-slate-100 overflow-x-hidden md:overflow-hidden relative selection:bg-indigo-500/30">
+
+  <div id="app-launch-screen" role="status" aria-label="DevForge OS is starting">
+    <div class="app-launch__content">
+      <div class="app-launch__icon-wrap"><img src="/icons/icon-192.png" alt="" class="app-launch__icon" /></div>
+      <div class="app-launch__brand">DevForge <span>OS</span></div>
+      <div class="app-launch__tagline">Restaurant management, refined</div>
+      <div class="app-launch__progress" aria-hidden="true"></div>
+    </div>
+  </div>
 
   <!-- Premium Background -->
   <div class="animated-bg">
@@ -85,7 +128,7 @@
 
   <!-- Theme Toggle -->
   <button onclick="toggleTheme()"
-    class="fixed top-6 right-6 md:right-8 z-50 p-3 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all hover:scale-105 active:scale-95">
+    class="fixed top-4 right-4 md:top-6 md:right-8 z-50 p-3 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg text-slate-600 dark:text-slate-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-slate-500/30 transition-all hover:scale-105 active:scale-95">
     <svg id="theme-icon-sun" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
         d="M12 3v1m0 16v1m9-9h-1M4 9h-1m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -98,15 +141,15 @@
 
   <!-- Main Container Layout -->
   <div
-    class="z-20 w-full max-w-5xl flex flex-col md:flex-row rounded-[2rem] glass-panel shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.8)] mx-4 md:h-[600px] animate-fade-in relative border">
+    class="mobile-login-shell z-20 w-full max-w-5xl flex flex-col md:flex-row md:rounded-[2rem] glass-panel shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.8)] md:mx-4 md:h-[600px] animate-fade-in relative border">
 
     <!-- Left Side: Branding / Value Prop -->
     <div
-      class="w-full md:w-5/12 p-8 md:p-12 border-b md:border-b-0 md:border-r border-slate-200/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-900/40 dark:to-slate-900/10 backdrop-blur-sm rounded-t-[2rem] md:rounded-l-[2rem] md:rounded-tr-none z-10">
+      class="w-full md:w-5/12 px-6 pt-14 pb-3 md:p-12 border-b-0 md:border-r border-slate-200/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden bg-transparent md:bg-gradient-to-br md:from-white/40 md:to-white/10 dark:md:from-slate-900/40 dark:md:to-slate-900/10 backdrop-blur-sm md:rounded-l-[2rem] z-10">
 
-      <div class="relative z-10 flex items-center gap-4 mb-8 md:mb-0">
-        <img src="/uploads/devforge_os.png" alt="DevForge OS Logo" class="h-14 w-auto" />
-        <span class="text-2xl font-black tracking-tighter text-slate-900 dark:text-white uppercase">
+      <div class="relative z-10 flex flex-col md:flex-row items-center gap-3 md:gap-4 mb-3 md:mb-0 text-center md:text-left">
+        <img src="/icons/icon-192.png" alt="DevForge OS Logo" class="h-20 w-20 md:h-16 md:w-16 rounded-[1.4rem] shadow-2xl shadow-violet-950/50" />
+        <span class="text-2xl font-black tracking-tighter text-slate-900 dark:text-slate-900 md:dark:text-white uppercase">
           DevForge<span class="text-indigo-600 dark:text-indigo-400"> OS</span>
         </span>
       </div>
@@ -147,11 +190,11 @@
 
     <!-- Right Side: Login Form -->
     <div
-      class="w-full md:w-7/12 p-8 md:p-16 flex flex-col justify-center bg-white/50 dark:bg-slate-900/40 rounded-b-[2rem] md:rounded-r-[2rem] md:rounded-bl-none z-20">
+      class="w-full md:w-7/12 px-6 pt-3 pb-8 md:p-16 flex flex-col justify-center bg-transparent md:bg-white/50 dark:md:bg-slate-900/40 md:rounded-r-[2rem] z-20">
       <div class="max-w-sm w-full mx-auto">
         <div class="mb-8 text-center md:text-left">
-          <h3 class="text-2xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">Welcome back</h3>
-          <p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Please enter your credentials to access the
+          <h3 class="text-2xl font-extrabold text-slate-900 dark:text-slate-900 md:dark:text-white mb-2 tracking-tight">Welcome back</h3>
+          <p class="text-slate-400 text-sm font-medium">Please enter your credentials to access the
             system.</p>
         </div>
 
@@ -231,6 +274,7 @@
     </div>
   </div>
 
+  <script src="/js/app-launch.js?v=1.0.0"></script>
   <script>
     let loginRedirectInProgress = false;
 

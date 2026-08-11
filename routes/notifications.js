@@ -14,7 +14,8 @@ router.get('/push/public-key', requireAuth, async (req, res) => {
 router.get('/push/status', requireAuth, async (req, res) => {
   await pushNotificationService.ensureSchema();
   const devices = await pushNotificationService.listDevices(req.session.user.id);
-  res.json({ enabled: devices.length > 0, devices });
+  const currentDevice = await pushNotificationService.hasDeviceEndpoint(req.session.user.id, req.query.endpoint);
+  res.json({ enabled: devices.length > 0, current_device: currentDevice, devices });
 });
 
 router.post('/push/subscribe', requireAuth, async (req, res) => {
