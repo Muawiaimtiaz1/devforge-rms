@@ -1091,21 +1091,11 @@ async function renderUsers() {
 
 function userFormHtml(u = {}) {
   const isMaster = currentUser.role === "superadmin";
-  const customPermissionKeys = u.permission_keys || [];
-  const permissionModules = [...new Set(_rbacPermissionCatalog.map(permission => permission.module).filter(module => !module.startsWith('platform_')))];
+  const assignedRoleId = Number((u.roles || [])[0]?.id || 0);
 
   return `
     <div class="space-y-4">
-      ${_rbacRoles.length ? `<div><label class="block text-xs text-slate-500 mb-2 font-bold">Assigned role(s)</label><div class="grid grid-cols-2 gap-2">${_rbacRoles.map(role => `<label class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold"><input class="uf-role-id mr-2" type="checkbox" value="${role.id}" ${(u.roles || []).some(r => Number(r.id) === Number(role.id)) ? 'checked' : ''}>${role.name}</label>`).join('')}</div></div>` : ''}
-      ${permissionModules.length ? `<div class="rounded-2xl border border-indigo-200 dark:border-indigo-900 p-4">
-        <label class="flex items-center gap-3 font-black text-sm"><input id="uf-use-custom-permissions" type="checkbox" ${u.use_custom_permissions ? 'checked' : ''}> Customize this employee's exact access</label>
-        <p class="text-xs text-slate-500 mt-1 mb-4">When enabled, only the actions checked below are allowed. Role permissions are replaced for this employee.</p>
-        <div id="uf-permission-store" class="hidden">${_rbacPermissionCatalog.map(permission => `<input class="uf-permission-key" type="checkbox" value="${permission.key}" ${customPermissionKeys.includes(permission.key) ? 'checked' : ''}>`).join('')}</div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${permissionModules.map(module => {
-          const count = _rbacPermissionCatalog.filter(permission => permission.module === module && customPermissionKeys.includes(permission.key)).length;
-          return `<button type="button" onclick="openEmployeePermissionPanel('${module}')" class="p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-left hover:border-indigo-500 transition-all"><span class="block text-xs font-black capitalize">${module.replace(/_/g, ' ')}</span><span id="permission-count-${module}" class="text-[10px] text-indigo-500">${count} selected</span></button>`;
-        }).join('')}</div>
-      </div>` : ''}
+      ${u.role !== 'superadmin' ? `<div><label class="block text-xs text-slate-500 mb-2 font-bold">Role *</label><select id="uf-role-id" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"><option value="">Select a role</option>${_rbacRoles.map((role, index) => `<option value="${role.id}" ${assignedRoleId === Number(role.id) || (!assignedRoleId && index === 0) ? 'selected' : ''}>${role.name}</option>`).join('')}</select><p class="mt-1 text-xs text-slate-500">Permissions are inherited automatically from this role. Change them in Roles & Permissions.</p></div>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="sm:col-span-2 lg:col-span-1">
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Full Name *</label>
@@ -1127,24 +1117,7 @@ function userFormHtml(u = {}) {
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Email</label>
           <input id="uf-email" value="${u.email || ""}" ${!isMaster ? "readonly" : ""} type="email" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm" placeholder="user@example.com" />
         </div>
-        ${u.role === "superadmin" || !isMaster
-      ? `<input type="hidden" id="uf-role" value="${u.role || "pos_user"}" />`
-      : `
-        <div>
-          <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Role</label>
-          <select id="uf-role" onchange="toggleUserPanelPicker(this.value)" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm">
-            <option value="user" ${u.role === "user" ? "selected" : ""}>General Staff</option>
-            <option value="pos_user" ${u.role === "pos_user" ? "selected" : ""}>POS Operator</option>
-            <option value="waiter" ${u.role === "waiter" ? "selected" : ""}>Waiter / Server</option>
-            <option value="rider" ${u.role === "rider" ? "selected" : ""}>Rider / Delivery</option>
-            <option value="kitchen" ${u.role === "kitchen" ? "selected" : ""}>Kitchen Terminal</option>
-            <option value="manager" ${u.role === "manager" ? "selected" : ""}>Manager</option>
-            <option value="receptionist" ${u.role === "receptionist" ? "selected" : ""}>Receptionist</option>
-            <option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin / Shop Owner</option>
-          </select>
-        </div>
-        `
-    }
+        <input type="hidden" id="uf-role" value="${u.role || "user"}" />
         <div class="${u.role === "superadmin" || !isMaster ? "hidden" : ""}">
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Status</label>
           <select id="uf-status" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm">
@@ -1333,9 +1306,9 @@ async function saveUser(id) {
     status: $c("uf-status").value,
     shop_id: $c("uf-shop").value,
     can_manage_register: document.getElementById("uf-can-manage-register")?.checked || false,
-    role_ids: Array.from(document.querySelectorAll('.uf-role-id:checked')).map(el => Number(el.value)),
-    use_custom_permissions: !!document.getElementById('uf-use-custom-permissions')?.checked,
-    permission_keys: Array.from(document.querySelectorAll('.uf-permission-key:checked')).map(el => el.value),
+    role_ids: $c('uf-role-id') ? ($c('uf-role-id').value ? [Number($c('uf-role-id').value)] : []) : undefined,
+    use_custom_permissions: false,
+    permission_keys: [],
     allowed_panels:
       $c("uf-role").value === "admin"
         ? []
@@ -1344,6 +1317,7 @@ async function saveUser(id) {
           ).map((el) => el.dataset.id),
   };
   if (!payload.name) return toast("Name required", "error");
+  if ($c('uf-role-id') && !payload.role_ids.length) return toast("Role required", "error");
   if (!id && !payload.password)
     return toast("Password required for new user", "error");
   const r = id
@@ -1357,28 +1331,6 @@ async function saveUser(id) {
   } else {
     renderUsers();
   }
-}
-
-function openEmployeePermissionPanel(module) {
-  const permissions = _rbacPermissionCatalog.filter(permission => permission.module === module);
-  const selected = new Set(Array.from(document.querySelectorAll('.uf-permission-key:checked')).map(el => el.value));
-  const modal = document.createElement('div');
-  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm';
-  modal.innerHTML = `<div class="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-6 shadow-2xl"><div class="flex justify-between items-center mb-5"><div><h3 class="text-xl font-black capitalize">${module.replace(/_/g, ' ')}</h3><p class="text-xs text-slate-500">Select exactly what this employee may do.</p></div><button onclick="this.closest('.fixed').remove()" class="text-2xl text-slate-400">&times;</button></div><div class="space-y-2">${permissions.map(permission => `<label class="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700"><span class="font-bold capitalize text-sm">${permission.action.replace(/_/g, ' ')}</span><input class="permission-popup-check w-5 h-5" type="checkbox" value="${permission.key}" ${selected.has(permission.key) ? 'checked' : ''}></label>`).join('')}</div><button onclick="applyEmployeePermissionPanel('${module}', this)" class="w-full mt-5 py-3 rounded-xl bg-indigo-600 text-white font-black">Apply Access</button></div>`;
-  document.body.appendChild(modal);
-}
-
-function applyEmployeePermissionPanel(module, button) {
-  const modal = button.closest('.fixed');
-  const chosen = new Set(Array.from(modal.querySelectorAll('.permission-popup-check:checked')).map(el => el.value));
-  document.querySelectorAll('.uf-permission-key').forEach(input => {
-    if (input.value.startsWith(`${module}.`)) input.checked = chosen.has(input.value);
-  });
-  const count = document.getElementById(`permission-count-${module}`);
-  if (count) count.textContent = `${chosen.size} selected`;
-  const customToggle = document.getElementById('uf-use-custom-permissions');
-  if (customToggle) customToggle.checked = true;
-  modal.remove();
 }
 
 function rolePermissionGroups(selected = []) {

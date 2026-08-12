@@ -118,12 +118,6 @@ async function getUserPermissions(user) {
   if (!user) return [];
   if (user.role === 'superadmin') return ALL_PERMISSION_KEYS;
   await ensureAuthorizationSchema();
-  const fresh = await db('users').select('use_custom_permissions').where({ id: user.id }).first();
-  if (fresh?.use_custom_permissions) {
-    const customRows = await db('user_permissions as up').join('permissions as p', 'p.id', 'up.permission_id')
-      .where('up.user_id', user.id).distinct('p.key');
-    return customRows.map(row => row.key);
-  }
   const rows = await db('user_roles as ur')
     .join('role_permissions as rp', 'rp.role_id', 'ur.role_id')
     .join('permissions as p', 'p.id', 'rp.permission_id')

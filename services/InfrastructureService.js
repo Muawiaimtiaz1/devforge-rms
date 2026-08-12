@@ -242,31 +242,48 @@ class InfrastructureService {
       .where({ id: saleId, shop_id: shopId })
       .update(updateData);
 
-    if (status === 'ready' && sale?.user_id && !['ready', 'completed'].includes(sale.order_status)) {
-      const payload = {
-        shop_id: shopId,
-        target_user_id: sale.user_id,
-        type: 'system',
-        priority: 'high',
-        title: `Order #${saleId} is ready`,
-        message: `Kitchen has completed order #${saleId}.`,
-        action_label: 'View order',
-        action_url: '/dashboard',
-        status: 'active',
-      };
-      try {
-        await notificationService.create(payload, { id: userId || sale.user_id });
-        await pushNotificationService.sendToUser(sale.user_id, {
-          title: payload.title,
-          body: payload.message,
-          tag: `order-ready-${saleId}`,
-          orderId: saleId,
-          url: '/dashboard',
-          requireInteraction: true,
-        });
-      } catch (error) {
-        console.error('Order ready notification failed:', error.message);
-      }
+    if (status === 'ready' && sale && !['ready', 'completed'].includes(sale.order_status)) {
+      // The creator owns the in-shop workflow, while waiter_id identifies the
+      // assigned waiter/order taker. Notify both without creating duplicates.
+      const recipientIds = [...new Set([sale.user_id, sale.waiter_id].filter(Boolean).map(Number))];
+      const table = sale.table_id ? await db('tables').where({ id: sale.table_id, shop_id: shopId }).first() : null;
+      const context = table ? ` for Table ${table.table_number}` : '';
+      const title = `Order #${saleId} completed by kitchen`;
+      const message = `Order #${saleId}${context} is ready to serve.`;
+
+      await Promise.all(recipientIds.map(async targetUserId => {
+        try {
+          await notificationService.create({
+            shop_id: shopId,
+            target_user_id: targetUserId,
+            type: 'system',
+            priority: 'high',
+            title,
+            message,
+            action_label: 'View order',
+            action_url: '/dashboard',
+            status: 'active',
+          }, { id: userId || sale.user_id || targetUserId });
+        } catch (error) {
+          console.error(`Order ready in-app notification failed for user ${targetUserId}:`, error.message);
+          return;
+        }
+
+        // Background device push is optional; the in-app notification above
+        // works even when the user has not granted Android notification access.
+        try {
+          await pushNotificationService.sendToUser(targetUserId, {
+            title,
+            body: message,
+            tag: `order-ready-${saleId}-${targetUserId}`,
+            orderId: saleId,
+            url: '/dashboard',
+            requireInteraction: true,
+          });
+        } catch (error) {
+          console.error(`Order ready device push failed for user ${targetUserId}:`, error.message);
+        }
+      }));
     }
   }
 }

@@ -20,6 +20,24 @@ const userSchema = z.object({
 });
 
 class UserService {
+  legacyRoleForAssignedRole(roleName, fallback = 'user') {
+    const normalized = String(roleName || '').trim().toLowerCase();
+    const mapping = {
+      'restaurant admin': 'admin', admin: 'admin', manager: 'manager', cashier: 'pos_user',
+      waiter: 'waiter', 'order taker': 'order_taker', kitchen: 'kitchen', rider: 'rider',
+      receptionist: 'receptionist', accountant: 'user', 'inventory staff': 'user'
+    };
+    return mapping[normalized] || fallback || 'user';
+  }
+
+  async resolveSingleRole(trx, shopId, roleIds) {
+    const roleId = Number(Array.isArray(roleIds) ? roleIds[0] : roleIds);
+    if (!Number.isInteger(roleId)) throw new Error('Please assign a role to this user.');
+    const role = await trx('roles').where({ id: roleId, shop_id: shopId }).first();
+    if (!role) throw new Error('Selected role is not available for this shop.');
+    return role;
+  }
+
   async listUsers(currentUser) {
     const isSuper = currentUser.role === 'superadmin';
     
@@ -54,18 +72,19 @@ class UserService {
     const targetShopId = currentUser.role === 'superadmin' ? (data.shop_id || null) : currentUser.shop_id;
 
     const [idObj] = await db.transaction(async (trx) => {
+      const assignedRole = await this.resolveSingleRole(trx, targetShopId, data.role_ids);
       const [newId] = await trx('users').insert({
         name: data.name,
         email: data.email,
         phone: data.phone,
         username: data.username,
         password_hash: hash,
-        role: data.role,
+        role: this.legacyRoleForAssignedRole(assignedRole.name, data.role),
         status: data.status,
         allowed_panels: JSON.stringify(data.allowed_panels || []),
         shop_id: targetShopId,
         can_manage_register: data.can_manage_register || false,
-        use_custom_permissions: !!data.use_custom_permissions
+        use_custom_permissions: false
       }).returning('id');
 
       const uid = typeof newId === 'object' ? newId.id : newId;
@@ -74,14 +93,7 @@ class UserService {
         await trx('shops').where({ id: targetShopId }).increment('user_count', 1);
       }
 
-      if (data.role_ids?.length) {
-        const validRoles = await trx('roles').where({ shop_id: targetShopId }).whereIn('id', data.role_ids).select('id');
-        await trx('user_roles').insert(validRoles.map((role) => ({ user_id: uid, role_id: role.id })));
-      }
-      if (data.use_custom_permissions && data.permission_keys?.length) {
-        const permissions = await trx('permissions').whereIn('key', data.permission_keys).select('id');
-        await trx('user_permissions').insert(permissions.map(permission => ({ user_id: uid, permission_id: permission.id })));
-      }
+      await trx('user_roles').insert({ user_id: uid, role_id: assignedRole.id });
 
       return [uid];
     });
@@ -105,7 +117,7 @@ class UserService {
       if (payload.status) updatable.status = payload.status;
       if (payload.password) updatable.password_hash = bcrypt.hashSync(payload.password, 10);
       if (payload.hasOwnProperty('can_manage_register')) updatable.can_manage_register = !!payload.can_manage_register;
-      if (payload.hasOwnProperty('use_custom_permissions')) updatable.use_custom_permissions = !!payload.use_custom_permissions;
+      updatable.use_custom_permissions = false;
       
       if (Object.keys(updatable).length > 0) {
         updatable.updated_at = db.fn.now();
@@ -114,13 +126,14 @@ class UserService {
         throw new Error('No valid fields provided for update.');
       }
       if (Array.isArray(payload.role_ids)) {
-        const validRoles = await db('roles').where({ shop_id: currentUser.shop_id }).whereIn('id', payload.role_ids).select('id');
         await db.transaction(async (trx) => {
+          const assignedRole = await this.resolveSingleRole(trx, currentUser.shop_id, payload.role_ids);
           await trx('user_roles').where({ user_id: userId }).del();
-          if (validRoles.length) await trx('user_roles').insert(validRoles.map((role) => ({ user_id: Number(userId), role_id: role.id })));
+          await trx('user_roles').insert({ user_id: Number(userId), role_id: assignedRole.id });
+          await trx('user_permissions').where({ user_id: userId }).del();
+          await trx('users').where({ id: userId }).update({ role: this.legacyRoleForAssignedRole(assignedRole.name, userToEdit.role), use_custom_permissions: false });
         });
       }
-      if (Array.isArray(payload.permission_keys)) await this.replaceUserPermissions(userId, payload.permission_keys);
       return;
     }
 
@@ -145,7 +158,7 @@ class UserService {
       status: isSuper ? 'active' : (data.status || userToEdit.status),
       allowed_panels: JSON.stringify(data.allowed_panels || JSON.parse(userToEdit.allowed_panels || '[]')),
       can_manage_register: data.hasOwnProperty('can_manage_register') ? data.can_manage_register : userToEdit.can_manage_register,
-      use_custom_permissions: data.hasOwnProperty('use_custom_permissions') ? data.use_custom_permissions : userToEdit.use_custom_permissions,
+      use_custom_permissions: false,
       updated_at: db.fn.now()
     };
 
@@ -160,14 +173,11 @@ class UserService {
       await trx('users').where({ id: userId }).update(updateData);
 
       if (Array.isArray(data.role_ids)) {
-        const validRoles = await trx('roles').where({ shop_id: newShopId }).whereIn('id', data.role_ids).select('id');
+        const assignedRole = await this.resolveSingleRole(trx, newShopId, data.role_ids);
         await trx('user_roles').where({ user_id: userId }).del();
-        if (validRoles.length) await trx('user_roles').insert(validRoles.map((role) => ({ user_id: Number(userId), role_id: role.id })));
-      }
-      if (Array.isArray(data.permission_keys)) {
-        const permissions = await trx('permissions').whereIn('key', data.permission_keys).select('id');
         await trx('user_permissions').where({ user_id: userId }).del();
-        if (permissions.length) await trx('user_permissions').insert(permissions.map(permission => ({ user_id: Number(userId), permission_id: permission.id })));
+        await trx('user_roles').insert({ user_id: Number(userId), role_id: assignedRole.id });
+        if (!isSuper) await trx('users').where({ id: userId }).update({ role: this.legacyRoleForAssignedRole(assignedRole.name, updateData.role), use_custom_permissions: false });
       }
 
       if (oldShopId !== newShopId) {
