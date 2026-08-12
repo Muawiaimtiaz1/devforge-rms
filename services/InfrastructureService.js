@@ -50,6 +50,46 @@ async function ensureKitchenWorkflowSchema() {
 }
 
 class InfrastructureService {
+  async notifyOrderReady(sale, saleId, shopId, userId) {
+    const recipientIds = [...new Set([sale.user_id, sale.waiter_id].filter(Boolean).map(Number))];
+    const table = sale.table_id ? await db('tables').where({ id: sale.table_id, shop_id: shopId }).first() : null;
+    const context = table ? ` for Table ${table.table_number}` : '';
+    const title = `Order #${saleId} completed by kitchen`;
+    const message = `Order #${saleId}${context} is ready to serve.`;
+
+    await Promise.all(recipientIds.map(async targetUserId => {
+      try {
+        await notificationService.create({
+          shop_id: shopId,
+          target_user_id: targetUserId,
+          type: 'system',
+          priority: 'high',
+          title,
+          message,
+          action_label: 'View order',
+          action_url: '/dashboard',
+          status: 'active',
+        }, { id: userId || sale.user_id || targetUserId });
+      } catch (error) {
+        console.error(`Order ready in-app notification failed for user ${targetUserId}:`, error.message);
+        return;
+      }
+
+      try {
+        await pushNotificationService.sendToUser(targetUserId, {
+          title,
+          body: message,
+          tag: `order-ready-${saleId}-${targetUserId}`,
+          orderId: saleId,
+          url: '/dashboard',
+          requireInteraction: true,
+        });
+      } catch (error) {
+        console.error(`Order ready device push failed for user ${targetUserId}:`, error.message);
+      }
+    }));
+  }
+
   // --- Floors ---
   async listFloors(shopId) {
     return db('floors').where({ shop_id: shopId }).orderBy('id', 'asc');
@@ -329,52 +369,16 @@ class InfrastructureService {
     const updateData = { order_status: status };
     if (status === 'preparing') updateData.preparing_at = db.fn.now();
     if (status === 'ready') updateData.kitchen_completed_at = db.fn.now();
-    await db('sales')
-      .where({ id: saleId, shop_id: shopId })
-      .update(updateData);
+    const statusUpdateQuery = db('sales').where({ id: saleId, shop_id: shopId });
+    if (status === 'ready') statusUpdateQuery.whereNotIn('order_status', ['ready', 'served', 'completed']);
+    const promotedCount = await statusUpdateQuery.update(updateData);
 
-    if (status === 'ready' && sale && !['ready', 'completed'].includes(sale.order_status)) {
-      // The creator owns the in-shop workflow, while waiter_id identifies the
-      // assigned waiter/order taker. Notify both without creating duplicates.
-      const recipientIds = [...new Set([sale.user_id, sale.waiter_id].filter(Boolean).map(Number))];
-      const table = sale.table_id ? await db('tables').where({ id: sale.table_id, shop_id: shopId }).first() : null;
-      const context = table ? ` for Table ${table.table_number}` : '';
-      const title = `Order #${saleId} completed by kitchen`;
-      const message = `Order #${saleId}${context} is ready to serve.`;
-
-      await Promise.all(recipientIds.map(async targetUserId => {
-        try {
-          await notificationService.create({
-            shop_id: shopId,
-            target_user_id: targetUserId,
-            type: 'system',
-            priority: 'high',
-            title,
-            message,
-            action_label: 'View order',
-            action_url: '/dashboard',
-            status: 'active',
-          }, { id: userId || sale.user_id || targetUserId });
-        } catch (error) {
-          console.error(`Order ready in-app notification failed for user ${targetUserId}:`, error.message);
-          return;
-        }
-
-        // Background device push is optional; the in-app notification above
-        // works even when the user has not granted Android notification access.
-        try {
-          await pushNotificationService.sendToUser(targetUserId, {
-            title,
-            body: message,
-            tag: `order-ready-${saleId}-${targetUserId}`,
-            orderId: saleId,
-            url: '/dashboard',
-            requireInteraction: true,
-          });
-        } catch (error) {
-          console.error(`Order ready device push failed for user ${targetUserId}:`, error.message);
-        }
-      }));
+    if (status === 'ready' && sale && promotedCount > 0) {
+      // Notification persistence and device delivery must never delay the KDS
+      // status response. The atomic promotion above ensures this runs once even
+      // when two kitchens finish at nearly the same time.
+      setImmediate(() => this.notifyOrderReady(sale, saleId, shopId, userId)
+        .catch(error => console.error(`Order #${saleId} ready notification failed:`, error.message)));
     }
   }
 }
