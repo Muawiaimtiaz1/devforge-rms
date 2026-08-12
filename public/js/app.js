@@ -4532,7 +4532,7 @@ async function renderPOSOrders() {
       const paymentBadge = paymentPaid
         ? '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">Paid</span>'
         : '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider">Unpaid</span>';
-      const canMarkServed = Number(s.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist';
+      const canMarkServed = Number(s.user_id) === Number(currentUser?.id) || Number(s.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist';
       const primaryAction = s.order_type === 'dine_in' && s.order_status === 'ready' && canMarkServed
         ? `<button onclick="markOrderServed(${s.id})" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white font-bold text-[10px] uppercase hover:bg-violet-500 transition-all shadow-sm">Mark Served</button>`
         : s.order_type === 'delivery' && s.order_status !== 'ready'
@@ -4636,7 +4636,7 @@ function renderActiveOrderCard(order) {
     <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
       ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${order.id})" class="flex-1 min-w-[120px] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black">Order Details</button>` : ''}
       ${currentUserHasPermission('orders.update') ? `<button onclick="editOrder(${order.id})" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-black">Edit</button>` : ''}
-      ${order.order_type === 'dine_in' && order.order_status === 'ready' && (Number(order.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist') ? `<button onclick="markOrderServed(${order.id})" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">Mark Served</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
+      ${order.order_type === 'dine_in' && order.order_status === 'ready' && (Number(order.user_id) === Number(currentUser?.id) || Number(order.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist') ? `<button onclick="markOrderServed(${order.id})" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">Mark Served</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
     </div>
   </article>`;
 }

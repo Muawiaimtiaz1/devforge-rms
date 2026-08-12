@@ -10,6 +10,20 @@ function pwaIsStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
+function rmsPushPlatformGuidance() {
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!window.isSecureContext) return 'Notifications require a secure HTTPS address. Open the HTTPS version of this app.';
+  if (isIOS && !pwaIsStandalone()) return 'On iPhone/iPad, first use Share → Add to Home Screen, then open DevForge OS from its Home Screen icon and enable notifications there.';
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'This browser does not support web push notifications. Use a current version of Safari on iPhone/iPad or Chrome on Android.';
+  if (Notification.permission === 'denied') {
+    return isIOS
+      ? 'Notifications are blocked. Open iPhone Settings → Notifications → DevForge OS and enable Allow Notifications. If DevForge OS is absent, remove its Home Screen icon, add it again, open it from the icon, and retry.'
+      : 'Notifications are blocked for this site. In Chrome, open this site → Page info → Permissions → Notifications → Allow, then retry.';
+  }
+  return '';
+}
+
 function refreshPWAButton() {
   const button = document.getElementById('pwa-device-btn');
   if (!button) return;
@@ -60,9 +74,10 @@ async function ensureRMSPushSubscription(registration, publicKey) {
 }
 
 async function enableRMSNotifications() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push notifications are not supported on this device.');
+  const blocker = rmsPushPlatformGuidance();
+  if (blocker) throw new Error(blocker);
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') throw new Error('Notification permission was not granted.');
+  if (permission !== 'granted') throw new Error(rmsPushPlatformGuidance() || 'Notification permission was not granted. Open this site’s notification permission and select Allow.');
   const registration = await navigator.serviceWorker.ready;
   const keyResponse = await fetch('/api/notifications/push/public-key');
   if (!keyResponse.ok) throw new Error('Could not load notification configuration.');
@@ -119,6 +134,12 @@ async function loadRMSPushStatus(errorMessage = '') {
     return;
   }
   try {
+    const blocker = rmsPushPlatformGuidance();
+    if (blocker) {
+      box.className = 'p-3 rounded-xl bg-amber-50 text-amber-700 text-sm font-bold';
+      box.textContent = blocker;
+      return;
+    }
     const permission = 'Notification' in window ? Notification.permission : 'unsupported';
     const registration = 'serviceWorker' in navigator ? await navigator.serviceWorker.ready : null;
     const subscription = registration ? await registration.pushManager.getSubscription() : null;
