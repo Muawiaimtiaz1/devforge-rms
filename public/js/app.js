@@ -232,6 +232,7 @@ let _posFloors = [];
 let _posAllTables = [];
 let _posTableSelectionView = "map";
 let _posActiveOrders = [];
+let _posOrdersLoadPromise = null;
 let _expenseCategories = [];
 let _productCategories = [];
 let _kdsOrdersCache = [];
@@ -3508,6 +3509,8 @@ function renderPOSLanding() {
         </div>
       </div>
     </div>`;
+  // Warm the shared POS data while the user chooses an action.
+  void loadPOSBootstrapData();
 }
 
 function currentUserHasPermission(permission) {
@@ -3705,9 +3708,12 @@ async function selectPOSTable(tableId) {
 async function openPOSOrdersView() {
   if (!currentUserHasPermission('orders.view')) return toast('You do not have permission to view orders.', 'error');
   return withAppLoader('Opening orders', 'Loading active dine-in, takeaway, and delivery orders...', async () => {
-    window._posEntryOrderType = 'dine_in';
+    _posOrdersLoadPromise = api('/api/sales').catch(error => {
+      _posOrdersLoadPromise = null;
+      throw error;
+    });
+    window._posEntryOrderType = 'orders';
     await renderPOS();
-    await switchOrderType('orders');
   });
 }
 
@@ -4614,7 +4620,11 @@ async function renderPOSOrders() {
 
   try {
     const deliveryPanel = _currentPage === 'delivery';
-    const sales = await api(deliveryPanel ? '/api/delivery' : '/api/sales');
+    const salesPromise = !deliveryPanel && _posOrdersLoadPromise
+      ? _posOrdersLoadPromise
+      : api(deliveryPanel ? '/api/delivery' : '/api/sales');
+    _posOrdersLoadPromise = null;
+    const sales = await salesPromise;
     // Keep operational states visible until payment/order completion.
     let filteredOrders = (sales || []).filter(s => s.order_status !== 'completed');
     if (deliveryPanel) filteredOrders = filteredOrders.filter(s => s.order_type === 'delivery');
