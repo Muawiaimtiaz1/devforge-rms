@@ -3702,7 +3702,6 @@ async function renderPOS() {
       #pos-cart-controls label select { padding: 0 !important; min-height: 0 !important; }
       #pos-split-scroll-body .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem !important; }
       #pos-split-scroll-body .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.125rem !important; }
-      #pos-split-scroll-body #pos-order-type-selector > div:first-child { display: none; }
       #pos-split-scroll-body #pos-dine-fields:not(.hidden) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem; }
       #pos-split-scroll-body #pos-dine-fields:not(.hidden) > div { margin: 0 !important; }
       #pos-split-scroll-body #pos-dine-fields:not(.hidden) > div:last-child { grid-column: 1 / -1; }
@@ -3716,27 +3715,27 @@ async function renderPOS() {
       <div id="pos-content-grid" class="h-full transition-all ${splitLayout ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] gap-4 items-start' : ''}">
         <!-- Products Panel -->
         <div class="space-y-4 ${splitLayout ? 'min-w-0' : ''}">
-          <div class="flex flex-col sm:flex-row gap-3">
+          <div class="${splitLayout ? 'flex flex-col sm:flex-row gap-3' : 'flex flex-row flex-wrap items-center gap-2'}">
             <input id="pos-search" oninput="filterPOSProducts()" placeholder="Search products…"
-              class="flex-1 h-12 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all shadow-sm" />
+              class="${splitLayout ? '' : 'order-1 min-w-0'} flex-1 h-12 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all shadow-sm" />
             <button type="button" id="pos-orders-toolbar-btn" onclick="switchOrderType('orders')"
-              class="${isRetail ? 'hidden' : 'flex'} h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-black transition-all items-center justify-center gap-2 shrink-0">
+              class="${isRetail ? 'hidden' : 'flex'} ${splitLayout ? '' : 'order-5'} h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-black transition-all items-center justify-center gap-2 shrink-0">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M9 5h6M9 9h6M9 13h4m-7 8h12a2 2 0 002-2V5a2 2 0 00-2-2H8l-4 4v12a2 2 0 002 2z"/></svg>
               <span>Orders</span>
             </button>
-            <div class="${deliveryOnly ? 'hidden' : 'flex'} h-12 items-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shrink-0" aria-label="POS layout">
+            <div class="${deliveryOnly ? 'hidden' : 'flex'} ${splitLayout ? '' : 'order-4'} h-12 items-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shrink-0" aria-label="POS layout">
               <button type="button" onclick="setPOSLayout('cards')" title="Card layout"
                 class="h-9 px-3 rounded-lg text-xs font-black transition-all ${!splitLayout ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}">Cards</button>
               <button type="button" onclick="setPOSLayout('split')" title="Split table and cart layout"
                 class="h-9 px-3 rounded-lg text-xs font-black transition-all ${splitLayout ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}">Table + Cart</button>
             </div>
             <button type="button" id="pos-toolbar-checkout" onclick="openPOSCheckout()"
-              class="${splitLayout ? 'hidden' : 'flex'} h-12 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm shadow-lg shadow-indigo-500/25 transition-all items-center justify-center gap-2 shrink-0">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.6 1.6A1 1 0 006.1 16H18M9 20a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
-              <span>Checkout</span>
-              <span id="pos-checkout-count" class="min-w-6 h-6 px-2 rounded-full bg-white/20 flex items-center justify-center text-[11px]">0</span>
-              <span id="pos-checkout-total" class="hidden md:inline text-xs font-black text-indigo-100">Rs. 0.00</span>
+              class="${splitLayout ? 'hidden' : 'relative order-2 flex'} h-12 min-w-24 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg shadow-indigo-500/25 transition-all items-center justify-center gap-2 shrink-0 active:scale-95" title="Open checkout" aria-label="Open checkout">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.6 1.6A1 1 0 006.1 16H18M9 20a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
+              <span id="pos-checkout-total" class="text-xs font-black text-indigo-50">Rs. 0.00</span>
+              <span id="pos-checkout-count" class="absolute -right-1.5 -top-1.5 min-w-5 h-5 px-1 rounded-full border-2 border-gray-50 dark:border-gray-950 bg-rose-500 flex items-center justify-center text-[10px] leading-none">0</span>
             </button>
+            ${splitLayout ? '' : '<span class="order-3 basis-full h-0" aria-hidden="true"></span>'}
           </div>
           <!-- Category pills -->
           <div id="pos-category-pills" class="flex flex-wrap gap-2">
@@ -3748,7 +3747,7 @@ async function renderPOS() {
         </div>
 
         <!-- Checkout Drawer -->
-        <div id="pos-checkout-backdrop" class="${splitLayout ? 'sticky top-20 block h-[calc(100vh-5rem)] min-h-0 z-0' : 'hidden fixed inset-x-0 top-20 bottom-0 z-40'}" aria-hidden="${splitLayout ? 'false' : 'true'}">
+        <div id="pos-checkout-backdrop" class="${splitLayout ? 'relative block min-h-0 lg:sticky lg:top-20 lg:h-[calc(100vh-5rem)]' : 'hidden fixed inset-x-0 top-20 bottom-0 z-40'}" aria-hidden="${splitLayout ? 'false' : 'true'}">
           <div id="pos-checkout-shade"
             class="${splitLayout ? 'hidden' : 'absolute'} inset-y-0 left-0 right-0 lg:right-[33.333333%] bg-slate-200/90 dark:bg-slate-950/80 backdrop-blur-sm opacity-0 transition-opacity duration-300 flex items-center justify-center p-6 text-center">
             <div class="absolute inset-0 cursor-pointer" onclick="closePOSCheckout()"></div>
@@ -3760,32 +3759,18 @@ async function renderPOS() {
             </div>
           </div>
           <div id="pos-checkout-drawer"
-            class="${splitLayout ? 'relative w-full translate-x-0 rounded-none border overflow-hidden p-1.5' : 'absolute right-0 top-0 w-full sm:w-[440px] md:w-[480px] lg:w-1/3 translate-x-full border-l overflow-y-auto p-4'} h-full bg-white dark:bg-slate-900 flex flex-col shadow-2xl border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-out">
+            class="${splitLayout ? 'relative w-full translate-x-0 rounded-none border overflow-y-auto p-1.5' : 'absolute right-0 top-0 w-full sm:w-[440px] md:w-[480px] lg:w-1/3 translate-x-full border-l overflow-y-auto p-4'} h-full bg-white dark:bg-slate-900 flex flex-col shadow-2xl border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-out">
           <div class="${splitLayout ? 'mb-1 pb-1 hidden' : 'mb-3 pb-3'} flex items-center justify-end gap-3 border-b border-slate-100 dark:border-slate-800">
             <button type="button" onclick="closePOSCheckout()" class="${splitLayout ? 'hidden' : 'flex'} w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 transition-all items-center justify-center" title="Close checkout">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
           
-          <div id="pos-order-type-selector" class="${isRetail || deliveryOnly ? 'hidden' : 'block'} ${splitLayout ? 'mb-1 p-1' : 'mb-3 p-3'} rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40">
-            <div class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Order Type</div>
-            <div class="grid grid-cols-3 ${splitLayout ? 'gap-1' : 'gap-2'}">
-              <button id="otype-dine_in" onclick="startPOSOrder('dine_in')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-indigo-600 text-white font-bold text-xs transition-all">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="13" cy="12" r="6" fill="currentColor" fill-opacity=".2"/><path d="M5 4v7m-2-7v4c0 2 1 3 2 3s2-1 2-3V4m-2 7v9M20 4c-3 2-3 7-1 9h1v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Dine-in</span>
-              </button>
-              <button id="otype-takeaway" onclick="switchOrderType('takeaway')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-slate-500 dark:text-slate-400 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 8h14l-2 12H7L5 8Z" fill="currentColor" fill-opacity=".18"/><path d="M8 8c0-3 1.5-5 4-5s4 2 4 5M5 8h14l-2 12H7L5 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Takeaway</span>
-              </button>
-              <button id="otype-delivery" onclick="switchOrderType('delivery')" class="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-slate-500 dark:text-slate-400 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" fill="currentColor" fill-opacity=".18"/><path d="M3 6h11v10H3V6Zm11 4h4l3 3v3h-7v-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7" cy="18" r="2" fill="currentColor"/><circle cx="18" cy="18" r="2" fill="currentColor"/></svg><span>Delivery</span>
-              </button>
-            </div>
-          </div>
-
-          <div id="cart-items" class="${splitLayout ? 'flex-1 min-h-[28vh] space-y-1 overflow-y-auto pr-1' : 'space-y-2 min-h-20'}"></div>
+          <div id="cart-items" style="max-height: 30vh; overflow-y: auto;"
+            class="relative isolate z-0 mb-4 min-h-20 shrink-0 space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-950/40"></div>
 
           <!-- Restaurant Fields (Hidden for Retail) -->
-          <div id="pos-restaurant-fields" class="${isRetail ? 'hidden' : ''} mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+          <div id="pos-restaurant-fields" class="${isRetail ? 'hidden' : ''} relative z-0 shrink-0 bg-white pt-2 dark:bg-slate-900">
             <!-- Dine-in specific: Table & Waiter -->
             <div id="pos-dine-fields" class="mb-2 space-y-2">
               <div class="grid grid-cols-1 gap-2">
@@ -3968,7 +3953,7 @@ async function renderPOS() {
             </div>
 
             ${splitLayout ? `
-            <div id="pos-split-action-host" class="z-20 shrink-0 space-y-1 border-t border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 p-1.5 shadow-[0_-8px_20px_rgba(15,23,42,0.1)] backdrop-blur"></div>
+            <div id="pos-split-action-host" class="shrink-0 space-y-1 border-t border-slate-200 bg-white p-1.5 dark:border-slate-700 dark:bg-slate-900"></div>
             ` : `
             <div class="pt-2"></div>
             `}
@@ -4212,9 +4197,10 @@ function switchOrderType(type) {
   const ordersContainer = $c('pos-orders-container');
   const ordersBtn = $c('pos-orders-toolbar-btn');
   if (ordersBtn) {
+    const cardsToolbarOrder = compactOrderSelector ? '' : 'order-5';
     ordersBtn.className = type === 'orders'
-      ? `${isRetail ? 'hidden' : 'flex'} h-12 px-4 rounded-xl bg-indigo-600 text-white text-sm font-black transition-all items-center justify-center gap-2 shrink-0 shadow-lg shadow-indigo-600/20`
-      : `${isRetail ? 'hidden' : 'flex'} h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-black transition-all items-center justify-center gap-2 shrink-0`;
+      ? `${isRetail ? 'hidden' : 'flex'} ${cardsToolbarOrder} h-12 px-4 rounded-xl bg-indigo-600 text-white text-sm font-black transition-all items-center justify-center gap-2 shrink-0 shadow-lg shadow-indigo-600/20`
+      : `${isRetail ? 'hidden' : 'flex'} ${cardsToolbarOrder} h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-black transition-all items-center justify-center gap-2 shrink-0`;
   }
 
   const kitchenBtn = $c('kitchen-btn');
@@ -5805,8 +5791,10 @@ function renderCart() {
           </div>
 
           <!-- Delete Button -->
-          <button onclick="removeCartLine(${itemIndex});" class="${canRemoveCartItem(item) ? '' : 'hidden'} absolute ${compactCart ? '-top-1.5 -right-1.5 w-5 h-5' : '-top-2 -right-2 w-6 h-6'} bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-slate-400 hover:text-rose-500 hover:border-rose-200 dark:hover:border-rose-900 shadow-sm flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          <button type="button" onclick="removeCartLine(${itemIndex});"
+            class="${canRemoveCartItem(item) ? 'flex' : 'hidden'} ${compactCart ? 'ml-1 h-7 w-7' : 'ml-2 h-9 w-9'} shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 transition-all hover:border-rose-300 hover:bg-rose-100 active:scale-95 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60"
+            title="Delete product" aria-label="Delete ${escapeOrderValue(item.product ? item.product.name : item.name)} from cart">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.9 12.1A2 2 0 0116.1 21H7.9a2 2 0 01-2-1.9L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
       `).join('')}
