@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS shops (
   use_text_on_receipt INTEGER DEFAULT 1,
   customer_bill_printer TEXT,
   unpaid_bill_printer TEXT,
+  table_visibility_mode TEXT NOT NULL DEFAULT 'all',
   logo_data TEXT,
   user_count INTEGER DEFAULT 0,
   product_count INTEGER DEFAULT 0,
@@ -162,12 +163,14 @@ CREATE TABLE IF NOT EXISTS tables (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   shop_id INTEGER NOT NULL,
   floor_id INTEGER,
+  assigned_waiter_id INTEGER,
   table_number TEXT NOT NULL,
   capacity INTEGER DEFAULT 4,
   status TEXT DEFAULT 'available', -- available, occupied, reserved
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE,
-  FOREIGN KEY (floor_id) REFERENCES floors(id)
+  FOREIGN KEY (floor_id) REFERENCES floors(id),
+  FOREIGN KEY (assigned_waiter_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS sales (

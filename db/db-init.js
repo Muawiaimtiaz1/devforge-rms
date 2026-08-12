@@ -32,6 +32,8 @@ async function initPostgres() {
     await query("ALTER TABLE shops ALTER COLUMN shop_type SET DEFAULT 'restaurant'");
     await query("UPDATE shops SET shop_type = 'restaurant' WHERE shop_type IS NULL OR shop_type <> 'restaurant'");
     await query("UPDATE expense_categories SET name = 'Restaurant Expense' WHERE name = 'Shop Expense'");
+    await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS table_visibility_mode TEXT NOT NULL DEFAULT 'all'");
+    await query("ALTER TABLE tables ADD COLUMN IF NOT EXISTS assigned_waiter_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
 
     // 2. Check if any user exists (to ensure we have an admin)
     const userCheck = await query("SELECT id FROM users LIMIT 1");

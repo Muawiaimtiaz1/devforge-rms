@@ -3664,10 +3664,10 @@ async function renderPOS() {
     cart = layoutRestore.cart;
   }
   _posCustomerResults = [];
-  const waiterList = (waiters || []).filter(u => u.role === 'waiter');
+  const waiterList = (waiters || []).filter(u => ['waiter', 'order_taker'].includes(u.role));
   const kitchenList = (waiters || []).filter(u => u.role === 'kitchen');
   const riderList = (waiters || []).filter(u => u.role === 'rider');
-  const loggedInWaiter = currentUser?.role === 'waiter' ? currentUser : null;
+  const loggedInWaiter = ['waiter', 'order_taker'].includes(currentUser?.role) ? currentUser : null;
   const selectedPOSTable = (tables || []).find(table => Number(table.id) === Number(window._posSelectedTableId));
 
   let baseShopType = currentUser.shop_type;
@@ -9270,17 +9270,21 @@ async function archiveNotification(id) {
 // ─── TABLE MANAGEMENT ────────────────────────────────────────────────────────
 let _allTables = [];
 let _currentTableFloorFilter = "";
+let _tableAccessConfig = { mode: "all", order_takers: [] };
 
 async function renderTables() {
   let tables = [];
   let floors = [];
   try {
+    const canConfigureAccess = ["admin", "superadmin", "manager"].includes(currentUser.role);
     const data = await Promise.all([
       api("/api/tables"),
       api("/api/tables/floors"),
+      canConfigureAccess ? api("/api/tables/access-config") : Promise.resolve(null),
     ]);
     tables = data[0] || [];
     floors = data[1] || [];
+    if (data[2]) _tableAccessConfig = data[2];
   } catch (e) { }
   _allTables = tables;
 
@@ -9349,6 +9353,7 @@ async function renderTables() {
             <button onclick="renderFloors()" class="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm transition-all border border-slate-200 dark:border-slate-700 flex items-center gap-2">
               🏢 Floors
             </button>
+            <button onclick="showTableAccessModal()" class="px-5 py-2.5 rounded-xl bg-violet-50 dark:bg-violet-950/30 hover:bg-violet-100 text-violet-700 dark:text-violet-300 font-bold text-sm transition-all border border-violet-200 dark:border-violet-800">Table Access</button>
             <button onclick="showAddTableModal()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
               Add Table
@@ -9391,6 +9396,7 @@ async function renderTables() {
             }</div>
             <div class="text-xs font-medium text-slate-500 mt-1">Cap: ${t.capacity
             } guests</div>
+            ${t.assigned_waiter_id ? `<div class="mt-1 text-[10px] font-bold text-violet-600">${escapeOrderValue(t.assigned_waiter_name || t.assigned_waiter_username || 'Assigned')}</div>` : ''}
             <div class="text-[10px] font-black uppercase tracking-wide mt-1 ${t.status === "available"
               ? "text-emerald-600"
               : t.status === "occupied"
@@ -9408,6 +9414,40 @@ async function renderTables() {
 }
 
 // ─── FLOOR MANAGEMENT ─────────────────────────────────────────────────────────
+function showTableAccessModal() {
+  const assignedMode = _tableAccessConfig.mode === 'assigned';
+  openModal('Waiter Table Access', `
+    <div class="space-y-5">
+      <div class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800">
+        <p class="text-sm font-black text-slate-900 dark:text-white">Who can see dine-in tables?</p>
+        <label class="mt-3 flex cursor-pointer items-start gap-3"><input type="radio" name="table-access-mode" value="all" ${!assignedMode ? 'checked' : ''} class="mt-1"><span><b class="text-sm dark:text-white">All tables</b><small class="block text-slate-500">Every waiter / order taker can see every table.</small></span></label>
+        <label class="mt-3 flex cursor-pointer items-start gap-3"><input type="radio" name="table-access-mode" value="assigned" ${assignedMode ? 'checked' : ''} class="mt-1"><span><b class="text-sm dark:text-white">Assigned tables only</b><small class="block text-slate-500">Each waiter / order taker sees only assigned tables. Receptionists always see all tables.</small></span></label>
+        <button onclick="saveTableAccessMode()" class="mt-4 w-full rounded-xl bg-violet-600 py-2.5 text-sm font-bold text-white hover:bg-violet-500">Save visibility</button>
+      </div>
+      <div><p class="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Table assignments</p><div class="max-h-80 space-y-2 overflow-y-auto">
+        ${_allTables.map(table => `<label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><span class="font-bold text-slate-800 dark:text-white">${escapeOrderValue(table.table_number)}</span><select onchange="assignTableWaiter(${table.id}, this.value)" class="max-w-[220px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Unassigned</option>${_tableAccessConfig.order_takers.map(user => `<option value="${user.id}" ${Number(table.assigned_waiter_id) === Number(user.id) ? 'selected' : ''}>${escapeOrderValue(user.name || user.username)} (${escapeOrderValue(user.role)})</option>`).join('')}</select></label>`).join('')}
+      </div></div>
+    </div>`, 'max-w-xl');
+}
+
+async function saveTableAccessMode() {
+  const mode = document.querySelector('input[name="table-access-mode"]:checked')?.value || 'all';
+  try {
+    await api('/api/tables/access-config', 'PATCH', { mode });
+    _tableAccessConfig.mode = mode;
+    toast(mode === 'assigned' ? 'Waiters will see only their assigned tables' : 'Waiters will see all tables');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function assignTableWaiter(tableId, value) {
+  try {
+    await api(`/api/tables/${tableId}/assignment`, 'PATCH', { waiter_id: value ? Number(value) : null });
+    const table = _allTables.find(item => Number(item.id) === Number(tableId));
+    if (table) table.assigned_waiter_id = value ? Number(value) : null;
+    toast(value ? 'Table assigned' : 'Table unassigned');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function renderFloors() {
   let floors = [];
   try { floors = await api('/api/tables/floors'); } catch (e) { }

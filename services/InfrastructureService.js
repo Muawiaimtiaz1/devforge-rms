@@ -2,6 +2,20 @@ const db = require('../db/knex');
 const notificationService = require('./NotificationService');
 const pushNotificationService = require('./PushNotificationService');
 let kitchenSchemaReady;
+let tableAccessSchemaReady;
+
+async function ensureTableAccessSchema() {
+  if (tableAccessSchemaReady) return tableAccessSchemaReady;
+  tableAccessSchemaReady = (async () => {
+    if (!(await db.schema.hasColumn('shops', 'table_visibility_mode'))) {
+      await db.schema.alterTable('shops', table => table.string('table_visibility_mode').notNullable().defaultTo('all'));
+    }
+    if (!(await db.schema.hasColumn('tables', 'assigned_waiter_id'))) {
+      await db.schema.alterTable('tables', table => table.integer('assigned_waiter_id').nullable().references('id').inTable('users').onDelete('SET NULL'));
+    }
+  })().catch(error => { tableAccessSchemaReady = null; throw error; });
+  return tableAccessSchemaReady;
+}
 
 async function ensureKitchenWorkflowSchema() {
   if (kitchenSchemaReady) return kitchenSchemaReady;
@@ -40,8 +54,60 @@ class InfrastructureService {
   }
 
   // --- Tables ---
-  async listTables(shopId) {
-    return db('tables').where({ shop_id: shopId }).orderBy('id', 'asc');
+  async listTables(shopId, actor = null) {
+    await ensureTableAccessSchema();
+    let query = db('tables as t')
+      .leftJoin('users as aw', 't.assigned_waiter_id', 'aw.id')
+      .where('t.shop_id', shopId)
+      .select('t.*', 'aw.name as assigned_waiter_name', 'aw.username as assigned_waiter_username');
+    const role = String(actor?.role || '').toLowerCase();
+    const isOrderTaker = ['waiter', 'order_taker'].includes(role);
+    if (isOrderTaker) {
+      const shop = await db('shops').select('table_visibility_mode').where({ id: shopId }).first();
+      if ((shop?.table_visibility_mode || 'all') === 'assigned') {
+        query = query.where('t.assigned_waiter_id', actor.id);
+      }
+    }
+    return query.orderBy('t.id', 'asc');
+  }
+
+  async getTableAccessConfig(shopId) {
+    await ensureTableAccessSchema();
+    const shop = await db('shops').select('table_visibility_mode').where({ id: shopId }).first();
+    const orderTakers = await db('users')
+      .select('id', 'name', 'username', 'role')
+      .where({ shop_id: shopId })
+      .whereIn('role', ['waiter', 'order_taker'])
+      .where(function () { this.whereNull('status').orWhere('status', 'active'); })
+      .orderBy('name', 'asc');
+    return { mode: shop?.table_visibility_mode || 'all', order_takers: orderTakers };
+  }
+
+  async setTableVisibilityMode(shopId, mode) {
+    await ensureTableAccessSchema();
+    if (!['all', 'assigned'].includes(mode)) throw new Error('Invalid table visibility mode');
+    await db('shops').where({ id: shopId }).update({ table_visibility_mode: mode });
+  }
+
+  async assignTable(id, waiterId, shopId) {
+    await ensureTableAccessSchema();
+    if (waiterId !== null) {
+      const user = await db('users').where({ id: waiterId, shop_id: shopId }).whereIn('role', ['waiter', 'order_taker']).first();
+      if (!user) { const error = new Error('Select a valid waiter / order taker'); error.status = 400; throw error; }
+    }
+    const updated = await db('tables').where({ id, shop_id: shopId }).update({ assigned_waiter_id: waiterId });
+    if (!updated) { const error = new Error('Table not found'); error.status = 404; throw error; }
+  }
+
+  async assertTableAccess(shopId, tableId, userId) {
+    await ensureTableAccessSchema();
+    const actor = await db('users').select('id', 'role').where({ id: userId, shop_id: shopId }).first();
+    const role = String(actor?.role || '').toLowerCase();
+    if (!['waiter', 'order_taker'].includes(role)) return;
+    const shop = await db('shops').select('table_visibility_mode').where({ id: shopId }).first();
+    if ((shop?.table_visibility_mode || 'all') !== 'assigned') return;
+    const table = await db('tables').where({ id: tableId, shop_id: shopId, assigned_waiter_id: userId }).first();
+    if (!table) { const error = new Error('This table is not assigned to you'); error.status = 403; throw error; }
   }
 
   async createTable(payload, shopId) {

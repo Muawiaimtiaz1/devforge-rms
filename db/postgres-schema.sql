@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS shops (
   use_text_on_receipt INTEGER DEFAULT 1,
   customer_bill_printer TEXT,
   unpaid_bill_printer TEXT,
+  table_visibility_mode TEXT NOT NULL DEFAULT 'all',
   logo_data TEXT,
   user_count INTEGER DEFAULT 0,
   product_count INTEGER DEFAULT 0
@@ -188,7 +189,8 @@ CREATE TABLE IF NOT EXISTS tables (
   capacity INTEGER DEFAULT 4,
   status TEXT DEFAULT 'available',
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  floor_id INTEGER REFERENCES floors(id)
+  floor_id INTEGER REFERENCES floors(id),
+  assigned_waiter_id INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS customers (

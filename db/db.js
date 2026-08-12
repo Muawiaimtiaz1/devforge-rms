@@ -61,6 +61,8 @@ try {
   db.exec("ALTER TABLE sales ADD COLUMN kitchen_id INTEGER REFERENCES users(id);");
   console.log("✅ DB Migration Applied: added kitchen_id to sales");
 } catch (e) {}
+try { db.exec("ALTER TABLE shops ADD COLUMN table_visibility_mode TEXT NOT NULL DEFAULT 'all';"); } catch (e) {}
+try { db.exec("ALTER TABLE tables ADD COLUMN assigned_waiter_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"); } catch (e) {}
 // --- END MIGRATIONS ---
 
 // Initialize tables from schema only if they don't exist

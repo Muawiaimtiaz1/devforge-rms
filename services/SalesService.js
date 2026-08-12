@@ -2,6 +2,7 @@ const db = require('../db/knex');
 const customerService = require('./CustomerService');
 const notificationService = require('./NotificationService');
 const pushNotificationService = require('./PushNotificationService');
+const infrastructureService = require('./InfrastructureService');
 const { z } = require('zod');
 
 // Validation Schemas
@@ -526,6 +527,9 @@ class SalesService {
    */
   async createSale(payload, shopId, userId) {
     const data = checkoutSchema.parse(payload);
+    if (data.order_type === 'dine_in' && data.table_id) {
+      await infrastructureService.assertTableAccess(shopId, data.table_id, userId);
+    }
 
     const result = await db.transaction(async (trx) => {
       // 0. Shift Resolution
