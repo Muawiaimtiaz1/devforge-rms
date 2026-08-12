@@ -38,7 +38,29 @@ const checkoutSchema = z.object({
 });
 
 class SalesService {
-  async notifyNewOrder({ saleId, shopId, creatorId, waiterId, kitchenId, orderType, tableId }) {
+  async getRoutedKitchenIdsForSale(saleId, shopId) {
+    const hasRouteTargets = await db.schema.hasColumn('product_categories', 'route_targets');
+    if (!hasRouteTargets) return [];
+    const rows = await db('sale_items as si')
+      .leftJoin('products as p', 'si.product_id', 'p.id')
+      .leftJoin('product_categories as pc', function () {
+        this.on('pc.name', '=', 'p.category').andOn('pc.shop_id', '=', db.raw('?', [shopId]));
+      })
+      .where('si.sale_id', saleId)
+      .select('pc.route_targets');
+    const kitchenIds = new Set();
+    for (const row of rows) {
+      let targets = [];
+      try { targets = JSON.parse(row.route_targets || '[]'); } catch (_) { targets = []; }
+      for (const target of Array.isArray(targets) ? targets : []) {
+        const match = String(target).match(/^KITCHEN:(\d+)$/);
+        if (match) kitchenIds.add(Number(match[1]));
+      }
+    }
+    return [...kitchenIds];
+  }
+
+  async notifyNewOrder({ saleId, shopId, creatorId, waiterId, kitchenIds = [], orderType, tableId }) {
     try {
       const creator = await db('users').where({ id: creatorId, shop_id: shopId }).first();
       if (!creator) return;
@@ -63,7 +85,7 @@ class SalesService {
       const title = `New order #${saleId}`;
       const message = `${creatorName} created a ${serviceLabel} order.`;
 
-      if (kitchenId) {
+      for (const kitchenId of [...new Set(kitchenIds.map(Number).filter(Boolean))]) {
         const kitchen = await db('users')
           .where({ id: kitchenId, shop_id: shopId, role: 'kitchen' })
           .where(builder => builder.whereNull('status').orWhere('status', 'active'))
@@ -866,12 +888,13 @@ class SalesService {
         printer_configured: printResult.printer_configured
       };
     });
+    const routedKitchenIds = await this.getRoutedKitchenIdsForSale(result.saleId, shopId);
     await this.notifyNewOrder({
       saleId: result.saleId,
       shopId,
       creatorId: userId,
       waiterId: data.waiter_id,
-      kitchenId: data.kitchen_id,
+      kitchenIds: routedKitchenIds,
       orderType: data.order_type,
       tableId: data.table_id,
     });
