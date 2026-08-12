@@ -162,6 +162,8 @@ function showKDSOrderModal(orderId) {
 }
 
 async function updateKDSStatus(id, status) {
+  const title = status === 'preparing' ? 'Starting preparation' : status === 'ready' ? 'Completing kitchen order' : 'Updating kitchen order';
+  showAppLoader(title, `Updating order #${id}...`);
   try {
     await api(`/api/kds/${id}/status`, 'PATCH', { status });
     toast(`Order #${id} → ${status}`);
@@ -172,6 +174,8 @@ async function updateKDSStatus(id, status) {
     }
   } catch (e) {
     toast(e.message, 'error');
+  } finally {
+    hideAppLoader();
   }
 }
 
@@ -423,6 +427,7 @@ let _kdsCompletedPage = 1;
 let _kdsOrderType = '';
 let _kdsCompletedPeriod = 'today';
 let _kdsToolbarCollapsed = false;
+let _kdsKnownPendingOrderIds = null;
 const KDS_PAGE_SIZE = 8;
 
 async function renderKDS() {
@@ -510,6 +515,15 @@ function applyKDSWorkflowTabs() {
 async function loadKDSOrders() {
   try {
     const orders = await api('/api/kds');
+    const pendingIds = new Set((Array.isArray(orders) ? orders : []).filter(order => order.order_status === 'pending').map(order => Number(order.id)));
+    if (_kdsKnownPendingOrderIds !== null) {
+      const newOrders = [...pendingIds].filter(id => !_kdsKnownPendingOrderIds.has(id));
+      if (newOrders.length) {
+        if (typeof playOrderReadyBeep === 'function') playOrderReadyBeep();
+        toast(newOrders.length === 1 ? `New kitchen order #${newOrders[0]}` : `${newOrders.length} new kitchen orders`, 'success');
+      }
+    }
+    _kdsKnownPendingOrderIds = pendingIds;
     _kdsOrdersCache = Array.isArray(orders) ? orders : [];
     paintKDSWorkflow();
   } catch (error) {

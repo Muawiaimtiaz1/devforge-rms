@@ -1,6 +1,32 @@
 // ─── Helpers ─────────────────────────────────────────────────────────
 const $c = document.getElementById.bind(document);
 
+function isActionControl(element) {
+  return element?.closest?.('button, [role="button"], a[onclick], [onclick]:not(input):not(select):not(textarea)');
+}
+
+function showActionFeedback(control) {
+  if (!control || control.disabled || control.getAttribute('aria-disabled') === 'true') return;
+  control.classList.remove('rms-action-feedback');
+  // Restart the confirmation flash even when the same control is tapped quickly.
+  void control.offsetWidth;
+  control.classList.add('rms-action-feedback');
+  setTimeout(() => control?.classList?.remove('rms-action-feedback'), 240);
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
+document.addEventListener('pointerdown', event => {
+  const control = isActionControl(event.target);
+  if (!control || control.disabled || control.getAttribute('aria-disabled') === 'true') return;
+  control.classList.add('rms-action-pressed');
+}, true);
+
+['pointerup', 'pointercancel'].forEach(type => document.addEventListener(type, event => {
+  document.querySelectorAll('.rms-action-pressed').forEach(control => control.classList.remove('rms-action-pressed'));
+}, true));
+
+document.addEventListener('click', event => showActionFeedback(isActionControl(event.target)), true);
+
 function redirectToLoginForSession() {
   if (window._sessionRedirectInProgress) return;
   window._sessionRedirectInProgress = true;
@@ -3453,8 +3479,44 @@ function currentUserHasPermission(permission) {
   return Array.isArray(currentUser?.permissions) && currentUser.permissions.includes(permission);
 }
 
+let _posBootstrapCache = null;
+let _posBootstrapCachedAt = 0;
+function loadPOSBootstrapData() {
+  if (_posBootstrapCache && Date.now() - _posBootstrapCachedAt < 30000) return _posBootstrapCache;
+  _posBootstrapCachedAt = Date.now();
+  _posBootstrapCache = Promise.all([
+    api("/api/products"), api("/api/tables").catch(() => []), api("/api/users/assignable").catch(() => []),
+    api("/api/tables/floors").catch(() => []), api("/api/shop-settings/discounts").catch(() => []), api("/api/shop-settings/taxes").catch(() => [])
+  ]).catch(error => { _posBootstrapCache = null; throw error; });
+  return _posBootstrapCache;
+}
+
+function showAppLoader(title = 'Please wait', detail = 'Processing your request...') {
+  document.getElementById('app-action-loader')?.remove();
+  const loader = document.createElement('div');
+  loader.id = 'app-action-loader';
+  loader.className = 'fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/35 backdrop-blur-sm animate-in fade-in duration-150';
+  loader.innerHTML = `<div class="mx-4 w-full max-w-xs rounded-3xl border border-white/50 bg-white/95 p-7 text-center shadow-2xl dark:border-slate-700 dark:bg-slate-900/95"><div class="relative mx-auto h-16 w-16"><div class="absolute inset-0 rounded-full border-4 border-indigo-100 dark:border-indigo-950"></div><div class="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-indigo-600 border-r-violet-500"></div><div class="absolute inset-[18px] rounded-full bg-indigo-600 shadow-lg shadow-indigo-500/30"></div></div><p class="mt-5 text-lg font-black text-slate-950 dark:text-white">${escapeOrderValue(title)}</p><p class="mt-1 text-xs font-bold text-slate-500">${escapeOrderValue(detail)}</p><div class="mx-auto mt-5 h-1.5 w-36 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-indigo-600 to-violet-500"></div></div></div>`;
+  document.body.appendChild(loader);
+}
+
+function hideAppLoader() {
+  const loader = document.getElementById('app-action-loader');
+  if (!loader) return;
+  loader.classList.add('opacity-0');
+  setTimeout(() => loader.remove(), 150);
+}
+
+async function withAppLoader(title, detail, action) {
+  showAppLoader(title, detail);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  try { return await action(); } finally { hideAppLoader(); }
+}
+
 function showPOSOrderTypeChooser() {
   if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
+  // Warm the shared POS data while the user is choosing an order type.
+  loadPOSBootstrapData().catch(() => {});
   $c("page-content").innerHTML = `
     <div class="min-h-[calc(100vh-7rem)] flex items-center justify-center px-4 py-10">
       <div class="w-full max-w-4xl">
@@ -3496,10 +3558,14 @@ async function startPOSOrder(orderType) {
   if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
   const allowedTypes = ['dine_in', 'takeaway', 'delivery'];
   if (!allowedTypes.includes(orderType)) return;
-  if (orderType === 'dine_in') return renderPOSTableSelection();
-  window._posSelectedTableId = null;
-  window._posEntryOrderType = orderType;
-  await renderPOS();
+  const labels = { dine_in: ['Opening dine-in', 'Loading your floor and available tables...'], takeaway: ['Opening takeaway', 'Preparing the counter order screen...'], delivery: ['Opening delivery', 'Loading customers, riders, and menu...'] };
+  const [title, detail] = labels[orderType];
+  return withAppLoader(title, detail, async () => {
+    if (orderType === 'dine_in') return renderPOSTableSelection();
+    window._posSelectedTableId = null;
+    window._posEntryOrderType = orderType;
+    await renderPOS();
+  });
 }
 
 async function renderPOSTableSelection() {
@@ -3602,9 +3668,11 @@ async function selectPOSTable(tableId) {
 
 async function openPOSOrdersView() {
   if (!currentUserHasPermission('orders.view')) return toast('You do not have permission to view orders.', 'error');
-  window._posEntryOrderType = 'dine_in';
-  await renderPOS();
-  switchOrderType('orders');
+  return withAppLoader('Opening orders', 'Loading active dine-in, takeaway, and delivery orders...', async () => {
+    window._posEntryOrderType = 'dine_in';
+    await renderPOS();
+    await switchOrderType('orders');
+  });
 }
 
 function startFreshPOSOrder() {
@@ -3641,14 +3709,9 @@ async function renderPOS() {
   const splitLayout = !deliveryOnly && getPOSLayout() === "split";
   const layoutRestore = window._posLayoutRestore || null;
   window._posLayoutRestore = null;
-  const [products, tables, waiters, floors, discounts, taxes] = await Promise.all([
-    api("/api/products"),
-    api("/api/tables").catch(() => []),
-    api("/api/users/assignable").catch(() => []),
-    api("/api/tables/floors").catch(() => []),
-    api("/api/shop-settings/discounts").catch(() => []),
-    api("/api/shop-settings/taxes").catch(() => [])
-  ]);
+  const [products, tables, waiters, floors, discounts, taxes] = await loadPOSBootstrapData();
+  // Consume the prefetch once so later visits refresh live table/order data.
+  _posBootstrapCache = null;
   allProducts = products;
   _posFloors = floors;
   _posAllTables = tables;
@@ -4212,7 +4275,7 @@ function switchOrderType(type) {
     closePOSCheckout(true);
     if (contentGrid) contentGrid.classList.add('hidden');
     if (ordersContainer) ordersContainer.classList.remove('hidden');
-    renderPOSOrders();
+    return renderPOSOrders();
   } else {
     if (contentGrid) contentGrid.classList.remove('hidden');
     if (ordersContainer) ordersContainer.classList.add('hidden');
@@ -4643,6 +4706,7 @@ function renderActiveOrderCard(order) {
 
 async function markOrderServed(id) {
   if (!confirm('Confirm that this order has been handed to the guest?')) return;
+  showAppLoader('Marking order served', `Updating order #${id}...`);
   try {
     const result = await api(`/api/kds/${id}/status`, 'PATCH', { status: 'served' });
     if (result?.error) throw new Error(result.error);
@@ -4650,6 +4714,8 @@ async function markOrderServed(id) {
     renderPOSOrders();
   } catch (error) {
     toast(error.message || 'Could not mark the order as served.', 'error');
+  } finally {
+    hideAppLoader();
   }
 }
 
@@ -4665,6 +4731,7 @@ async function updateDeliveryStatus(id, status) {
 }
 
 async function viewOrderItems(id) {
+  showAppLoader('Opening order details', `Loading order #${id}...`);
   try {
     const [data, assignableUsers] = await Promise.all([
       api(`/api/sales/${id}/bill`),
@@ -4805,11 +4872,12 @@ async function saveDeliveryOrderInfo(id, nextStatus = null) {
     renderPOSOrders();
   } catch (e) {
     toast(e.message, 'error');
-  }
+  } finally { hideAppLoader(); }
 }
 
 async function editOrder(id) {
   if (!currentUserHasPermission('orders.update')) return toast('You do not have permission to edit orders.', 'error');
+  showAppLoader('Opening order editor', `Loading order #${id} and menu items...`);
   try {
     if (!allProducts || allProducts.length === 0) {
       const products = await api("/api/products");
@@ -4844,7 +4912,7 @@ async function editOrder(id) {
   } catch (e) {
     console.error(e);
     toast("Failed to load order for editing: " + e.message, "error");
-  }
+  } finally { hideAppLoader(); }
 }
 
 function renderEditOrderModal(id) {
@@ -4965,12 +5033,14 @@ async function completeOrderFromPOS(id, skipConfirm = false) {
   }
 }
 
-function showOrderCompleteModal(id) {
+async function showOrderCompleteModal(id) {
   if (!currentUserHasPermission('orders.take_payment') || !currentUserHasPermission('orders.complete')) {
     return toast('Payment and complete permissions are required for this action.', 'error');
   }
   const s = _posActiveOrders.find(o => o.id === id);
   if (!s) return toast('Order not found', 'error');
+  showAppLoader('Preparing payment', `Opening payment for order #${id}...`);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
   const name = s.customer_name || '';
   const phone = s.customer_phone || '';
@@ -5023,6 +5093,7 @@ function showOrderCompleteModal(id) {
 
   // Initial trigger to sync summary
   updateCompleteOrderSummary(total);
+  hideAppLoader();
 }
 
 function updateCompleteOrderSummary(total) {
@@ -5080,6 +5151,7 @@ async function updateAndCompleteOrder(id) {
   };
   if (Math.abs(amountReceived - previousReceived) > 0.01) data.amount_received = amountReceived;
 
+  showAppLoader(fullyPaid ? 'Completing payment' : 'Saving payment', `Processing order #${id}...`);
   try {
     const updateResult = await api(`/api/sales/${id}/details`, 'PATCH', data);
     if (updateResult?.error) throw new Error(updateResult.error);
@@ -5098,6 +5170,8 @@ async function updateAndCompleteOrder(id) {
     toast('Payment complete. Paid bill printed and order completed.', 'success');
   } catch (e) {
     toast(e.message, 'error');
+  } finally {
+    hideAppLoader();
   }
 }
 
@@ -10613,6 +10687,7 @@ async function performOpenShift() {
   const val = parseFloat(document.getElementById("opening-balance-input").value);
   if (isNaN(val) || val < 0) return toast("Please enter a valid opening balance.", "error");
 
+  showAppLoader('Starting shift', 'Opening your cash register...');
   try {
     const res = await api("/api/shifts/open", "POST", { opening_balance: val });
     if (res.ok) {
@@ -10627,6 +10702,8 @@ async function performOpenShift() {
     }
   } catch (err) {
     toast(err.message, "error");
+  } finally {
+    hideAppLoader();
   }
 }
 
@@ -10860,6 +10937,7 @@ async function performCloseShift() {
 
   if (!confirm("Are you sure you want to close this register? This action is permanent.")) return;
 
+  showAppLoader('Closing register', 'Reconciling cash and generating the shift report...');
   try {
     const res = await api("/api/shifts/close", "POST", {
       shift_id: currentShift.id,
@@ -10879,6 +10957,8 @@ async function performCloseShift() {
     }
   } catch (err) {
     toast(err.message, "error");
+  } finally {
+    hideAppLoader();
   }
 }
 

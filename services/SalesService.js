@@ -38,7 +38,7 @@ const checkoutSchema = z.object({
 });
 
 class SalesService {
-  async notifyNewOrder({ saleId, shopId, creatorId, waiterId, orderType, tableId }) {
+  async notifyNewOrder({ saleId, shopId, creatorId, waiterId, kitchenId, orderType, tableId }) {
     try {
       const creator = await db('users').where({ id: creatorId, shop_id: shopId }).first();
       if (!creator) return;
@@ -62,6 +62,39 @@ class SalesService {
         : String(orderType || 'order').replace('_', '-');
       const title = `New order #${saleId}`;
       const message = `${creatorName} created a ${serviceLabel} order.`;
+
+      if (kitchenId) {
+        const kitchen = await db('users')
+          .where({ id: kitchenId, shop_id: shopId, role: 'kitchen' })
+          .where(builder => builder.whereNull('status').orWhere('status', 'active'))
+          .first();
+        if (kitchen) {
+          const kitchenMessage = `Order #${saleId} for ${serviceLabel} was sent to ${kitchen.name || kitchen.username || 'this kitchen'}.`;
+          await notificationService.create({
+            shop_id: shopId,
+            target_user_id: kitchen.id,
+            type: 'assignment',
+            priority: 'urgent',
+            title: `New kitchen order #${saleId}`,
+            message: kitchenMessage,
+            action_label: 'Open kitchen order',
+            action_url: '/dashboard',
+            status: 'active',
+          }, { id: creatorId });
+          try {
+            await pushNotificationService.sendToUser(kitchen.id, {
+              title: `New kitchen order #${saleId}`,
+              body: kitchenMessage,
+              tag: `kitchen-order-${saleId}-${kitchen.id}`,
+              orderId: saleId,
+              url: '/dashboard',
+              requireInteraction: true,
+            });
+          } catch (error) {
+            console.error(`Kitchen order #${saleId} device push failed:`, error.message);
+          }
+        }
+      }
 
       await Promise.all([...recipientIds].map(async targetUserId => {
         await notificationService.create({
@@ -813,6 +846,7 @@ class SalesService {
       shopId,
       creatorId: userId,
       waiterId: data.waiter_id,
+      kitchenId: data.kitchen_id,
       orderType: data.order_type,
       tableId: data.table_id,
     });
