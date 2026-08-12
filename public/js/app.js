@@ -248,18 +248,21 @@ let _tempEditCart = []; // Temporary cart for the edit modal
 let _tempEditSaleDetails = null; // Temporary sale details for the edit modal
 let _currentPage = "dashboard";
 let currentShift = null;
+let _appHistoryReady = false;
+let _handlingAppPopState = false;
 
 function isPlatformOwner() {
   return currentUser?.role === "superadmin";
 }
 
 function returnToNavigationHome() {
-  sessionStorage.removeItem("lobby_selected");
   if (isPlatformOwner()) {
     window.location.href = "/admin/store-monitoring";
     return;
   }
-  location.reload();
+  sessionStorage.removeItem("lobby_selected");
+  history.pushState({ rmsView: 'lobby' }, '', `${location.pathname}#lobby`);
+  renderLobby();
 }
 
 function openSaasCommandCenter(tab = "overview") {
@@ -778,13 +781,21 @@ async function init() {
     await fetchActiveShift();
 
 
-    if (!sessionStorage.getItem("lobby_selected")) return renderLobby();
+    if (!sessionStorage.getItem("lobby_selected")) {
+      history.replaceState({ rmsView: 'lobby' }, '', `${location.pathname}#lobby`);
+      _appHistoryReady = true;
+      return renderLobby();
+    }
     let startPage = currentUser.role === "superadmin"
       ? requestedPlatformPage
       : localStorage.getItem("pos_page") || "dashboard";
     if (!isPanelAllowedForCurrentUser(startPage)) {
       startPage = getAllowedPanelsForCurrentUser()[0]?.id || "dashboard";
     }
+    // Always keep an in-app lobby entry behind the restored page. Android Back
+    // returns here before the installed PWA is allowed to close.
+    history.replaceState({ rmsView: 'lobby' }, '', `${location.pathname}#lobby`);
+    _appHistoryReady = true;
     navigate(startPage);
   } catch (e) {
     console.error("Init Error:", e);
@@ -806,7 +817,7 @@ window.addEventListener("pageshow", (event) => {
 });
 
 // ─── Router ──────────────────────────────────────────────────────────
-function navigate(page) {
+function navigate(page, options = {}) {
   if (page === "register" && !canCurrentUserAccessRegister()) {
     toast("You do not have permission to manage the register.", "error");
     return false;
@@ -853,6 +864,12 @@ function navigate(page) {
   }
 
   _currentPage = page;
+  if (_appHistoryReady && !_handlingAppPopState && options.history !== false) {
+    const currentState = history.state;
+    if (currentState?.rmsView !== 'page' || currentState.page !== page) {
+      history.pushState({ rmsView: 'page', page }, '', `${location.pathname}#${encodeURIComponent(page)}`);
+    }
+  }
   localStorage.setItem("pos_page", page);
   sessionStorage.setItem("lobby_selected", "true");
   document.body.classList.remove("lobby-active");
@@ -962,6 +979,24 @@ function navigate(page) {
 
   return false;
 }
+
+window.addEventListener('popstate', event => {
+  if (!currentUser || isPlatformOwner()) return;
+  _handlingAppPopState = true;
+  try {
+    closeUserDropdown();
+    if (!$c('modal')?.classList.contains('hidden')) closeModal();
+    const state = event.state;
+    if (state?.rmsView === 'page' && state.page) {
+      navigate(state.page, { history: false });
+    } else {
+      sessionStorage.removeItem('lobby_selected');
+      renderLobby();
+    }
+  } finally {
+    _handlingAppPopState = false;
+  }
+});
 
 async function logout() {
   if (currentShift) {
