@@ -282,6 +282,7 @@ if (!tableExists) {
                 shop_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 printer_station TEXT,
+                route_targets TEXT,
                 created_at TEXT DEFAULT (datetime('now')),
                 FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
             );
@@ -315,6 +316,11 @@ if (!tableExists) {
       console.log("🔧 Updating database: Adding printer_station to product_categories...");
       db.exec("ALTER TABLE product_categories ADD COLUMN printer_station TEXT;");
       console.log("✅ product_categories.printer_station column added.");
+    }
+    if (!prodCatCols.some((col) => col.name === "route_targets")) {
+      console.log("🔧 Updating database: Adding route_targets to product_categories...");
+      db.exec("ALTER TABLE product_categories ADD COLUMN route_targets TEXT;");
+      console.log("✅ product_categories.route_targets column added.");
     }
   } catch (e) {
     console.error("Failed to check product category printer_station column:", e.message);
@@ -955,7 +961,6 @@ if (!tableExists) {
       `);
       console.log("✅ Restaurant columns added to sale_items.");
     }
-
     // Check for discounts table
     const discountsExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='discounts'").get();
     if (!discountsExists) {

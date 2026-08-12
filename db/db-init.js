@@ -774,6 +774,16 @@ async function initPostgres() {
       console.log(`✅ notifications panel access added to ${shopNotificationPanelUpdates} shops and ${adminNotificationPanelUpdates} admins.`);
     }
 
+    const prodCatTargetsCheck = await query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'product_categories' AND column_name = 'route_targets'
+    `);
+    if (prodCatTargetsCheck.rows.length === 0) {
+      console.log("🔧 Migrating product_categories table: Adding route_targets column...");
+      await query("ALTER TABLE product_categories ADD COLUMN route_targets TEXT");
+      console.log("✅ product_categories.route_targets added.");
+    }
+
     const appendDeliveryPanelForPos = async (tableName) => {
       if (!['shops', 'users'].includes(tableName)) return 0;
       const rows = await query(`SELECT id, allowed_panels FROM ${tableName} WHERE allowed_panels IS NOT NULL`);

@@ -92,6 +92,20 @@ router.delete('/:id', requireAuth, async (req, res) => {
         .whereIn('printer_station', [printer.system_name, routeKey])
         .update({ printer_station: null });
 
+      const routedCategories = await trx('product_categories')
+        .where({ shop_id: shopId })
+        .select('id', 'route_targets');
+      for (const category of routedCategories) {
+        let targets = [];
+        try { targets = JSON.parse(category.route_targets || '[]'); } catch (e) { targets = []; }
+        if (!Array.isArray(targets) || !targets.includes(routeKey)) continue;
+        const nextTargets = targets.filter(target => target !== routeKey);
+        await trx('product_categories').where({ id: category.id, shop_id: shopId }).update({
+          route_targets: JSON.stringify(nextTargets),
+          printer_station: nextTargets[0] || null
+        });
+      }
+
       const shop = await trx('shops').where({ id: shopId }).first();
       const shopUpdates = {};
       if ([printer.system_name, routeKey].includes(shop?.customer_bill_printer)) shopUpdates.customer_bill_printer = null;

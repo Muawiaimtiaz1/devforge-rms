@@ -347,10 +347,11 @@ class SalesService {
   }
 
   async getCategoryPrintRouteMap(dbInstance, shopId, resolvePrinterRoute) {
+    const hasRouteTargets = await dbInstance.schema.hasColumn('product_categories', 'route_targets');
     const [categories, kitchenRouteMap] = await Promise.all([
       dbInstance('product_categories')
         .where({ shop_id: shopId })
-        .select('name', 'printer_station'),
+        .select('name', 'printer_station', ...(hasRouteTargets ? ['route_targets'] : [])),
       this.getKitchenRouteMap(dbInstance, shopId, resolvePrinterRoute)
     ]);
 
@@ -364,9 +365,23 @@ class SalesService {
 
     const routeMap = {};
     categories.forEach((category) => {
+      let rawTargets = [];
+      try {
+        rawTargets = Array.isArray(category.route_targets)
+          ? category.route_targets
+          : JSON.parse(category.route_targets || '[]');
+      } catch (e) {
+        rawTargets = [];
+      }
+      const targets = [...new Set((Array.isArray(rawTargets) ? rawTargets : [])
+        .map(target => String(target || '').trim())
+        .filter(Boolean))];
+      if (!targets.length && category.printer_station) targets.push(category.printer_station);
       routeMap[category.name] = {
-        raw: category.printer_station || null,
-        route: resolveRoute(category.printer_station)
+        raw: targets[0] || null,
+        route: resolveRoute(targets[0]),
+        targets,
+        routes: targets.map(resolveRoute)
       };
     });
     return routeMap;
@@ -386,6 +401,14 @@ class SalesService {
       systemName: 'NONE',
       label: 'No Printer'
     };
+  }
+
+  getItemPrintRoutes(item, categoryRouteMap, fallbackRoute) {
+    const category = this.getItemCategory(item);
+    const categoryRoute = category ? categoryRouteMap[category] : null;
+    if (categoryRoute?.targets?.length) return categoryRoute.routes.filter(route => route?.station !== 'NONE');
+    const fallback = fallbackRoute || this.getItemPrintRoute(item, categoryRouteMap, fallbackRoute);
+    return fallback?.station !== 'NONE' ? [fallback] : [];
   }
 
   getItemPrintStation(item, categoryRouteMap, fallbackRoute) {
@@ -443,9 +466,12 @@ class SalesService {
 
       const routeKey = route.station;
       if (!jobs[routeKey]) {
-        jobs[routeKey] = { route, items: [], routeLabels: new Set() };
+        jobs[routeKey] = { route, items: [], itemKeys: new Set(), routeLabels: new Set() };
       }
       if (route.label) jobs[routeKey].routeLabels.add(route.label);
+      const itemKey = item.id || item.sale_item_id || `${this.getItemCategory(item)}:${item.product_id || item.product_name || item.name}`;
+      if (jobs[routeKey].itemKeys.has(itemKey)) return;
+      jobs[routeKey].itemKeys.add(itemKey);
       jobs[routeKey].items.push(this.buildPrintJobItem(item));
     };
 
@@ -455,9 +481,8 @@ class SalesService {
     ]);
 
     for (const item of items) {
-      const category = this.getItemCategory(item);
-      const route = this.getItemPrintRoute(item, categoryRouteMap, kitchenRoute);
-      addItemToRoute(route, item);
+      const routes = this.getItemPrintRoutes(item, categoryRouteMap, kitchenRoute);
+      for (const route of routes) addItemToRoute(route, item);
     }
 
     let queuedCount = 0;
@@ -1356,13 +1381,20 @@ class SalesService {
 
     const seller = await db('users').select('name').where({ id: sale.user_id }).first();
     const shop = await db('shops').where({ id: sale.shop_id }).first();
+    const kitchenStatuses = await db.schema.hasTable('kitchen_order_statuses')
+      ? await db('kitchen_order_statuses as kos')
+        .leftJoin('users as k', 'kos.kitchen_id', 'k.id')
+        .where({ 'kos.sale_id': saleId, 'kos.shop_id': shopId })
+        .select('kos.kitchen_id', 'kos.status', 'kos.updated_at', 'k.name as kitchen_name', 'k.username as kitchen_username')
+        .orderBy('kos.kitchen_id', 'asc')
+      : [];
 
     if (shop) {
       shop.receipt_images = shop.receipt_images_json ? JSON.parse(shop.receipt_images_json) : [];
       shop.use_logo_on_receipt = Boolean(shop.use_logo_on_receipt);
     }
 
-    return { sale, items, seller, shop, payments };
+    return { sale, items, seller, shop, payments, kitchen_statuses: kitchenStatuses };
   }
 
   async processReturn(saleId, shopId, userId, { items, reason, payment_method }) {

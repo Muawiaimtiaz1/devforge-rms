@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS product_categories (
   shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   printer_station TEXT,
+  route_targets TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

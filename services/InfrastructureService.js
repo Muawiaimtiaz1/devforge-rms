@@ -29,6 +29,17 @@ async function ensureKitchenWorkflowSchema() {
     if (!(await db.schema.hasColumn('sales', 'served_at'))) {
       await db.schema.alterTable('sales', table => table.timestamp('served_at').nullable());
     }
+    if (!(await db.schema.hasTable('kitchen_order_statuses'))) {
+      await db.schema.createTable('kitchen_order_statuses', table => {
+        table.increments('id').primary();
+        table.integer('shop_id').notNullable().references('id').inTable('shops').onDelete('CASCADE');
+        table.integer('sale_id').notNullable().references('id').inTable('sales').onDelete('CASCADE');
+        table.integer('kitchen_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
+        table.string('status').notNullable().defaultTo('pending');
+        table.timestamp('updated_at').defaultTo(db.fn.now());
+        table.unique(['sale_id', 'kitchen_id']);
+      });
+    }
     const hasUpdatedAt = await db.schema.hasColumn('sales', 'updated_at');
     await db('sales')
       .whereIn('order_status', ['ready', 'served', 'completed'])
@@ -129,23 +140,40 @@ class InfrastructureService {
   // --- Kitchen Display System (KDS) ---
   async listActiveKitchenOrders(shopId, kitchenUserId = null) {
     await ensureKitchenWorkflowSchema();
-    let query = db('sales as s')
+    const query = db('sales as s')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .leftJoin('users as u', 's.waiter_id', 'u.id')
       .leftJoin('users as cb', 's.user_id', 'cb.id')
       .where('s.shop_id', shopId)
       .whereIn('s.order_status', ['pending', 'preparing', 'ready', 'served', 'completed'])
       .select(
-        's.id', 's.user_id as punched_by_user_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
+        's.id', 's.user_id as punched_by_user_id', 's.kitchen_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
         's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',
         't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username'
       );
 
-    if (kitchenUserId) {
-      query = query.where('s.kitchen_id', kitchenUserId);
-    }
-
     const orders = await query.orderBy('s.created_at', 'asc');
+    const hasRouteTargets = await db.schema.hasColumn('product_categories', 'route_targets');
+    const categoryRoutes = kitchenUserId
+      ? await db('product_categories')
+        .where({ shop_id: shopId })
+        .select('name', 'printer_station', ...(hasRouteTargets ? ['route_targets'] : []))
+      : [];
+    const categoryRouteMap = new Map(categoryRoutes.map(category => {
+      let targets = [];
+      try {
+        targets = Array.isArray(category.route_targets)
+          ? category.route_targets
+          : JSON.parse(category.route_targets || '[]');
+      } catch (e) {
+        targets = [];
+      }
+      targets = [...new Set((Array.isArray(targets) ? targets : []).map(String).map(value => value.trim()).filter(Boolean))];
+      if (!targets.length && category.printer_station) targets.push(String(category.printer_station).trim());
+      return [String(category.name || '').trim(), targets];
+    }));
+    const kitchenRouteKey = kitchenUserId ? `KITCHEN:${Number(kitchenUserId)}` : null;
+    const visibleOrders = [];
 
     for (let order of orders) {
       if (!String(order.punched_by_name || '').trim() && !String(order.punched_by_username || '').trim() && order.punched_by_user_id) {
@@ -164,23 +192,75 @@ class InfrastructureService {
         .select(
           'si.id', 'si.quantity', 'si.custom_name', 'si.special_instructions', 
           'si.variants_json', 'si.addons_json',
+          'p.category as product_category',
           db.raw('COALESCE(p.name, si.custom_name) as product_name')
         );
 
-      order.items = items.map(item => ({
+      let visibleItems = items;
+      const routedKitchenIds = [...new Set(items.flatMap(item =>
+        (categoryRouteMap.get(String(item.product_category || '').trim()) || [])
+          .filter(route => route.startsWith('KITCHEN:'))
+          .map(route => Number(route.replace('KITCHEN:', '')))
+          .filter(Boolean)
+      ))];
+      for (const routedKitchenId of routedKitchenIds) {
+        await db('kitchen_order_statuses').insert({ shop_id: shopId, sale_id: order.id, kitchen_id: routedKitchenId, status: 'pending' })
+          .onConflict(['sale_id', 'kitchen_id']).ignore();
+      }
+      if (kitchenUserId) {
+        const hasCategoryKitchenRouting = items.some(item =>
+          (categoryRouteMap.get(String(item.product_category || '').trim()) || [])
+            .some(route => route.startsWith('KITCHEN:'))
+        );
+
+        if (hasCategoryKitchenRouting) {
+          visibleItems = items.filter(item =>
+            (categoryRouteMap.get(String(item.product_category || '').trim()) || []).includes(kitchenRouteKey)
+          );
+        } else if (Number(order.kitchen_id) !== Number(kitchenUserId)) {
+          visibleItems = [];
+        }
+      }
+
+      if (kitchenUserId && visibleItems.length === 0) continue;
+
+      if (kitchenUserId && routedKitchenIds.includes(Number(kitchenUserId))) {
+        const kitchenStatus = await db('kitchen_order_statuses').where({ sale_id: order.id, kitchen_id: kitchenUserId }).first();
+        if (kitchenStatus) order.order_status = kitchenStatus.status === 'completed' ? 'ready' : kitchenStatus.status;
+      }
+
+      order.items = visibleItems.map(item => ({
         ...item,
         variants: typeof item.variants_json === 'string' ? JSON.parse(item.variants_json) : (item.variants_json || null),
         addons: typeof item.addons_json === 'string' ? JSON.parse(item.addons_json) : (item.addons_json || null)
       }));
+      visibleOrders.push(order);
     }
 
-    return orders;
+    return visibleOrders;
   }
 
   async updateOrderStatus(saleId, status, shopId, userId = null) {
     await ensureKitchenWorkflowSchema();
     const allowedStatuses = new Set(['pending', 'preparing', 'ready', 'served', 'completed']);
     if (!allowedStatuses.has(status)) throw new Error('Invalid order status');
+
+    const actor = userId ? await db('users').where({ id: userId, shop_id: shopId }).first() : null;
+    const routedKitchenStatus = actor?.role === 'kitchen'
+      ? await db('kitchen_order_statuses').where({ sale_id: saleId, kitchen_id: userId, shop_id: shopId }).first()
+      : null;
+    if (routedKitchenStatus && ['pending', 'preparing', 'ready'].includes(status)) {
+      const portionStatus = status === 'ready' ? 'completed' : status;
+      await db('kitchen_order_statuses').where({ id: routedKitchenStatus.id }).update({ status: portionStatus, updated_at: db.fn.now() });
+      const portions = await db('kitchen_order_statuses').where({ sale_id: saleId, shop_id: shopId });
+      if (status === 'preparing') {
+        await db('sales').where({ id: saleId, shop_id: shopId }).where('order_status', 'pending').update({ order_status: 'preparing', preparing_at: db.fn.now() });
+        return;
+      }
+      if (status !== 'ready' || portions.some(portion => portion.status !== 'completed')) return;
+      // Every routed kitchen is ready; continue through the existing final-ready
+      // path below so the order is promoted and its recipients are notified once.
+    }
 
     if (status === 'served') {
       const sale = await db('sales').where({ id: saleId, shop_id: shopId }).first();

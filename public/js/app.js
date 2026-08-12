@@ -1363,11 +1363,12 @@ async function openAddCategoryPopup(type) {
 
   const extraHtml = isProduct ? `
     <div>
-      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Print Route</label>
-      <select id="pop-cat-printer" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-3 rounded-xl text-sm outline-none focus:border-indigo-500 transition-all font-bold cursor-pointer">
-        ${renderPrinterRouteOptions()}
-      </select>
-      <p class="text-[9px] text-slate-400 mt-1 px-1 italic">Choose which kitchen or physical printer this category should print to.</p>
+      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Print & Kitchen Routes</label>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+        ${_allPrinters.map(printer => `<label class="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 cursor-pointer"><input type="checkbox" class="pop-cat-route h-4 w-4 rounded" value="PRINTER:${printer.id}"><span class="text-xs font-bold">Printer: ${escapeOrderValue(printer.display_name)}</span></label>`).join('')}
+        ${_printerRoutingKitchens.map(kitchen => `<label class="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 cursor-pointer"><input type="checkbox" class="pop-cat-route h-4 w-4 rounded" value="KITCHEN:${kitchen.id}"><span class="text-xs font-bold">Kitchen: ${escapeOrderValue(kitchen.name || kitchen.username)}</span></label>`).join('')}
+      </div>
+      <p class="text-[9px] text-slate-400 mt-1 px-1 italic">Select any combination of printers and kitchen terminals.</p>
     </div>` : emojiHtml;
 
   openModal(
@@ -1414,7 +1415,7 @@ async function submitPopCategory(type) {
   if (type === "expense") {
     payload.emoji = document.getElementById("pop-cat-emoji")?.value || "📦";
   } else if (type === "product") {
-    payload.printer_station = document.getElementById("pop-cat-printer")?.value || null;
+    payload.route_targets = [...document.querySelectorAll('.pop-cat-route:checked')].map(input => input.value);
   }
 
   const url = type === "product" ? "/api/product-categories" : "/api/expense-categories";
@@ -3452,7 +3453,7 @@ function getPOSLayout() {
 
 function capturePOSLayoutState() {
   const ids = [
-    "pos-table", "pos-waiter", "pos-kitchen", "pos-rider", "pos-delivery-addr",
+    "pos-table", "pos-waiter", "pos-rider", "pos-delivery-addr",
     "pos-token", "pos-discount", "pos-discount-preset", "pos-tax", "pos-tax-preset",
     "pos-method", "pos-received", "pos-cust-name", "pos-cust-phone"
   ];
@@ -3829,7 +3830,6 @@ async function renderPOS() {
       #pos-split-scroll-body #pos-dine-fields,
       #pos-split-scroll-body #pos-delivery-fields,
       #pos-split-scroll-body #pos-takeaway-fields,
-      #pos-split-scroll-body #pos-kitchen-fields { margin-top: 0.25rem !important; margin-bottom: 0.25rem !important; padding-top: 0.25rem !important; }
     </style>` : ''}
     <div class="flex flex-col gap-4">
       <div id="pos-current-order-type" class="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 shadow-sm ${activePOSOrderMeta.style}" role="status" aria-label="Current order type: ${activePOSOrderMeta.label}">
@@ -3956,15 +3956,7 @@ async function renderPOS() {
               <input id="pos-token" type="text" placeholder="Auto or manual" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
             </div>
 
-            <div id="pos-kitchen-fields" class="mb-2 space-y-2">
-              <div>
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Kitchen</label>
-                <select id="pos-kitchen" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
-                  <option value="">-- Select Kitchen --</option>
-                  ${kitchenList.map(k => `<option value="${k.id}" ${kitchenList.length === 1 ? 'selected' : ''}>${k.name || 'Kitchen'}</option>`).join('')}
-                </select>
-              </div>
-            </div>
+            <div class="mb-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-300">Kitchen terminals are assigned automatically from product category routing.</div>
           </div>
 
           <div id="pos-cart-controls" class="border-t border-slate-200 dark:border-slate-700 ${splitLayout ? 'mt-0.5 pt-0.5 space-y-1 shrink-0' : 'mt-4 pt-4 space-y-4'}">
@@ -4831,6 +4823,13 @@ async function viewOrderItems(id) {
       `<option value="">No rider assigned</option>`,
       ...riderList.map(u => `<option value="${Number(u.id)}" ${currentRiderId === Number(u.id) ? 'selected' : ''}>${escapeOrderValue(u.name)}${u.role ? ` (${escapeOrderValue(u.role)})` : ''}</option>`)
     ].join('');
+    const kitchenStatusesHtml = Array.isArray(data.kitchen_statuses) && data.kitchen_statuses.length ? `
+      <div class="p-4 rounded-2xl border border-orange-100 bg-orange-50 dark:border-orange-900/40 dark:bg-orange-950/20">
+        <h4 class="mb-3 text-xs font-black uppercase tracking-widest text-orange-700 dark:text-orange-300">Kitchen terminal status</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          ${data.kitchen_statuses.map(kitchen => `<label class="block"><span class="mb-1 block text-[10px] font-black text-slate-500">${escapeOrderValue(kitchen.kitchen_name || kitchen.kitchen_username || `Kitchen #${kitchen.kitchen_id}`)}</span><select disabled class="w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-black uppercase text-slate-700 disabled:opacity-100 dark:border-orange-900 dark:bg-slate-900 dark:text-slate-200"><option selected>${escapeOrderValue(kitchen.status || 'pending')}</option></select></label>`).join('')}
+        </div>
+      </div>` : '';
 
     const itemsHtml = data.items.map(item => `
         <div class="flex items-center justify-between py-3 border-b border-slate-50 dark:border-slate-800/50 last:border-0">
@@ -4901,6 +4900,7 @@ async function viewOrderItems(id) {
     openModal(`Order #${id} - Details`, `
       <div class="space-y-4">
         ${orderInfoHtml}
+        ${kitchenStatusesHtml}
         <div class="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[60vh] overflow-y-auto">
           ${itemsHtml}
         </div>
@@ -6423,9 +6423,6 @@ async function checkout(status = 'completed') {
     token_number = $c('pos-token')?.value.trim() || `TK-${Date.now()}`;
   }
 
-  // Common field for all restaurant types
-  kitchen_id = parseInt($c('pos-kitchen')?.value) || null;
-
   // Unified Customer Details (override if set in the new sidebar fields)
   const sidebarName = $c('pos-cust-name')?.value.trim();
   const sidebarPhone = $c('pos-cust-phone')?.value.trim();
@@ -6678,19 +6675,6 @@ function cartHasItemsWithoutCategoryRoute() {
 
 async function sendToKitchen() {
   if (!cart.length) return toast("Add items to the order first", "error");
-
-  const kitchenSelect = $c('pos-kitchen');
-  if (kitchenSelect && !kitchenSelect.value && cartHasItemsWithoutCategoryRoute()) {
-    const kitchenOptions = Array.from(kitchenSelect.options).filter(option => option.value);
-    if (kitchenOptions.length === 1) {
-      kitchenSelect.value = kitchenOptions[0].value;
-    } else if (kitchenOptions.length > 1) {
-      kitchenSelect.focus();
-      return toast("Select a kitchen before printing", "error");
-    } else {
-      return toast("Create a kitchen terminal before printing", "error");
-    }
-  }
 
   window._lastOrderAutoPrintKitchen = true;
   return checkout('pending');
@@ -10220,12 +10204,42 @@ function renderCategoryRoutingRowsHtml() {
         </div>
       </td>
       <td class="px-6 py-5">
-        <select onchange="updateCategoryPrinterStation(${cat.id}, this.value)" class="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer">
-          ${renderPrinterRouteOptions(cat.printer_station)}
-        </select>
+        ${renderCategoryRouteCheckboxes(cat)}
       </td>
     </tr>
   `).join('');
+}
+
+function getCategoryRouteTargets(category) {
+  let targets = [];
+  try {
+    targets = Array.isArray(category?.route_targets)
+      ? category.route_targets
+      : JSON.parse(category?.route_targets || '[]');
+  } catch (e) {
+    targets = [];
+  }
+  targets = [...new Set((Array.isArray(targets) ? targets : []).map(String).filter(Boolean))];
+  if (!targets.length && category?.printer_station) targets.push(String(category.printer_station));
+  return targets;
+}
+
+function renderCategoryRouteCheckboxes(category) {
+  const selected = new Set(getCategoryRouteTargets(category));
+  const option = (value, label, tone) => `
+    <label class="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 cursor-pointer hover:border-indigo-400 transition-colors">
+      <input type="checkbox" data-category-route="${category.id}" value="${value}" ${selected.has(value) ? 'checked' : ''} onchange="updateCategoryRouteTargets(${category.id})" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+      <span class="h-2 w-2 rounded-full ${tone}"></span>
+      <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${label}</span>
+    </label>`;
+  const printers = _allPrinters.map(printer => option(`PRINTER:${printer.id}`, `Printer: ${escapeOrderValue(printer.display_name)} (${escapeOrderValue(printer.system_name)})`, 'bg-indigo-500')).join('');
+  const kitchens = _printerRoutingKitchens.map(kitchen => option(`KITCHEN:${kitchen.id}`, `Kitchen: ${escapeOrderValue(kitchen.name || kitchen.username)}`, 'bg-orange-500')).join('');
+  return `
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-2">
+      ${printers || '<span class="text-xs italic text-slate-400">No printers registered</span>'}
+      ${kitchens || '<span class="text-xs italic text-slate-400">No kitchen terminals</span>'}
+    </div>
+    <p class="mt-2 text-[10px] font-bold text-slate-400">Select any combination of printers and kitchen displays.</p>`;
 }
 
 function openAddPrinterModal() {
@@ -10303,6 +10317,30 @@ async function updateCategoryPrinterStation(catId, stationName) {
     await fetchCategories(); // Refresh local state
   } catch (err) {
     toast("Update failed", "error");
+  }
+}
+
+async function updateCategoryRouteTargets(catId) {
+  const inputs = [...document.querySelectorAll(`input[data-category-route="${catId}"]`)];
+  const routeTargets = inputs.filter(input => input.checked).map(input => input.value);
+  inputs.forEach(input => { input.disabled = true; });
+  try {
+    const r = await api(`/api/product-categories/${catId}`, "PATCH", { route_targets: routeTargets });
+    if (r.error) throw new Error(r.error);
+    const category = _productCategories.find(item => Number(item.id) === Number(catId));
+    if (category) {
+      category.route_targets = routeTargets;
+      category.printer_station = routeTargets[0] || null;
+    }
+    toast("Category routing updated!");
+  } catch (err) {
+    toast(err.message || "Update failed", "error");
+    await fetchCategories();
+    const category = _productCategories.find(item => Number(item.id) === Number(catId));
+    const cell = inputs[0]?.closest('td');
+    if (cell && category) cell.innerHTML = renderCategoryRouteCheckboxes(category);
+  } finally {
+    inputs.forEach(input => { input.disabled = false; });
   }
 }
 

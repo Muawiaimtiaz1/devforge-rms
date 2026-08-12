@@ -49,9 +49,9 @@ async function filterKitchenItemsByStation(details, shopId, requestedStationPara
   return {
     ...details,
     items: details.items.filter((item) => {
-      const itemRoute = salesService.getItemPrintRoute(item, categoryRouteMap, kitchenRoute);
-      return itemRoute.station !== "NONE"
-        && (itemRoute.key === requestedStation || itemRoute.station === requestedStation);
+      const itemRoutes = salesService.getItemPrintRoutes(item, categoryRouteMap, kitchenRoute);
+      return itemRoutes.some(itemRoute => itemRoute.station !== "NONE"
+        && (itemRoute.key === requestedStation || itemRoute.station === requestedStation));
     }),
   };
 }

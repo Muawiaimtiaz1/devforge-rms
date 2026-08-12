@@ -1,7 +1,29 @@
 const express = require('express');
 const { getSqlite, getPostgres, usePostgres } = require('../db/runtime');
+const db = require('../db/knex');
 const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
+let routeTargetsSchemaReady;
+
+async function ensureRouteTargetsSchema() {
+    if (!routeTargetsSchemaReady) {
+        routeTargetsSchemaReady = (async () => {
+            if (!(await db.schema.hasColumn('product_categories', 'route_targets'))) {
+                await db.schema.alterTable('product_categories', table => table.text('route_targets').nullable());
+            }
+        })().catch(error => { routeTargetsSchemaReady = null; throw error; });
+    }
+    return routeTargetsSchemaReady;
+}
+
+function normalizeRouteTargets(value, legacyRoute = null) {
+    const values = Array.isArray(value) ? value : [];
+    const targets = [...new Set(values
+        .map(target => String(target || '').trim())
+        .filter(target => /^(PRINTER|KITCHEN):\d+$/.test(target)))];
+    if (!targets.length && legacyRoute) targets.push(String(legacyRoute).trim());
+    return targets;
+}
 
 // GET /api/product-categories
 router.get('/', requireAuth, async (req, res) => {
@@ -21,19 +43,22 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/product-categories
 router.post('/', requireAuth, async (req, res) => {
-    const { name, printer_station } = req.body;
+    const { name, printer_station, route_targets } = req.body;
     const shopId = req.session.user.shop_id;
     if (!name) return res.status(400).json({ error: 'name is required' });
 
     try {
+        await ensureRouteTargetsSchema();
         const isPostgres = usePostgres();
         if (isPostgres) {
-            const query = 'INSERT INTO product_categories (shop_id, name, printer_station) VALUES ($1, $2, $3) RETURNING id';
-            const { rows } = await getPostgres().query(query, [shopId, name, printer_station || null]);
+            const targets = normalizeRouteTargets(route_targets, printer_station);
+            const query = 'INSERT INTO product_categories (shop_id, name, printer_station, route_targets) VALUES ($1, $2, $3, $4) RETURNING id';
+            const { rows } = await getPostgres().query(query, [shopId, name, targets[0] || null, JSON.stringify(targets)]);
             res.json({ ok: true, id: rows[0].id });
         } else {
-            const query = 'INSERT INTO product_categories (shop_id, name, printer_station) VALUES (?, ?, ?)';
-            const result = getSqlite().prepare(query).run(shopId, name, printer_station || null);
+            const targets = normalizeRouteTargets(route_targets, printer_station);
+            const query = 'INSERT INTO product_categories (shop_id, name, printer_station, route_targets) VALUES (?, ?, ?, ?)';
+            const result = getSqlite().prepare(query).run(shopId, name, targets[0] || null, JSON.stringify(targets));
             res.json({ ok: true, id: result.lastInsertRowid });
         }
     } catch (err) {
@@ -44,17 +69,19 @@ router.post('/', requireAuth, async (req, res) => {
 
 // PATCH /api/product-categories/:id
 router.patch('/:id', requireAuth, async (req, res) => {
-    const { printer_station } = req.body;
+    const { printer_station, route_targets } = req.body;
     const catId = parseInt(req.params.id);
     const shopId = req.session.user.shop_id;
     const isPostgres = usePostgres();
     try {
-        const query = isPostgres 
-            ? 'UPDATE product_categories SET printer_station = $1 WHERE id = $2 AND shop_id = $3'
-            : 'UPDATE product_categories SET printer_station = ? WHERE id = ? AND shop_id = ?';
+        await ensureRouteTargetsSchema();
+        const targets = normalizeRouteTargets(route_targets, route_targets === undefined ? printer_station : null);
+        const query = isPostgres
+            ? 'UPDATE product_categories SET printer_station = $1, route_targets = $2 WHERE id = $3 AND shop_id = $4'
+            : 'UPDATE product_categories SET printer_station = ?, route_targets = ? WHERE id = ? AND shop_id = ?';
         
-        if (isPostgres) await getPostgres().query(query, [printer_station || null, catId, shopId]);
-        else getSqlite().prepare(query).run(printer_station || null, catId, shopId);
+        if (isPostgres) await getPostgres().query(query, [targets[0] || null, JSON.stringify(targets), catId, shopId]);
+        else getSqlite().prepare(query).run(targets[0] || null, JSON.stringify(targets), catId, shopId);
         
         res.json({ ok: true });
     } catch (err) {
