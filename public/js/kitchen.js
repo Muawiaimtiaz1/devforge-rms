@@ -167,7 +167,13 @@ async function updateKDSStatus(id, status) {
   try {
     await api(`/api/kds/${id}/status`, 'PATCH', { status });
     toast(`Order #${id} → ${status}`);
-    await loadKDSOrders();
+    const cachedOrder = _kdsOrdersCache.find(order => Number(order.id) === Number(id));
+    if (cachedOrder) cachedOrder.order_status = status;
+    paintKDSWorkflow();
+    hideAppLoader();
+    // Refresh from Neon in the background; the confirmed status is already
+    // reflected locally, so this slower request must not hold the action loader.
+    void loadKDSOrders();
     // Free up the table if completed
     if (status === 'completed') {
       // table will need to be manually set available from the tables view
