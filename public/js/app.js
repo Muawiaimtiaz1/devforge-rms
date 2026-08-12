@@ -3767,6 +3767,28 @@ async function renderPOS() {
   const riderList = (waiters || []).filter(u => u.role === 'rider');
   const loggedInWaiter = ['waiter', 'order_taker'].includes(currentUser?.role) ? currentUser : null;
   const selectedPOSTable = (tables || []).find(table => Number(table.id) === Number(window._posSelectedTableId));
+  const activePOSOrderType = layoutRestore?.form?.orderType || window._posEntryOrderType || (deliveryOnly ? 'delivery' : 'dine_in');
+  const posOrderTypeMeta = {
+    dine_in: {
+      label: 'Dine-in Order',
+      detail: selectedPOSTable ? `Table ${escapeOrderValue(selectedPOSTable.table_number)}` : 'Table service',
+      icon: '🍽️',
+      style: 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200'
+    },
+    takeaway: {
+      label: 'Takeaway Order',
+      detail: 'Counter pickup',
+      icon: '🛒',
+      style: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+    },
+    delivery: {
+      label: 'Delivery Order',
+      detail: 'Customer delivery',
+      icon: '🚚',
+      style: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+    }
+  };
+  const activePOSOrderMeta = posOrderTypeMeta[activePOSOrderType] || posOrderTypeMeta.dine_in;
 
   let baseShopType = currentUser.shop_type;
   if (currentUser.role === 'superadmin' && managedShopId) {
@@ -3810,6 +3832,16 @@ async function renderPOS() {
       #pos-split-scroll-body #pos-kitchen-fields { margin-top: 0.25rem !important; margin-bottom: 0.25rem !important; padding-top: 0.25rem !important; }
     </style>` : ''}
     <div class="flex flex-col gap-4">
+      <div id="pos-current-order-type" class="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 shadow-sm ${activePOSOrderMeta.style}" role="status" aria-label="Current order type: ${activePOSOrderMeta.label}">
+        <div class="flex min-w-0 items-center gap-3">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/70 text-xl shadow-sm dark:bg-slate-900/60">${activePOSOrderMeta.icon}</span>
+          <div class="min-w-0">
+            <span class="block text-[10px] font-black uppercase tracking-[0.18em] opacity-65">Current Order Type</span>
+            <span class="block truncate text-base font-black">${activePOSOrderMeta.label}</span>
+          </div>
+        </div>
+        <span class="shrink-0 rounded-lg bg-white/70 px-3 py-1.5 text-xs font-black shadow-sm dark:bg-slate-900/60">${activePOSOrderMeta.detail}</span>
+      </div>
       <div id="pos-content-grid" class="h-full transition-all ${splitLayout ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] gap-4 items-start' : ''}">
         <!-- Products Panel -->
         <div class="space-y-4 ${splitLayout ? 'min-w-0' : ''}">
@@ -3858,7 +3890,11 @@ async function renderPOS() {
           </div>
           <div id="pos-checkout-drawer"
             class="${splitLayout ? 'relative w-full translate-x-0 rounded-none border overflow-y-auto p-1.5' : 'absolute right-0 top-0 w-full sm:w-[440px] md:w-[480px] lg:w-1/3 translate-x-full border-l overflow-y-auto p-4'} h-full bg-white dark:bg-slate-900 flex flex-col shadow-2xl border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-out">
-          <div class="${splitLayout ? 'mb-1 pb-1 hidden' : 'mb-3 pb-3'} flex items-center justify-end gap-3 border-b border-slate-100 dark:border-slate-800">
+          <div class="${splitLayout ? 'mb-1 p-1' : 'mb-3 pb-3'} flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800">
+            <div class="flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 ${activePOSOrderMeta.style}">
+              <span class="text-lg">${activePOSOrderMeta.icon}</span>
+              <div class="min-w-0"><span class="block text-[9px] font-black uppercase tracking-widest opacity-60">Order Type</span><span class="block truncate text-xs font-black">${activePOSOrderMeta.label}${activePOSOrderType === 'dine_in' && selectedPOSTable ? ` · Table ${escapeOrderValue(selectedPOSTable.table_number)}` : ''}</span></div>
+            </div>
             <button type="button" onclick="closePOSCheckout()" class="${splitLayout ? 'hidden' : 'flex'} w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 transition-all items-center justify-center" title="Close checkout">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -4159,7 +4195,7 @@ async function renderPOS() {
 
   // Track current order type state
   window._posDeliveryOnly = deliveryOnly;
-  window._posOrderType = layoutRestore?.form?.orderType || window._posEntryOrderType || (deliveryOnly ? 'delivery' : 'dine_in');
+  window._posOrderType = activePOSOrderType;
   window._posLastOrderType = window._posOrderType;
   switchOrderType(deliveryOnly ? 'orders' : window._posOrderType);
 
@@ -4292,6 +4328,7 @@ function switchOrderType(type) {
   const takeawayEl = $c('pos-takeaway-fields');
   const customerIdentityEl = $c('pos-customer-identity-fields');
   const contentGrid = $c('pos-content-grid');
+  const currentOrderTypeBanner = $c('pos-current-order-type');
   const ordersContainer = $c('pos-orders-container');
   const ordersBtn = $c('pos-orders-toolbar-btn');
   if (ordersBtn) {
@@ -4308,10 +4345,12 @@ function switchOrderType(type) {
 
   if (type === 'orders') {
     closePOSCheckout(true);
+    if (currentOrderTypeBanner) currentOrderTypeBanner.classList.add('hidden');
     if (contentGrid) contentGrid.classList.add('hidden');
     if (ordersContainer) ordersContainer.classList.remove('hidden');
     return renderPOSOrders();
   } else {
+    if (currentOrderTypeBanner) currentOrderTypeBanner.classList.remove('hidden');
     if (contentGrid) contentGrid.classList.remove('hidden');
     if (ordersContainer) ordersContainer.classList.add('hidden');
     if (dineEl) dineEl.classList.toggle('hidden', type !== 'dine_in' || isRetail);
@@ -4877,6 +4916,8 @@ async function viewOrderItems(id) {
     `, "max-w-2xl");
   } catch (e) {
     toast("Failed to load items: " + e.message, "error");
+  } finally {
+    hideAppLoader();
   }
 }
 
