@@ -14,6 +14,13 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
+// Add every system printer handled by this agent. Names must exactly match
+// Settings > Printers & Routing. One agent can handle multiple printers.
+const ASSIGNED_PRINTERS = [
+    'BIXOLON SRP-QE302',
+];
+const MAX_JOB_AGE_MS = 10 * 60 * 60 * 1000;
+
 // --- CONFIGURATION ---
 const CONFIG = {
     SHOP_ID: Number(process.env.SHOP_ID || 1),                         // Change to your Shop ID if different
@@ -37,7 +44,10 @@ async function pollJobs() {
     try {
         console.log(`[${new Date().toLocaleTimeString()}] Polling for jobs...`);
         const res = await axios.get(`${CONFIG.SERVER_URL}/api/print-jobs/poll`, {
-            params: { shop_id: CONFIG.SHOP_ID }
+            params: {
+                shop_id: CONFIG.SHOP_ID,
+                printers: ASSIGNED_PRINTERS.join(',')
+            }
         });
 
         const jobs = Array.isArray(res.data) ? res.data : [];
@@ -66,10 +76,24 @@ async function processJob(job) {
     
     // The station_name now holds the ACTUAL system printer name (e.g. "EPSON-TM88")
     // as defined in your Settings > Printers & Routing dashboard.
-    const printerName = job.station_name;
+    const printerName = typeof job.station_name === 'string' ? job.station_name.trim() : '';
 
     if (!printerName || printerName === 'null') {
         console.warn(`[SKIP] Job #${job.id} has no valid printer assigned.`);
+        await confirmJob(job.id);
+        return;
+    }
+
+    if (!ASSIGNED_PRINTERS.includes(printerName)) {
+        console.warn(`[SKIP] Job #${job.id} targets unassigned printer "${printerName}".`);
+        await failJob(job.id, `Printer "${printerName}" is not assigned to this print agent.`);
+        return;
+    }
+
+    const createdAt = job.created_at || content.created_at;
+    const createdAtMs = Date.parse(createdAt);
+    if (Number.isFinite(createdAtMs) && Date.now() - createdAtMs > MAX_JOB_AGE_MS) {
+        console.warn(`[REJECT] Job #${job.id} is older than 10 hours and will not be printed.`);
         await confirmJob(job.id);
         return;
     }
@@ -298,6 +322,8 @@ console.log("   RMS SMART PRINT AGENT IS RUNNING      ");
 console.log("==========================================");
 console.log(`Shop ID: ${CONFIG.SHOP_ID}`);
 console.log(`Monitoring: ${CONFIG.SERVER_URL}`);
+console.log(`Assigned printers: ${ASSIGNED_PRINTERS.join(', ')}`);
+console.log('Maximum accepted job age: 10 hours');
 console.log("Status: Active & Waiting for Orders...");
 console.log("------------------------------------------");
 console.log("Press Ctrl+C to stop.");

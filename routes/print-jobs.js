@@ -66,13 +66,15 @@ async function releaseStalePrintingJobs(shopId) {
   `, [shopId, STALE_PRINTING_JOB_MINUTES, STALE_PRINTING_JOB_MINUTES]);
 }
 
-async function claimPendingPrintJobs(shopId, limit = POLL_BATCH_SIZE) {
+async function claimPendingPrintJobs(shopId, printerNames, limit = POLL_BATCH_SIZE) {
+  const printers = [...new Set((printerNames || []).map(name => String(name).trim()).filter(Boolean))];
+  if (!printers.length) return [];
   const result = isPostgresClient()
     ? await db.raw(`
         WITH next_jobs AS (
           SELECT id
           FROM print_queue
-          WHERE shop_id = ? AND status = 'pending'
+          WHERE shop_id = ? AND status = 'pending' AND station_name = ANY(?::text[])
           ORDER BY created_at ASC, id ASC
           LIMIT ?
           FOR UPDATE SKIP LOCKED
@@ -87,7 +89,7 @@ async function claimPendingPrintJobs(shopId, limit = POLL_BATCH_SIZE) {
         FROM next_jobs
         WHERE pq.id = next_jobs.id
         RETURNING pq.*
-      `, [shopId, limit])
+      `, [shopId, printers, limit])
     : await db.raw(`
         UPDATE print_queue
         SET
@@ -100,11 +102,12 @@ async function claimPendingPrintJobs(shopId, limit = POLL_BATCH_SIZE) {
           SELECT id
           FROM print_queue
           WHERE shop_id = ? AND status = 'pending'
+            AND station_name IN (${printers.map(() => '?').join(', ')})
           ORDER BY created_at ASC, id ASC
           LIMIT ?
         )
         RETURNING *
-      `, [shopId, limit]);
+      `, [shopId, ...printers, limit]);
 
   return sortPrintJobs(rowsFromRaw(result));
 }
@@ -115,10 +118,12 @@ async function claimPendingPrintJobs(shopId, limit = POLL_BATCH_SIZE) {
 router.get('/poll', async (req, res) => {
   const { shop_id } = req.query;
   const shopId = Number(shop_id);
+  const printerNames = String(req.query.printers || '').split(',').map(name => name.trim()).filter(Boolean);
   
   if (!Number.isInteger(shopId) || shopId <= 0) {
     return res.status(400).json({ error: "valid shop_id required" });
   }
+  if (!printerNames.length) return res.status(400).json({ error: "at least one assigned printer is required" });
 
   // Simple authentication: Check if shop exists
   // In a real world, we'd use a dedicated API KEY for the printer agent
@@ -127,7 +132,7 @@ router.get('/poll', async (req, res) => {
 
   try {
     await releaseStalePrintingJobs(shopId);
-    const jobs = await claimPendingPrintJobs(shopId);
+    const jobs = await claimPendingPrintJobs(shopId, printerNames);
     res.json(jobs);
   } catch (err) {
     res.status(500).json({ error: err.message });
