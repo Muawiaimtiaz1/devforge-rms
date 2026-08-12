@@ -118,6 +118,19 @@ async function getUserPermissions(user) {
   if (!user) return [];
   if (user.role === 'superadmin') return ALL_PERMISSION_KEYS;
   await ensureAuthorizationSchema();
+  let assignedRole = await db('user_roles').where({ user_id: user.id }).first();
+  if (!assignedRole && user.shop_id) {
+    const standardName = {
+      admin: 'Restaurant Admin', manager: 'Manager', pos_user: 'Cashier', waiter: 'Waiter',
+      order_taker: 'Waiter', kitchen: 'Kitchen', rider: 'Rider', receptionist: 'Receptionist'
+    }[String(user.role || '').toLowerCase()];
+    const roleName = standardName || String(user.role || 'staff').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const role = await db('roles').where({ shop_id: user.shop_id, name: roleName }).first();
+    if (role) {
+      await db('user_roles').insert({ user_id: user.id, role_id: role.id }).onConflict(['user_id', 'role_id']).ignore();
+      assignedRole = { user_id: user.id, role_id: role.id };
+    }
+  }
   const rows = await db('user_roles as ur')
     .join('role_permissions as rp', 'rp.role_id', 'ur.role_id')
     .join('permissions as p', 'p.id', 'rp.permission_id')
