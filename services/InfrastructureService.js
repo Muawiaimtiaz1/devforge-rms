@@ -203,9 +203,18 @@ class InfrastructureService {
           .map(route => Number(route.replace('KITCHEN:', '')))
           .filter(Boolean)
       ))];
+      const orderAlreadyFinished = ['ready', 'served', 'completed'].includes(order.order_status);
+      const initialKitchenStatus = orderAlreadyFinished ? 'completed' : (order.order_status === 'preparing' ? 'preparing' : 'pending');
       for (const routedKitchenId of routedKitchenIds) {
-        await db('kitchen_order_statuses').insert({ shop_id: shopId, sale_id: order.id, kitchen_id: routedKitchenId, status: 'pending' })
+        await db('kitchen_order_statuses').insert({ shop_id: shopId, sale_id: order.id, kitchen_id: routedKitchenId, status: initialKitchenStatus })
           .onConflict(['sale_id', 'kitchen_id']).ignore();
+      }
+      if (orderAlreadyFinished && routedKitchenIds.length) {
+        await db('kitchen_order_statuses')
+          .where({ shop_id: shopId, sale_id: order.id })
+          .whereIn('kitchen_id', routedKitchenIds)
+          .whereNot('status', 'completed')
+          .update({ status: 'completed', updated_at: db.fn.now() });
       }
       if (kitchenUserId) {
         const hasCategoryKitchenRouting = items.some(item =>
@@ -226,7 +235,9 @@ class InfrastructureService {
 
       if (kitchenUserId && routedKitchenIds.includes(Number(kitchenUserId))) {
         const kitchenStatus = await db('kitchen_order_statuses').where({ sale_id: order.id, kitchen_id: kitchenUserId }).first();
-        if (kitchenStatus) order.order_status = kitchenStatus.status === 'completed' ? 'ready' : kitchenStatus.status;
+        if (kitchenStatus && !['served', 'completed'].includes(order.order_status)) {
+          order.order_status = kitchenStatus.status === 'completed' ? 'ready' : kitchenStatus.status;
+        }
       }
 
       order.items = visibleItems.map(item => ({
