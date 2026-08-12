@@ -811,6 +811,7 @@ function updatePendingDuesBadge(salesArray) {
 
 function openModal(title, bodyHtml, sizeClass = "max-w-lg", isStatic = false) {
   const modal = document.getElementById("modal");
+  window._modalOnClose = null;
   const closeBtn = modal.querySelector('button[onclick="closeModal()"]');
 
   document.getElementById("modal-title").textContent = title;
@@ -831,6 +832,9 @@ function openModal(title, bodyHtml, sizeClass = "max-w-lg", isStatic = false) {
 
 function closeModal() {
   $c("modal").classList.add("hidden");
+  const onClose = window._modalOnClose;
+  window._modalOnClose = null;
+  if (typeof onClose === 'function') onClose();
 }
 
 // Click outside to close modal (if not static)

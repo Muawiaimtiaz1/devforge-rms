@@ -6491,34 +6491,24 @@ async function checkout(status = 'completed') {
     }
 
     openModal(
-      isEditing ? "Order Updated!" : "Order Placed!",
+      isEditing ? "Order Updated" : (status === 'completed' ? "Order Complete" : "Order Placed"),
       `
       <div class="text-center space-y-4">
         <div class="text-5xl">${isEditing ? '📝' : '🎉'}</div>
-        <p class="text-slate-300">Order #${completedSaleId} — <span class="text-emerald-400 font-bold">Rs. ${r.total.toFixed(2)}</span></p>
+        <p class="text-sm font-bold text-slate-500 dark:text-slate-300">Order #${completedSaleId}</p>
         ${orderType === 'takeaway' ? `<p class="text-amber-400 font-bold text-lg">Token: ${token_number}</p>` : ''}
+        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
+          <p class="text-[10px] font-black uppercase tracking-widest text-emerald-600">Completed Amount</p>
+          <p class="mt-1 text-3xl font-black text-emerald-700 dark:text-emerald-300">Rs. ${Number(r.total || 0).toFixed(2)}</p>
+        </div>
         <div class="grid grid-cols-1 gap-2">
-          <div class="grid ${window._posIsRetail ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'} gap-2">
-            <button onclick="printCustomerBill(${completedSaleId})" class="py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-              Customer Bill
-            </button>
-            <button onclick="showPrintOptionsModal(${completedSaleId})" class="py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
-              Unpaid Bill
-            </button>
-            ${window._posIsRetail ? '' : `
-            <button onclick="printKitchenReceipt(${completedSaleId})" class="py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-              Kitchen Print
-            </button>
-            `}
-          </div>
-          <button onclick="closeModal();startFreshPOSOrder();" class="w-full py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm transition-all">New Order</button>
+          <button onclick="closeModal()" class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm transition-all shadow-lg shadow-indigo-600/20">Continue Ordering</button>
         </div>
       </div>`,
       "max-w-md",
-      true,
+      false,
     );
+    window._modalOnClose = startFreshPOSOrder;
     _posCheckoutSubmitting = false;
     if (btn) btn.removeAttribute("aria-busy");
   } catch (err) {
