@@ -31,7 +31,7 @@ async function ensureKitchenWorkflowSchema() {
     }
     const hasUpdatedAt = await db.schema.hasColumn('sales', 'updated_at');
     await db('sales')
-      .whereIn('order_status', ['ready', 'completed'])
+      .whereIn('order_status', ['ready', 'served', 'completed'])
       .whereNull('kitchen_completed_at')
       .update({ kitchen_completed_at: hasUpdatedAt ? db.raw('COALESCE(updated_at, created_at)') : db.ref('created_at') });
   })().catch(error => { kitchenSchemaReady = null; throw error; });
@@ -134,7 +134,7 @@ class InfrastructureService {
       .leftJoin('users as u', 's.waiter_id', 'u.id')
       .leftJoin('users as cb', 's.user_id', 'cb.id')
       .where('s.shop_id', shopId)
-      .whereIn('s.order_status', ['pending', 'preparing', 'ready', 'completed'])
+      .whereIn('s.order_status', ['pending', 'preparing', 'ready', 'served', 'completed'])
       .select(
         's.id', 's.user_id as punched_by_user_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
         's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',

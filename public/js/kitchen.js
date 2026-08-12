@@ -61,7 +61,7 @@ async function loadKDSOrders() {
     _kdsOrdersCache = orders;
 
     const active = orders.filter(o => o.order_status === 'pending' || o.order_status === 'preparing');
-    const completed = orders.filter(o => o.order_status === 'ready' || o.order_status === 'completed').reverse();
+    const completed = orders.filter(o => ['ready', 'served', 'completed'].includes(o.order_status)).reverse();
 
     $c('kds-active-count').textContent = active.length;
     $c('kds-completed-count').textContent = completed.length;
@@ -537,7 +537,7 @@ function paintKDSWorkflow() {
   const matchesType = order => !_kdsOrderType || order.order_type === _kdsOrderType;
   const pending = _kdsOrdersCache.filter(order => order.order_status === 'pending' && matchesSearch(order) && matchesType(order));
   const preparing = _kdsOrdersCache.filter(order => order.order_status === 'preparing' && matchesSearch(order) && matchesType(order));
-  const completed = _kdsOrdersCache.filter(order => ['ready', 'completed'].includes(order.order_status) && matchesSearch(order) && matchesType(order) && kdsMatchesCompletedPeriod(order)).reverse();
+  const completed = _kdsOrdersCache.filter(order => ['ready', 'served', 'completed'].includes(order.order_status) && matchesSearch(order) && matchesType(order) && kdsMatchesCompletedPeriod(order)).reverse();
   if ($c('kds-queue-count')) $c('kds-queue-count').textContent = pending.length;
   if ($c('kds-preparing-tab-count')) $c('kds-preparing-tab-count').textContent = `(${preparing.length})`;
   if ($c('kds-completed-tab-count')) $c('kds-completed-tab-count').textContent = `(${completed.length})`;
@@ -599,7 +599,7 @@ function kdsPunchedBy(order) {
 }
 
 function kdsOrderTimer(order) {
-  const isCompleted = ['ready', 'completed'].includes(order.order_status);
+  const isCompleted = ['ready', 'served', 'completed'].includes(order.order_status);
   const completedAt = order.kitchen_completed_at || order.updated_at || order.created_at;
   const endTime = isCompleted ? new Date(completedAt).getTime() : Date.now();
   const elapsedMinutes = Math.max(0, Math.floor((endTime - new Date(order.created_at).getTime()) / 60000));
@@ -620,10 +620,11 @@ function renderKDSQueueCard(order, position) {
 }
 
 function renderKDSWorkCard(order) {
-  const isCompleted = ['ready', 'completed'].includes(order.order_status);
+  const isCompleted = ['ready', 'served', 'completed'].includes(order.order_status);
+  const completedLabel = order.order_status === 'served' ? 'Served' : 'Completed';
   const canComplete = currentUserHasPermission('kitchen_orders.complete');
   return `<article class="rounded-2xl border ${isCompleted ? 'border-emerald-200 dark:border-emerald-900/50' : 'border-blue-200 dark:border-blue-900/50'} bg-white dark:bg-slate-900 p-4 shadow-sm">
-    <div class="flex justify-between items-start gap-3"><div><div class="font-black text-slate-900 dark:text-white">Order #${order.id}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div><span class="inline-flex mt-2 px-2 py-1 h-fit rounded-lg text-[9px] font-black uppercase ${isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}">${isCompleted ? 'Completed' : 'Preparing'}</span></div>${kdsOrderTimer(order)}</div>
+    <div class="flex justify-between items-start gap-3"><div><div class="font-black text-slate-900 dark:text-white">Order #${order.id}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div><span class="inline-flex mt-2 px-2 py-1 h-fit rounded-lg text-[9px] font-black uppercase ${isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}">${isCompleted ? completedLabel : 'Preparing'}</span></div>${kdsOrderTimer(order)}</div>
     <div class="mt-4 space-y-2">${kdsItemsPreview(order)}</div>
     <div class="mt-4 flex gap-2"><button onclick="showKDSOrderModal(${order.id})" class="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-black">Order Details</button>${!isCompleted && canComplete ? `<button onclick="updateKDSStatus(${order.id}, 'ready')" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black">Mark Completed</button>` : ''}</div>
   </article>`;
