@@ -12022,6 +12022,7 @@ function _renderShiftHistoryTable() {
       ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900/40"
       : "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border-rose-100 dark:border-rose-900/40";
     const statusText = health.isOk ? "Error proof" : "Needs review";
+    const openingText = _hasNumericValue(shift.opening_balance) ? formatRegisterMoney(shift.opening_balance) : "Missing";
     const expectedText = _hasNumericValue(shift.expected_balance) ? formatRegisterMoney(shift.expected_balance) : "Missing";
     const closingText = _hasNumericValue(shift.closing_balance) ? formatRegisterMoney(shift.closing_balance) : (health.isClosed ? "Missing" : "Open");
     const verificationDemandedText = _formatAuditTimestamp(health.verificationRequestedAt);
@@ -12054,8 +12055,12 @@ function _renderShiftHistoryTable() {
           <div class="text-xs font-black text-slate-800 dark:text-white">${shift.cashier_name || "System"}</div>
           <div class="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Closed by ${shift.closed_by_name || (health.isClosed ? "Unknown" : "Open")}</div>
         </td>
-        <td class="px-4 py-5 align-middle min-w-[190px]">
-          <div class="grid grid-cols-2 gap-2 text-[11px]">
+        <td class="px-4 py-5 align-middle min-w-[260px]">
+          <div class="grid grid-cols-3 gap-2 text-[11px]">
+            <div>
+              <div class="font-black uppercase tracking-widest text-slate-400 text-[9px]">Opening</div>
+              <div class="mt-1 font-black text-indigo-600 dark:text-indigo-300">${openingText}</div>
+            </div>
             <div>
               <div class="font-black uppercase tracking-widest text-slate-400 text-[9px]">Expected</div>
               <div class="mt-1 font-black text-slate-800 dark:text-white">${expectedText}</div>
