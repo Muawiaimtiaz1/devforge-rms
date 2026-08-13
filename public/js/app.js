@@ -833,6 +833,7 @@ function navigate(page, options = {}) {
 
   const parentMap = {
     "products-low-stock": "products",
+    "menu-addons": "products",
     "sales-pending": "sales-history",
     "pending-dues": "sales-history",
   };
@@ -894,10 +895,12 @@ function navigate(page, options = {}) {
     .forEach((l) => l.classList.remove("active"));
   const navEl = document.getElementById(`nav-${page}`);
   if (navEl) navEl.classList.add("active");
+  else if (parentMap[page]) document.getElementById(`nav-${parentMap[page]}`)?.classList.add('active');
   const titles = {
     dashboard: "Dashboard",
     brands: "Brands",
     products: "Menu",
+    "menu-addons": "Menu Add-ons",
     pos: "POS / Checkout",
     delivery: "Delivery Panel",
     "sales-history": "Sales History",
@@ -942,6 +945,7 @@ function navigate(page, options = {}) {
     dashboard: renderDashboard,
     brands: renderBrands,
     products: renderProducts,
+    "menu-addons": renderMenuAddons,
     "products-low-stock": () => renderProducts(true),
     pos: renderPOS,
     delivery: renderDeliveryPanel,
@@ -2286,7 +2290,7 @@ async function renderProducts(onlyLowStock = false) {
       </div>
 
       <div class="flex flex-wrap items-center gap-2 shrink-0">
-        <button onclick="openMenuAddonsPanel()" class="px-5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300 text-sm font-bold hover:bg-amber-100 transition-all shadow-sm">Add-ons</button>
+        <button onclick="navigate('menu-addons')" class="px-5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300 text-sm font-bold hover:bg-amber-100 transition-all shadow-sm">Add-ons</button>
         <button onclick="openAddCategoryPopup('product')" class="px-5 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
             Add Category
@@ -2515,7 +2519,7 @@ function productFormHtml(p = {}, brands = []) {
           <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Optional Add-ons</h4>
           <p class="text-[10px] text-slate-500 mt-0.5">Select reusable add-ons from the Menu Add-ons panel.</p>
         </div>
-        <button type="button" onclick="openMenuAddonsPanel()" class="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold">Manage Add-ons</button>
+        <button type="button" onclick="closeModal(); navigate('menu-addons')" class="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold">Manage Add-ons</button>
       </div>
       <div id="pf-addon-list" class="space-y-2"></div>
     </div>` : '';
@@ -2785,6 +2789,61 @@ function renderProductAddonsForm() {
     </div>`).join('') || '<p class="text-[10px] text-slate-400 italic">No optional add-ons configured.</p>';
 }
 
+let _editingMenuAddonId = null;
+
+async function renderMenuAddons(editId = null) {
+  _editingMenuAddonId = editId === null ? _editingMenuAddonId : editId;
+  const [addons, stocks] = await Promise.all([api('/api/products/menu-addons'), api('/api/raw-stock')]);
+  window._menuAddons = addons;
+  window._rawStocksList = stocks;
+  const editing = addons.find(addon => Number(addon.id) === Number(_editingMenuAddonId));
+  if (_editingMenuAddonId && !editing) _editingMenuAddonId = null;
+  const selectedStock = stocks.find(stock => Number(stock.id) === Number(editing?.raw_stock_id));
+  const content = $c('page-content');
+  content.innerHTML = `<div class="space-y-6">
+    <div class="rounded-3xl bg-gradient-to-br from-amber-500 to-orange-600 p-6 sm:p-8 text-white shadow-xl shadow-amber-500/20">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><button onclick="navigate('products')" class="text-xs font-black uppercase tracking-widest text-amber-100 hover:text-white">← Back to Menu</button><h2 class="mt-3 text-3xl font-black">Reusable Add-ons</h2><p class="mt-2 max-w-2xl text-sm text-amber-50">Create each add-on once, optionally connect it to inventory, then select it on any product.</p></div><div class="rounded-2xl bg-white/15 px-5 py-4 backdrop-blur"><strong class="block text-3xl">${addons.length}</strong><span class="text-xs font-bold uppercase tracking-widest text-amber-100">Active add-ons</span></div></div>
+    </div>
+    ${currentUserHasPermission(editing ? 'products.update' : 'products.create') ? `<section class="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
+      <div class="flex items-center justify-between gap-3 mb-5"><div><h3 class="text-lg font-black text-slate-900 dark:text-white">${editing ? 'Edit Add-on' : 'Create Add-on'}</h3><p class="text-xs text-slate-500 mt-1">Inventory usage is optional. When linked, enter consumption in the smaller usage unit.</p></div>${editing ? `<button onclick="cancelMenuAddonEdit()" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">Cancel Edit</button>` : ''}</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="text-xs font-bold text-slate-500">Add-on name<input id="menu-addon-name" value="${escapeOrderValue(editing?.name || '')}" placeholder="e.g. Ice Cream Scoop" class="mt-1.5 w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"></label>
+        <label class="text-xs font-bold text-slate-500">Extra selling price<input id="menu-addon-price" type="number" min="0" step="0.01" value="${Number(editing?.price || 0)}" class="mt-1.5 w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"></label>
+        <label class="text-xs font-bold text-slate-500 md:col-span-2">Search inventory ingredient (optional)
+          <div class="relative mt-1.5"><input id="menu-addon-stock-search" list="menu-addon-stock-suggestions" value="${escapeOrderValue(selectedStock?.name || '')}" oninput="selectMenuAddonIngredient(this.value)" placeholder="Type ingredient name, e.g. Ice Cream" autocomplete="off" class="w-full px-4 py-3 pr-11 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"><span class="absolute right-4 top-3.5 text-slate-400">⌕</span></div>
+          <datalist id="menu-addon-stock-suggestions">${stocks.map(stock => `<option value="${escapeOrderValue(stock.name)}">${escapeOrderValue(stock.ingredient_code || '')} · ${Number(stock.current_stock || 0)} ${escapeOrderValue(stock.unit || '')}</option>`).join('')}</datalist><input id="menu-addon-stock" type="hidden" value="${editing?.raw_stock_id || ''}">
+        </label>
+        <div id="menu-addon-usage-wrap" class="md:col-span-2 ${selectedStock ? '' : 'hidden'} rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 p-4">
+          <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end"><label class="text-xs font-bold text-emerald-800 dark:text-emerald-300"><span id="menu-addon-qty-label">Quantity used per add-on (${escapeOrderValue(selectedStock?.usage_unit || selectedStock?.unit || 'unit')})</span><input id="menu-addon-qty" type="number" min="0.0001" step="0.01" value="${Number(editing?.quantity || 0)}" class="mt-1.5 w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-slate-900 dark:text-white"></label><div id="menu-addon-conversion-note" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 pb-3">${selectedStock ? `1 ${escapeOrderValue(selectedStock.unit)} = ${Number(selectedStock.conversion_factor || 1)} ${escapeOrderValue(selectedStock.usage_unit || selectedStock.unit)}` : ''}</div></div>
+        </div>
+        <div class="md:col-span-2 flex justify-end"><button id="save-menu-addon" onclick="saveMenuAddon(${editing?.id || 'null'})" class="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-white font-black shadow-lg shadow-amber-500/20">${editing ? 'Update Add-on' : 'Save Add-on'}</button></div>
+      </div>
+    </section>` : ''}
+    <section class="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm"><div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5"><div><h3 class="text-lg font-black text-slate-900 dark:text-white">Add-on Catalog</h3><p class="text-xs text-slate-500 mt-1">Search and manage add-ons available for products.</p></div><input id="menu-addon-list-search" oninput="filterMenuAddonCards(this.value)" placeholder="Search add-ons or ingredients..." class="w-full sm:w-80 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"></div>
+      <div id="menu-addon-card-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${addons.map(addon => `<article class="menu-addon-card rounded-2xl border border-slate-200 dark:border-slate-700 p-4 hover:border-amber-300 transition-colors" data-search="${escapeOrderValue(`${addon.name} ${addon.inventory_name || ''}`.toLowerCase())}"><div class="flex justify-between gap-3"><div class="min-w-0"><h4 class="font-black text-slate-900 dark:text-white truncate">${escapeOrderValue(addon.name)}</h4><p class="mt-1 text-lg font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()}</p></div><span class="h-fit px-2.5 py-1 rounded-full text-[10px] font-black ${addon.inventory_name ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${addon.inventory_name ? 'Inventory linked' : 'No inventory'}</span></div><div class="mt-4 min-h-10 text-xs text-slate-500">${addon.inventory_name ? `<strong class="text-slate-700 dark:text-slate-300">${escapeOrderValue(addon.inventory_name)}</strong><br>${Number(addon.quantity)} ${escapeOrderValue(stocks.find(s => Number(s.id) === Number(addon.raw_stock_id))?.usage_unit || stocks.find(s => Number(s.id) === Number(addon.raw_stock_id))?.unit || 'unit')} per sale` : 'This add-on changes price only.'}</div><div class="mt-4 flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="editMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></article>`).join('') || '<p class="md:col-span-2 xl:col-span-3 py-12 text-center text-slate-500">No add-ons created yet.</p>'}</div>
+    </section>
+  </div>`;
+}
+
+function selectMenuAddonIngredient(value) {
+  const stock = (window._rawStocksList || []).find(item => item.name.trim().toLowerCase() === String(value || '').trim().toLowerCase());
+  $c('menu-addon-stock').value = stock?.id || '';
+  $c('menu-addon-usage-wrap')?.classList.toggle('hidden', !stock);
+  if (!stock) return;
+  const usageUnit = stock.usage_unit || stock.unit || 'unit';
+  $c('menu-addon-qty-label').textContent = `Quantity used per add-on (${usageUnit})`;
+  $c('menu-addon-conversion-note').textContent = `1 ${stock.unit} = ${Number(stock.conversion_factor || 1)} ${usageUnit}`;
+  if (!$c('menu-addon-qty').value || Number($c('menu-addon-qty').value) <= 0) $c('menu-addon-qty').value = 1;
+}
+
+function filterMenuAddonCards(value) {
+  const query = String(value || '').trim().toLowerCase();
+  document.querySelectorAll('.menu-addon-card').forEach(card => card.classList.toggle('hidden', !card.dataset.search.includes(query)));
+}
+
+function editMenuAddon(id) { _editingMenuAddonId = Number(id); renderMenuAddons(id); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function cancelMenuAddonEdit() { _editingMenuAddonId = null; renderMenuAddons(null); }
+
 async function openMenuAddonsPanel(editId = null) {
   showAppLoader('Opening add-ons', 'Loading reusable menu add-ons...');
   try {
@@ -2823,14 +2882,15 @@ async function saveMenuAddon(id) {
     await api(id ? `/api/products/menu-addons/${id}` : '/api/products/menu-addons', id ? 'PUT' : 'POST', payload);
     toast(id ? 'Add-on updated' : 'Add-on added');
     hideAppLoader();
-    await openMenuAddonsPanel();
+    if (_currentPage === 'menu-addons') { _editingMenuAddonId = null; await renderMenuAddons(null); }
+    else await openMenuAddonsPanel();
   } catch (error) { toast(error.message, 'error'); button.disabled = false; hideAppLoader(); }
 }
 
 async function deleteMenuAddon(id) {
-  if (!confirm('Remove this add-on from the reusable catalog? Existing saved products will keep their current selection until edited.')) return;
+  if (!confirm('Remove this add-on? It will also be removed from products currently using it.')) return;
   showAppLoader('Removing add-on', 'Updating the menu add-on catalog...');
-  try { await api(`/api/products/menu-addons/${id}`, 'DELETE'); toast('Add-on removed'); hideAppLoader(); await openMenuAddonsPanel(); }
+  try { await api(`/api/products/menu-addons/${id}`, 'DELETE'); toast('Add-on removed'); hideAppLoader(); if (_currentPage === 'menu-addons') { _editingMenuAddonId = null; await renderMenuAddons(null); } else await openMenuAddonsPanel(); }
   catch (error) { toast(error.message, 'error'); hideAppLoader(); }
 }
 
