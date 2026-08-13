@@ -282,7 +282,7 @@ function showAddRawStockModal() {
   const modal = document.createElement("div");
   modal.className = "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300";
   modal.innerHTML = `
-    <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-300">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-[2.5rem] p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-300">
       <h3 class="text-2xl font-black text-slate-950 dark:text-white mb-6">Add New Ingredient</h3>
       <div class="space-y-4">
         <div>
@@ -373,7 +373,9 @@ function showAddRawStockModal() {
     }
   };
 
-  document.getElementById("save-rs").onclick = async () => {
+  document.getElementById("save-rs").onclick = async (event) => {
+    const saveButton = event.currentTarget;
+    if (saveButton.disabled) return;
     const payload = {
       name: $c("rs-name").value.trim(),
       unit: $c("rs-unit").value.trim(),
@@ -386,12 +388,23 @@ function showAddRawStockModal() {
       ,ingredient_code: $c("rs-code").value.trim()
     };
     if (!payload.name || !payload.unit) return toast("Name and unit required", "error");
+    saveButton.disabled = true;
+    saveButton.textContent = "Saving...";
+    saveButton.classList.add("opacity-60", "cursor-not-allowed");
+    showAppLoader("Adding ingredient", `Saving ${payload.name}...`);
     try {
       await api("/api/raw-stock", "POST", payload);
       toast("Ingredient added!");
       modal.remove();
-      renderRawStock();
-    } catch (e) { toast(e.message, "error"); }
+      await renderRawStock();
+    } catch (e) {
+      toast(e.message, "error");
+      saveButton.disabled = false;
+      saveButton.textContent = "Save Ingredient";
+      saveButton.classList.remove("opacity-60", "cursor-not-allowed");
+    } finally {
+      hideAppLoader();
+    }
   };
 }
 
@@ -459,17 +472,30 @@ function showEditRawStockModal(id) {
       <div class="flex gap-3 mt-8"><button onclick="this.closest('.fixed').remove()" class="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold">Cancel</button><button id="save-ers" class="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold">Save Changes</button></div>
     </div>`;
   document.body.appendChild(modal);
-  $c('save-ers').onclick = async () => {
+  $c('save-ers').onclick = async (event) => {
+    const saveButton = event.currentTarget;
+    if (saveButton.disabled) return;
     const payload = {
       name: $c('ers-name').value.trim(), ingredient_code: $c('ers-code').value.trim(), code_mode: $c('ers-code-mode').value,
       unit: $c('ers-unit').value, usage_unit: $c('ers-usage-unit').value,
       conversion_factor: Number($c('ers-factor').value), min_stock_level: Number($c('ers-min').value), buying_price: Number($c('ers-cost').value)
     };
     if (!payload.name) return toast('Ingredient name is required', 'error');
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving...';
+    saveButton.classList.add('opacity-60', 'cursor-not-allowed');
+    showAppLoader('Updating ingredient', `Saving changes to ${payload.name}...`);
     try {
       await api(`/api/raw-stock/${id}/details`, 'PATCH', payload);
-      toast('Ingredient updated'); modal.remove(); renderRawStock();
-    } catch (error) { toast(error.message, 'error'); }
+      toast('Ingredient updated'); modal.remove(); await renderRawStock();
+    } catch (error) {
+      toast(error.message, 'error');
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save Changes';
+      saveButton.classList.remove('opacity-60', 'cursor-not-allowed');
+    } finally {
+      hideAppLoader();
+    }
   };
 }
 
