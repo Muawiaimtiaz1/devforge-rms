@@ -124,11 +124,26 @@ router.post('/menu-addons', requireAuth, async (req, res) => {
     if (!name || !Number.isFinite(price) || price < 0) throw new Error('Add-on name and a valid price are required.');
     if (rawStockId && (!Number.isInteger(rawStockId) || !Number.isFinite(quantity) || quantity <= 0)) throw new Error('Select a valid inventory quantity.');
     if (rawStockId && !await db('raw_stocks').where({ id: rawStockId, shop_id: shopId, is_deleted: 0 }).first('id')) throw new Error('Selected inventory ingredient is invalid.');
-    const inserted = await db('menu_addons').insert({ shop_id: shopId, name, price, raw_stock_id: rawStockId, quantity }).returning('id');
-    const id = typeof inserted[0] === 'object' ? inserted[0].id : inserted[0];
-    res.json({ ok: true, id });
+    const result = await db.transaction(async trx => {
+      const existing = await trx('menu_addons')
+        .where({ shop_id: shopId })
+        .whereRaw('LOWER(TRIM(name)) = LOWER(TRIM(?))', [name])
+        .first('id', 'is_active');
+      if (existing?.is_active) {
+        const duplicateError = new Error('An add-on with this name already exists.');
+        duplicateError.code = 'ADDON_NAME_EXISTS';
+        throw duplicateError;
+      }
+      if (existing) {
+        await trx('menu_addons').where({ id: existing.id, shop_id: shopId }).update({ name, price, raw_stock_id: rawStockId, quantity, is_active: 1, updated_at: trx.fn.now() });
+        return { id: existing.id, restored: true };
+      }
+      const inserted = await trx('menu_addons').insert({ shop_id: shopId, name, price, raw_stock_id: rawStockId, quantity }).returning('id');
+      return { id: typeof inserted[0] === 'object' ? inserted[0].id : inserted[0], restored: false };
+    });
+    res.json({ ok: true, ...result });
   } catch (error) {
-    const duplicate = error.code === '23505' || String(error.code || '').startsWith('SQLITE_CONSTRAINT');
+    const duplicate = error.code === 'ADDON_NAME_EXISTS' || error.code === '23505' || String(error.code || '').startsWith('SQLITE_CONSTRAINT');
     res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'An add-on with this name already exists.' : error.message });
   }
 });
