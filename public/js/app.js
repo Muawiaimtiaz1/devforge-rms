@@ -4552,8 +4552,8 @@ function updatePrintSummary(subtotal, orderType = '') {
   if (gs) gs.textContent = `PKR ${total.toLocaleString()}`;
   if (dueEl) dueEl.textContent = `PKR ${due.toLocaleString()}`;
 
-  const partialPayment = received > 0.01 && received < total - 0.01;
-  const identityRequired = orderType === 'delivery' || partialPayment;
+  const hasOutstandingBalance = received < total - 0.01;
+  const identityRequired = orderType === 'delivery' || hasOutstandingBalance;
   ['pp-customer-name', 'pp-customer-phone'].forEach((id) => {
     const input = document.getElementById(id);
     if (!input) return;
@@ -4569,14 +4569,13 @@ async function updateAndPrintBill(id, orderType) {
   const discount = parseFloat($c('pp-discount').value) || 0;
   const taxPercentage = parseFloat($c('pp-tax').value) || 0;
   const finalTotal = Number($c('ps-total').textContent.replace(/[^0-9.-]/g, '')) || 0;
-  const partialPayment = amountReceived > 0.01 && amountReceived < finalTotal - 0.01;
   const fullyPaid = amountReceived >= finalTotal - 0.01;
-  const identityRequired = orderType === 'delivery' || partialPayment;
+  const identityRequired = orderType === 'delivery' || !fullyPaid;
 
   if (identityRequired && (!customerName || !customerPhone)) {
     if (!customerName) $c('pp-customer-name').focus();
     else $c('pp-customer-phone').focus();
-    return toast("Customer name and phone are required for delivery or partial payment", "error");
+    return toast("Customer name and phone are required for delivery or any unpaid balance", "error");
   }
 
   const data = {
@@ -4593,14 +4592,14 @@ async function updateAndPrintBill(id, orderType) {
 
   try {
     await api(`/api/sales/${id}/details`, 'PATCH', data);
+    const completed = await completeOrderFromPOS(id, true);
+    if (!completed) return;
     if (fullyPaid) {
-      const completed = await completeOrderFromPOS(id, true);
-      if (!completed) return;
       await printCustomerBill(id);
       toast('Customer linked and bill marked paid.', 'success');
     } else {
       await printUnpaidBill(id);
-      toast('Customer linked and outstanding amount added to the ledger.', 'success');
+      toast('Sale closed and outstanding amount added to the customer ledger.', 'success');
     }
     closeModal();
     renderPOSOrders();
