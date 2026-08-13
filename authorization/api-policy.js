@@ -32,7 +32,7 @@ function actionFor(req, resource) {
   if (resource === 'notifications') return method === 'GET' ? 'view' : (method === 'PATCH' && /read/.test(path) ? 'mark_read' : 'manage');
   if (resource === 'products' && /stock|harvest/.test(path)) return 'adjust_stock';
   if (resource === 'products' && /damage/.test(path)) return 'manage_damage';
-  if (resource === 'raw-stock' && /\/stock$/.test(path)) return 'adjust';
+  if (resource === 'raw-stock' && /\/stock$|\/details$/.test(path)) return 'adjust';
   if (resource === 'raw-stock' && /waste/.test(path)) return method === 'GET' ? 'view' : 'record_waste';
   if (resource === 'recipes' && /link-product|product-links/.test(path)) return method === 'GET' ? 'view' : 'link_product';
   if (resource === 'customers' && /payment|adjustment/.test(path)) return 'manage_ledger';

@@ -861,6 +861,9 @@ async function initPostgres() {
 
     await query("CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id)");
     await query("CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id)");
+    await query("ALTER TABLE raw_stocks ADD COLUMN IF NOT EXISTS ingredient_code TEXT");
+    await query("UPDATE raw_stocks SET ingredient_code = 'ING-' || LPAD(id::text, 5, '0') WHERE ingredient_code IS NULL OR BTRIM(ingredient_code) = ''");
+    await query("CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_stocks_shop_ingredient_code ON raw_stocks(shop_id, ingredient_code) WHERE ingredient_code IS NOT NULL");
 
     // Add can_manage_register to users
     const userRegCheck = await query(`

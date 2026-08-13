@@ -191,6 +191,7 @@ async function renderRawStock() {
 
   try {
     const [rawStocks, products] = await Promise.all([api("/api/raw-stock"), api("/api/products")]);
+    window._rawStocksList = Array.isArray(rawStocks) ? rawStocks : [];
     const stockProducts = (Array.isArray(products) ? products : []).filter(product => product.product_type === 'stock_based' && product.is_component !== 1);
     window._inventoryStockProducts = stockProducts;
 
@@ -202,10 +203,10 @@ async function renderRawStock() {
             <p class="text-slate-500 text-sm mt-1">Manage raw ingredients and finished stock products.</p>
           </div>
           <div class="flex gap-3">
-            <button onclick="showAddRawStockModal()" class="px-6 py-3.5 rounded-2xl bg-indigo-600 text-white text-sm font-bold shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all flex items-center gap-2">
+            ${currentUserHasPermission('raw_stock.create') ? `<button onclick="showAddRawStockModal()" class="px-6 py-3.5 rounded-2xl bg-indigo-600 text-white text-sm font-bold shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all flex items-center gap-2">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
               Add New Ingredient
-            </button>
+            </button>` : ''}
             <button onclick="openAddProductForm('stock_based')" class="px-6 py-3.5 rounded-2xl bg-emerald-600 text-white text-sm font-bold shadow-xl shadow-emerald-600/20 hover:bg-emerald-500 active:scale-95 transition-all">Add Stock Product</button>
           </div>
         </div>
@@ -225,7 +226,7 @@ async function renderRawStock() {
         <section id="inventory-ingredients-section"><div class="mb-4"><h4 class="text-xl font-black text-slate-900 dark:text-white">Raw Ingredients</h4><p class="text-xs text-slate-500">Ingredients consumed by recipe products and add-ons.</p></div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           ${rawStocks.map(rs => `
-            <div data-inventory-search="${escapeWasteValue(`${rs.name} ${rs.unit} ${rs.usage_unit || ''}`.toLowerCase())}" class="inventory-catalog-item bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition-all shadow-sm group">
+            <div data-inventory-search="${escapeWasteValue(`${rs.ingredient_code || ''} ${rs.name} ${rs.unit} ${rs.usage_unit || ''}`.toLowerCase())}" class="inventory-catalog-item bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition-all shadow-sm group">
               <div class="flex justify-between items-start mb-4">
                 <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
@@ -236,12 +237,13 @@ async function renderRawStock() {
                   ${rs.usage_unit ? `<div class="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">= ${Number((rs.current_stock * rs.conversion_factor).toFixed(2))} ${rs.usage_unit}</div>` : ''}
                 </div>
               </div>
-              <h4 class="text-lg font-black text-slate-900 dark:text-white mb-2">${rs.name}</h4>
+              <div class="flex items-center justify-between gap-3 mb-2"><h4 class="text-lg font-black text-slate-900 dark:text-white">${escapeWasteValue(rs.name)}</h4><span class="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[9px] font-black text-slate-500">${escapeWasteValue(rs.ingredient_code || `ING-${String(rs.id).padStart(5, '0')}`)}</span></div>
               <p class="text-xs text-slate-500 italic mb-2">Min. stock alert level: ${rs.min_stock_level} ${rs.unit}</p>
               ${rs.usage_unit ? `<p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-4">1 ${rs.unit} = ${rs.conversion_factor} ${rs.usage_unit}</p>` : '<div class="mb-4"></div>'}
               
               <div class="flex gap-2">
-                <button onclick="showUpdateRawStockModal(${rs.id}, '${rs.name}')" class="flex-1 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-indigo-50 hover:text-indigo-600 transition-all">Restock</button>
+                ${currentUserHasPermission('raw_stock.adjust') ? `<button onclick="showUpdateRawStockModal(${rs.id})" class="flex-1 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-indigo-50 hover:text-indigo-600 transition-all">Restock</button>
+                <button onclick="showEditRawStockModal(${rs.id})" class="flex-1 py-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 transition-all">Edit</button>` : ''}
                 <button onclick="viewRawStockHistory(${rs.id})" class="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-indigo-600 transition-all">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 </button>
@@ -276,12 +278,17 @@ async function renderRawStock() {
 }
 
 function showAddRawStockModal() {
+  if (!currentUserHasPermission('raw_stock.create')) return toast('You do not have permission to add ingredients.', 'error');
   const modal = document.createElement("div");
   modal.className = "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300";
   modal.innerHTML = `
     <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-300">
       <h3 class="text-2xl font-black text-slate-950 dark:text-white mb-6">Add New Ingredient</h3>
       <div class="space-y-4">
+        <div>
+          <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Ingredient ID</label>
+          <div class="grid grid-cols-[120px_1fr] gap-2"><select id="rs-code-mode" onchange="$c('rs-code').disabled=this.value==='auto'" class="px-3 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-sm font-bold"><option value="auto">Auto</option><option value="manual">Manual</option></select><input id="rs-code" disabled placeholder="Generated after save" class="px-4 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-sm font-bold disabled:opacity-60" /></div>
+        </div>
         <div>
           <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Ingredient Name</label>
           <input id="rs-name" placeholder="e.g. Potatoes, Milk" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-sm font-bold" />
@@ -375,6 +382,8 @@ function showAddRawStockModal() {
       min_stock_level: parseFloat($c("rs-min").value),
       initial_stock: parseFloat($c("rs-initial").value),
       buying_price: parseFloat($c("rs-cost").value)
+      ,code_mode: $c("rs-code-mode").value
+      ,ingredient_code: $c("rs-code").value.trim()
     };
     if (!payload.name || !payload.unit) return toast("Name and unit required", "error");
     try {
@@ -386,7 +395,9 @@ function showAddRawStockModal() {
   };
 }
 
-function showUpdateRawStockModal(id, name) {
+function showUpdateRawStockModal(id) {
+  if (!currentUserHasPermission('raw_stock.adjust')) return toast('You do not have permission to adjust ingredients.', 'error');
+  const name = (window._rawStocksList || []).find((item) => Number(item.id) === Number(id))?.name || 'Ingredient';
   const modal = document.createElement("div");
   modal.className = "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300";
   modal.innerHTML = `
@@ -421,6 +432,44 @@ function showUpdateRawStockModal(id, name) {
       modal.remove();
       renderRawStock();
     } catch (e) { toast(e.message, "error"); }
+  };
+}
+
+function showEditRawStockModal(id) {
+  if (!currentUserHasPermission('raw_stock.adjust')) return toast('You do not have permission to edit ingredients.', 'error');
+  const stock = (window._rawStocksList || []).find((item) => Number(item.id) === Number(id));
+  if (!stock) return toast('Ingredient not found', 'error');
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm';
+  const unitOptions = ['kg', 'liter', 'piece', 'packet', 'box', 'dozen', 'bag', 'crate', 'lb'];
+  const usageOptions = ['g', 'ml', 'piece', 'mg', 'oz', 'lb'];
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-slate-900 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[2.5rem] p-8 shadow-2xl border border-slate-200 dark:border-slate-800">
+      <div class="mb-6"><h3 class="text-2xl font-black text-slate-950 dark:text-white">Edit Ingredient</h3><p class="text-xs text-slate-500 mt-1">Update identity, units, conversion, alert level and current cost. Restock separately to preserve stock history.</p></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="sm:col-span-2"><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Ingredient Name</label><input id="ers-name" value="${escapeWasteValue(stock.name)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
+        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">ID Mode</label><select id="ers-code-mode" onchange="$c('ers-code').disabled=this.value==='auto'" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold"><option value="manual" selected>Manual / Keep</option><option value="auto">Auto from internal ID</option></select></div>
+        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Ingredient ID</label><input id="ers-code" value="${escapeWasteValue(stock.ingredient_code || `ING-${String(stock.id).padStart(5, '0')}`)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold uppercase" /></div>
+        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Purchase Unit</label><select id="ers-unit" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold">${unitOptions.map(unit => `<option value="${unit}" ${stock.unit === unit ? 'selected' : ''}>${unit}</option>`).join('')}</select></div>
+        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Usage Unit</label><select id="ers-usage-unit" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold">${usageOptions.map(unit => `<option value="${unit}" ${stock.usage_unit === unit ? 'selected' : ''}>${unit}</option>`).join('')}</select></div>
+        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Conversion Factor</label><input id="ers-factor" type="number" min="0.000001" step="0.001" value="${Number(stock.conversion_factor || 1)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
+        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Minimum Stock</label><input id="ers-min" type="number" min="0" step="0.001" value="${Number(stock.min_stock_level || 0)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
+        <div class="sm:col-span-2"><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Current Cost Price (${escapeWasteValue(stock.unit)})</label><input id="ers-cost" type="number" min="0" step="0.01" value="${Number(stock.buying_price || 0)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
+      </div>
+      <div class="flex gap-3 mt-8"><button onclick="this.closest('.fixed').remove()" class="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold">Cancel</button><button id="save-ers" class="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold">Save Changes</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+  $c('save-ers').onclick = async () => {
+    const payload = {
+      name: $c('ers-name').value.trim(), ingredient_code: $c('ers-code').value.trim(), code_mode: $c('ers-code-mode').value,
+      unit: $c('ers-unit').value, usage_unit: $c('ers-usage-unit').value,
+      conversion_factor: Number($c('ers-factor').value), min_stock_level: Number($c('ers-min').value), buying_price: Number($c('ers-cost').value)
+    };
+    if (!payload.name) return toast('Ingredient name is required', 'error');
+    try {
+      await api(`/api/raw-stock/${id}/details`, 'PATCH', payload);
+      toast('Ingredient updated'); modal.remove(); renderRawStock();
+    } catch (error) { toast(error.message, 'error'); }
   };
 }
 

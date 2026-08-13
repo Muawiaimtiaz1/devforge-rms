@@ -39,6 +39,11 @@ try {
   console.log("✅ DB Migration Applied: added usage_unit to raw_stocks");
 } catch (e) {}
 try {
+  db.exec("ALTER TABLE raw_stocks ADD COLUMN ingredient_code TEXT;");
+  console.log("DB Migration Applied: added ingredient_code to raw_stocks");
+} catch (e) {}
+db.exec("UPDATE raw_stocks SET ingredient_code = 'ING-' || printf('%05d', id) WHERE ingredient_code IS NULL OR trim(ingredient_code) = '';");
+try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS floors (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1387,6 +1392,7 @@ try {
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
     CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
     CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_stocks_shop_ingredient_code ON raw_stocks(shop_id, ingredient_code) WHERE ingredient_code IS NOT NULL;
     
     -- Dates (Used heavily in reporting and dashboards)
     CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);

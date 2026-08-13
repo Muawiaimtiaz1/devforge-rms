@@ -4,6 +4,17 @@ const { requireAuth } = require('../middleware/auth');
 const wasteService = require('../services/WasteService');
 const router = express.Router();
 
+function ingredientCode(value) {
+    const code = String(value || '').trim().toUpperCase();
+    if (!code) return null;
+    if (!/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(code)) throw new Error('Ingredient ID must be 2-40 characters using letters, numbers, - or _.');
+    return code;
+}
+
+function automaticIngredientCode(id) {
+    return `ING-${String(id).padStart(5, '0')}`;
+}
+
 // GET /api/raw-stock
 router.get('/', requireAuth, async (req, res) => {
     const isPostgres = usePostgres();
@@ -75,7 +86,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/raw-stock
 router.post('/', requireAuth, async (req, res) => {
-    const { name, unit, usage_unit, conversion_factor, min_stock_level, initial_stock, buying_price } = req.body;
+    const { name, unit, usage_unit, conversion_factor, min_stock_level, initial_stock, buying_price, ingredient_code, code_mode } = req.body;
     const shopId = req.session.user.shop_id;
     if (!name || !unit) return res.status(400).json({ error: 'Name and unit are required' });
 
@@ -83,11 +94,14 @@ router.post('/', requireAuth, async (req, res) => {
         let stockId;
         if (usePostgres()) {
             stockId = await getPostgres().withTransaction(async (client) => {
+                const requestedCode = code_mode === 'manual' ? ingredientCode(ingredient_code) : null;
+                if (code_mode === 'manual' && !requestedCode) throw new Error('Manual Ingredient ID is required.');
                 const { rows } = await client.query(
-                    'INSERT INTO raw_stocks (shop_id, name, unit, usage_unit, conversion_factor, current_stock, min_stock_level) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-                    [shopId, name, unit, usage_unit || null, conversion_factor || 1, initial_stock || 0, min_stock_level || 0]
+                    'INSERT INTO raw_stocks (shop_id, ingredient_code, name, unit, usage_unit, conversion_factor, current_stock, min_stock_level) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+                    [shopId, requestedCode, name.trim(), unit, usage_unit || null, conversion_factor || 1, initial_stock || 0, min_stock_level || 0]
                 );
                 const sid = rows[0].id;
+                if (!requestedCode) await client.query('UPDATE raw_stocks SET ingredient_code = $1 WHERE id = $2 AND shop_id = $3', [automaticIngredientCode(sid), sid, shopId]);
                 if (initial_stock > 0) {
                     await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES ($1, $2, $3, $4)', [sid, shopId, buying_price || 0, initial_stock]);
                 }
@@ -95,10 +109,13 @@ router.post('/', requireAuth, async (req, res) => {
             });
         } else {
             stockId = getSqlite().transaction(() => {
+                const requestedCode = code_mode === 'manual' ? ingredientCode(ingredient_code) : null;
+                if (code_mode === 'manual' && !requestedCode) throw new Error('Manual Ingredient ID is required.');
                 const result = getSqlite().prepare(
-                    'INSERT INTO raw_stocks (shop_id, name, unit, usage_unit, conversion_factor, current_stock, min_stock_level) VALUES (?, ?, ?, ?, ?, ?, ?)'
-                ).run(shopId, name, unit, usage_unit || null, conversion_factor || 1, initial_stock || 0, min_stock_level || 0);
+                    'INSERT INTO raw_stocks (shop_id, ingredient_code, name, unit, usage_unit, conversion_factor, current_stock, min_stock_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                ).run(shopId, requestedCode, name.trim(), unit, usage_unit || null, conversion_factor || 1, initial_stock || 0, min_stock_level || 0);
                 const sid = result.lastInsertRowid;
+                if (!requestedCode) getSqlite().prepare('UPDATE raw_stocks SET ingredient_code = ? WHERE id = ? AND shop_id = ?').run(automaticIngredientCode(sid), sid, shopId);
                 if (initial_stock > 0) {
                     getSqlite().prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES (?, ?, ?, ?)').run(sid, shopId, buying_price || 0, initial_stock);
                 }
@@ -108,7 +125,53 @@ router.post('/', requireAuth, async (req, res) => {
         res.json({ ok: true, id: stockId });
     } catch (e) {
         console.error("Raw stock create error:", e);
-        res.status(500).json({ error: e.message });
+        const duplicate = e.code === '23505' || e.code === 'SQLITE_CONSTRAINT_UNIQUE';
+        res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'Ingredient ID already exists.' : e.message });
+    }
+});
+
+// PATCH /api/raw-stock/:id/details - edit ingredient identity and costing metadata.
+// Stock quantity remains on the dedicated stock endpoint to preserve batch history.
+router.patch('/:id/details', requireAuth, async (req, res) => {
+    const stockId = parseInt(req.params.id, 10);
+    const shopId = req.session.user.shop_id;
+    const { name, unit, usage_unit, conversion_factor, min_stock_level, buying_price, ingredient_code, code_mode } = req.body;
+    if (!Number.isInteger(stockId) || !name?.trim() || !unit?.trim()) return res.status(400).json({ error: 'Valid ingredient, name and unit are required.' });
+    const factor = Number(conversion_factor);
+    const minimum = Number(min_stock_level);
+    const price = Number(buying_price);
+    if (!Number.isFinite(factor) || factor <= 0 || !Number.isFinite(minimum) || minimum < 0 || !Number.isFinite(price) || price < 0) {
+        return res.status(400).json({ error: 'Conversion factor must be positive; minimum stock and price cannot be negative.' });
+    }
+
+    try {
+        const requestedCode = code_mode === 'auto' ? automaticIngredientCode(stockId) : ingredientCode(ingredient_code);
+        if (!requestedCode) throw new Error('Ingredient ID is required.');
+        if (usePostgres()) {
+            await getPostgres().withTransaction(async (client) => {
+                const updated = await client.query(
+                    'UPDATE raw_stocks SET ingredient_code = $1, name = $2, unit = $3, usage_unit = $4, conversion_factor = $5, min_stock_level = $6 WHERE id = $7 AND shop_id = $8',
+                    [requestedCode, name.trim(), unit.trim(), usage_unit?.trim() || null, factor, minimum, stockId, shopId]
+                );
+                if (!updated.rowCount) throw new Error('Ingredient not found.');
+                const priceUpdate = await client.query('UPDATE raw_stock_batches SET buying_price = $1 WHERE id = (SELECT id FROM raw_stock_batches WHERE raw_stock_id = $2 AND shop_id = $3 ORDER BY id DESC LIMIT 1)', [price, stockId, shopId]);
+                if (!priceUpdate.rowCount) {
+                    await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES ($1, $2, $3, 0)', [stockId, shopId, price]);
+                }
+            });
+        } else {
+            getSqlite().transaction(() => {
+                const updated = getSqlite().prepare('UPDATE raw_stocks SET ingredient_code = ?, name = ?, unit = ?, usage_unit = ?, conversion_factor = ?, min_stock_level = ? WHERE id = ? AND shop_id = ?').run(requestedCode, name.trim(), unit.trim(), usage_unit?.trim() || null, factor, minimum, stockId, shopId);
+                if (!updated.changes) throw new Error('Ingredient not found.');
+                const latest = getSqlite().prepare('SELECT id FROM raw_stock_batches WHERE raw_stock_id = ? AND shop_id = ? ORDER BY id DESC LIMIT 1').get(stockId, shopId);
+                if (latest) getSqlite().prepare('UPDATE raw_stock_batches SET buying_price = ? WHERE id = ?').run(price, latest.id);
+                else getSqlite().prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES (?, ?, ?, 0)').run(stockId, shopId, price);
+            })();
+        }
+        res.json({ ok: true, ingredient_code: requestedCode });
+    } catch (e) {
+        const duplicate = e.code === '23505' || e.code === 'SQLITE_CONSTRAINT_UNIQUE';
+        res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'Ingredient ID already exists.' : e.message });
     }
 });
 

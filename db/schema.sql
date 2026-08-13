@@ -440,6 +440,7 @@ CREATE TABLE IF NOT EXISTS product_batches (
 CREATE TABLE IF NOT EXISTS raw_stocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   shop_id INTEGER NOT NULL,
+  ingredient_code TEXT,
   name TEXT NOT NULL,
   unit TEXT NOT NULL, -- purchase unit (kg, liter, pcs, etc.)
   usage_unit TEXT, -- small unit (g, ml, etc.)
@@ -592,5 +593,6 @@ CREATE INDEX IF NOT EXISTS idx_cash_drops_shift_id ON cash_drops(shift_id);
 CREATE INDEX IF NOT EXISTS idx_cash_drops_status ON cash_drops(status);
 CREATE INDEX IF NOT EXISTS idx_third_party_persons_shop_id ON third_party_persons(shop_id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_third_party_person_id ON sale_items(third_party_person_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_stocks_shop_ingredient_code ON raw_stocks(shop_id, ingredient_code) WHERE ingredient_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
 CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id);
