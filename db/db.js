@@ -43,6 +43,22 @@ try {
   console.log("DB Migration Applied: added ingredient_code to raw_stocks");
 } catch (e) {}
 db.exec("UPDATE raw_stocks SET ingredient_code = 'ING-' || printf('%05d', id) WHERE ingredient_code IS NULL OR trim(ingredient_code) = '';");
+db.exec(`
+  CREATE TABLE IF NOT EXISTS menu_addons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    price REAL NOT NULL DEFAULT 0,
+    raw_stock_id INTEGER,
+    quantity REAL NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE,
+    FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE SET NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_addons_shop_name ON menu_addons(shop_id, name COLLATE NOCASE);
+`);
 try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS floors (

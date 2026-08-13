@@ -4,7 +4,26 @@ const { requireAuth } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const db = require('../db/knex');
 const router = express.Router();
+
+function parseAddonConfig(value) {
+  if (Array.isArray(value)) return value;
+  try { return JSON.parse(value || '[]'); } catch (_) { return []; }
+}
+
+async function syncCatalogAddonToProducts(trx, shopId, addonId, replacement) {
+  const optionId = `addon-${addonId}`;
+  const products = await trx('products').where({ shop_id: shopId, is_deleted: 0 }).select('id', 'addons_config');
+  for (const product of products) {
+    const addons = parseAddonConfig(product.addons_config);
+    const index = addons.findIndex(addon => String(addon.id) === optionId);
+    if (index < 0) continue;
+    if (replacement) addons[index] = { id: optionId, ...replacement };
+    else addons.splice(index, 1);
+    await trx('products').where({ id: product.id, shop_id: shopId }).update({ addons_config: JSON.stringify(addons) });
+  }
+}
 
 // MULTER CONFIG FOR PRODUCT IMAGES (Kept in routes as it's part of the HTTP transport layer)
 const storage = multer.diskStorage({
@@ -82,6 +101,72 @@ router.post('/', requireAuth, (req, res, next) => {
 
     const productId = await productService.createProduct(payload, req.session.user.shop_id, req.session.user.id);
     res.json({ ok: true, id: productId });
+});
+
+// Restaurant-level reusable add-on catalog.
+router.get('/menu-addons', requireAuth, async (req, res) => {
+  const rows = await db('menu_addons as ma')
+    .leftJoin('raw_stocks as rs', 'ma.raw_stock_id', 'rs.id')
+    .where('ma.shop_id', req.session.user.shop_id)
+    .where('ma.is_active', 1)
+    .select('ma.*', 'rs.name as inventory_name')
+    .orderBy('ma.name', 'asc');
+  res.json(rows);
+});
+
+router.post('/menu-addons', requireAuth, async (req, res) => {
+  try {
+    const shopId = req.session.user.shop_id;
+    const name = String(req.body.name || '').trim();
+    const price = Number(req.body.price);
+    const rawStockId = req.body.raw_stock_id ? Number(req.body.raw_stock_id) : null;
+    const quantity = rawStockId ? Number(req.body.quantity) : 0;
+    if (!name || !Number.isFinite(price) || price < 0) throw new Error('Add-on name and a valid price are required.');
+    if (rawStockId && (!Number.isInteger(rawStockId) || !Number.isFinite(quantity) || quantity <= 0)) throw new Error('Select a valid inventory quantity.');
+    if (rawStockId && !await db('raw_stocks').where({ id: rawStockId, shop_id: shopId, is_deleted: 0 }).first('id')) throw new Error('Selected inventory ingredient is invalid.');
+    const inserted = await db('menu_addons').insert({ shop_id: shopId, name, price, raw_stock_id: rawStockId, quantity }).returning('id');
+    const id = typeof inserted[0] === 'object' ? inserted[0].id : inserted[0];
+    res.json({ ok: true, id });
+  } catch (error) {
+    const duplicate = error.code === '23505' || String(error.code || '').startsWith('SQLITE_CONSTRAINT');
+    res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'An add-on with this name already exists.' : error.message });
+  }
+});
+
+router.put('/menu-addons/:addonId', requireAuth, async (req, res) => {
+  try {
+    const shopId = req.session.user.shop_id;
+    const id = Number(req.params.addonId);
+    const name = String(req.body.name || '').trim();
+    const price = Number(req.body.price);
+    const rawStockId = req.body.raw_stock_id ? Number(req.body.raw_stock_id) : null;
+    const quantity = rawStockId ? Number(req.body.quantity) : 0;
+    if (!name || !Number.isFinite(price) || price < 0) throw new Error('Add-on name and a valid price are required.');
+    if (rawStockId && (!Number.isInteger(rawStockId) || !Number.isFinite(quantity) || quantity <= 0)) throw new Error('Select a valid inventory quantity.');
+    if (rawStockId && !await db('raw_stocks').where({ id: rawStockId, shop_id: shopId, is_deleted: 0 }).first('id')) throw new Error('Selected inventory ingredient is invalid.');
+    const updated = await db.transaction(async trx => {
+      const count = await trx('menu_addons').where({ id, shop_id: shopId }).update({ name, price, raw_stock_id: rawStockId, quantity, updated_at: trx.fn.now() });
+      if (count) await syncCatalogAddonToProducts(trx, shopId, id, { name, price, raw_stock_id: rawStockId, quantity });
+      return count;
+    });
+    if (!updated) return res.status(404).json({ error: 'Add-on not found.' });
+    res.json({ ok: true });
+  } catch (error) {
+    const duplicate = error.code === '23505' || String(error.code || '').startsWith('SQLITE_CONSTRAINT');
+    res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'An add-on with this name already exists.' : error.message });
+  }
+});
+
+router.delete('/menu-addons/:addonId', requireAuth, async (req, res) => {
+  const id = Number(req.params.addonId);
+  const shopId = req.session.user.shop_id;
+  const updated = await db.transaction(async trx => {
+    const count = await trx('menu_addons').where({ id, shop_id: shopId }).update({ is_active: 0, updated_at: trx.fn.now() });
+    if (count) await syncCatalogAddonToProducts(trx, shopId, id, null);
+    return count;
+  });
+  if (!updated) return res.status(404).json({ error: 'Add-on not found.' });
+  res.json({ ok: true });
 });
 
 // DELETE /api/products/:id

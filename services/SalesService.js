@@ -172,7 +172,7 @@ class SalesService {
 
     const requirements = [...(variant.ingredients || []).map(ingredient => ({
       raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity)
-    })), ...addons.map(addon => ({
+    })), ...addons.filter(addon => addon.raw_stock_id && Number(addon.quantity) > 0).map(addon => ({
       raw_stock_id: Number(addon.raw_stock_id), quantity: Number(addon.quantity)
     }))];
     const price = Number(variant.price) + addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
@@ -182,7 +182,7 @@ class SalesService {
       cost,
       requirements,
       variants: [{ id: variant.id, name: variant.name, price: Number(variant.price), ingredients: variant.ingredients || [] }],
-      addons: addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price || 0), raw_stock_id: Number(addon.raw_stock_id), quantity: Number(addon.quantity) }))
+      addons: addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price || 0), raw_stock_id: addon.raw_stock_id ? Number(addon.raw_stock_id) : null, quantity: Number(addon.quantity || 0) }))
     };
   }
 

@@ -2248,10 +2248,12 @@ function inventoryStockFilterLabel(filter) {
 }
 
 async function renderProducts(onlyLowStock = false) {
-  const [products, brands] = await Promise.all([
+  const [products, brands, menuAddons] = await Promise.all([
     api("/api/products"),
     api("/api/brands"),
+    api("/api/products/menu-addons"),
   ]);
+  window._menuAddons = menuAddons;
   // Filter out components from global list for UI purposes
   allProducts = products;
   syncProductMap(products);
@@ -2284,6 +2286,7 @@ async function renderProducts(onlyLowStock = false) {
       </div>
 
       <div class="flex flex-wrap items-center gap-2 shrink-0">
+        <button onclick="openMenuAddonsPanel()" class="px-5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300 text-sm font-bold hover:bg-amber-100 transition-all shadow-sm">Add-ons</button>
         <button onclick="openAddCategoryPopup('product')" class="px-5 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
             Add Category
@@ -2510,9 +2513,9 @@ function productFormHtml(p = {}, brands = []) {
       <div class="flex items-center justify-between gap-3 mb-3">
         <div>
           <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Optional Add-ons</h4>
-          <p class="text-[10px] text-slate-500 mt-0.5">Choose an inventory ingredient, its consumed quantity, and the extra bill price.</p>
+          <p class="text-[10px] text-slate-500 mt-0.5">Select reusable add-ons from the Menu Add-ons panel.</p>
         </div>
-        <button type="button" onclick="addProductAddon()" class="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold">+ Add-on</button>
+        <button type="button" onclick="openMenuAddonsPanel()" class="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold">Manage Add-ons</button>
       </div>
       <div id="pf-addon-list" class="space-y-2"></div>
     </div>` : '';
@@ -2752,33 +2755,26 @@ function renderProductVariantsForm() {
     </div>`).join('');
 }
 
-function addProductAddon() {
-  const stock = (window._rawStocksList || [])[0];
-  if (!stock) return toast('Add inventory ingredients first', 'error');
-  window._formAddons = window._formAddons || [];
-  window._formAddons.push({ id: newMenuOptionId('addon'), name: stock.name, raw_stock_id: stock.id, quantity: 1, price: 0 });
-  renderProductAddonsForm();
-}
-
-function updateProductAddon(index, field, value) {
-  const addon = (window._formAddons || [])[index];
-  if (!addon) return;
-  if (field === 'raw_stock_id') {
-    addon.raw_stock_id = Number(value);
-    const stock = (window._rawStocksList || []).find(s => Number(s.id) === Number(value));
-    if (stock && !addon.name) addon.name = stock.name;
-  } else if (field === 'quantity' || field === 'price') addon[field] = Math.max(Number(value) || 0, 0);
-  else addon[field] = value;
-}
-
-function removeProductAddon(index) {
-  window._formAddons.splice(index, 1);
+function toggleProductAddon(catalogId, checked) {
+  const id = `addon-${catalogId}`;
+  window._formAddons = (window._formAddons || []).filter(addon => String(addon.id) !== id);
+  if (checked) {
+    const addon = (window._menuAddons || []).find(item => Number(item.id) === Number(catalogId));
+    if (addon) window._formAddons.push({ id, name: addon.name, price: Number(addon.price || 0), raw_stock_id: addon.raw_stock_id ? Number(addon.raw_stock_id) : null, quantity: Number(addon.quantity || 0) });
+  }
   renderProductAddonsForm();
 }
 
 function renderProductAddonsForm() {
   const host = $c('pf-addon-list');
   if (!host) return;
+  const selected = new Set((window._formAddons || []).map(addon => String(addon.id)));
+  host.innerHTML = (window._menuAddons || []).map(addon => `
+    <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-3 cursor-pointer">
+      <span class="flex items-center gap-3"><input type="checkbox" ${selected.has(`addon-${addon.id}`) ? 'checked' : ''} onchange="toggleProductAddon(${addon.id}, this.checked)" class="rounded text-amber-600"><span><strong class="block text-xs text-slate-800 dark:text-slate-100">${escapeOrderValue(addon.name)}</strong><small class="text-[10px] text-slate-500">${addon.inventory_name ? `${escapeOrderValue(addon.inventory_name)} · ${Number(addon.quantity)} used` : 'No inventory linked'}</small></span></span>
+      <strong class="text-xs text-emerald-600">+ Rs. ${Number(addon.price || 0).toLocaleString()}</strong>
+    </label>`).join('') || '<p class="text-[10px] text-slate-400 italic">No add-ons created. Use Manage Add-ons first.</p>';
+  return;
   host.innerHTML = (window._formAddons || []).map((addon, index) => `
     <div class="grid grid-cols-12 gap-2 items-end rounded-xl border border-slate-200 dark:border-slate-700 p-2">
       <label class="col-span-3 text-[10px] text-slate-500">Display name<input value="${escapeOrderValue(addon.name)}" oninput="updateProductAddon(${index}, 'name', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" /></label>
@@ -2787,6 +2783,55 @@ function renderProductAddonsForm() {
       <label class="col-span-2 text-[10px] text-slate-500">Extra price<input type="number" min="0" step="0.01" value="${Number(addon.price || 0)}" onchange="updateProductAddon(${index}, 'price', this.value)" class="mt-1 w-full px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs" /></label>
       <button type="button" onclick="removeProductAddon(${index})" class="col-span-1 h-9 text-rose-500">×</button>
     </div>`).join('') || '<p class="text-[10px] text-slate-400 italic">No optional add-ons configured.</p>';
+}
+
+async function openMenuAddonsPanel(editId = null) {
+  showAppLoader('Opening add-ons', 'Loading reusable menu add-ons...');
+  try {
+    const [addons, stocks] = await Promise.all([api('/api/products/menu-addons'), api('/api/raw-stock')]);
+    window._menuAddons = addons;
+    window._rawStocksList = stocks;
+    document.getElementById('menu-addons-modal')?.remove();
+    const editing = addons.find(addon => Number(addon.id) === Number(editId));
+    const modal = document.createElement('div');
+    modal.id = 'menu-addons-modal';
+    modal.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm';
+    modal.innerHTML = `<div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+      <div class="flex items-start justify-between gap-4 mb-6"><div><h3 class="text-2xl font-black text-slate-900 dark:text-white">Menu Add-ons</h3><p class="text-xs text-slate-500 mt-1">Create once, then select the add-on for any product. Inventory is optional.</p></div><button onclick="this.closest('.fixed').remove()" class="h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-xl">×</button></div>
+      ${currentUserHasPermission(editing ? 'products.update' : 'products.create') ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 mb-6">
+        <input id="menu-addon-name" value="${escapeOrderValue(editing?.name || '')}" placeholder="Add-on name, e.g. Extra Cheese" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+        <input id="menu-addon-price" type="number" min="0" step="0.01" value="${Number(editing?.price || 0)}" placeholder="Extra price" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
+        <select id="menu-addon-stock" onchange="$c('menu-addon-qty').disabled=!this.value" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"><option value="">No inventory link (optional)</option>${stocks.map(stock => `<option value="${stock.id}" ${Number(editing?.raw_stock_id) === Number(stock.id) ? 'selected' : ''}>${escapeOrderValue(stock.name)}</option>`).join('')}</select>
+        <input id="menu-addon-qty" type="number" min="0.0001" step="0.01" value="${Number(editing?.quantity || 0)}" ${editing?.raw_stock_id ? '' : 'disabled'} placeholder="Inventory quantity used" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold disabled:opacity-50">
+        <div class="sm:col-span-2 flex justify-end gap-2">${editing ? `<button onclick="openMenuAddonsPanel()" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">Cancel Edit</button>` : ''}<button id="save-menu-addon" onclick="saveMenuAddon(${editing?.id || 'null'})" class="px-5 py-2 rounded-xl bg-amber-500 text-white font-bold">${editing ? 'Update Add-on' : 'Add Add-on'}</button></div>
+      </div>` : ''}
+      <div class="space-y-2">${addons.map(addon => `<div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div><strong class="text-sm text-slate-900 dark:text-white">${escapeOrderValue(addon.name)}</strong><p class="text-[11px] text-slate-500 mt-1">Rs. ${Number(addon.price).toLocaleString()} · ${addon.inventory_name ? `${escapeOrderValue(addon.inventory_name)} (${Number(addon.quantity)} used)` : 'No inventory linked'}</p></div><div class="flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="openMenuAddonsPanel(${addon.id})" class="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></div>`).join('') || '<p class="py-10 text-center text-sm text-slate-500">No add-ons created yet.</p>'}</div>
+    </div>`;
+    document.body.appendChild(modal);
+  } catch (error) { toast(error.message, 'error'); } finally { hideAppLoader(); }
+}
+
+async function saveMenuAddon(id) {
+  const button = $c('save-menu-addon');
+  if (button?.disabled) return;
+  const rawStockId = $c('menu-addon-stock').value;
+  const payload = { name: $c('menu-addon-name').value.trim(), price: Number($c('menu-addon-price').value), raw_stock_id: rawStockId ? Number(rawStockId) : null, quantity: rawStockId ? Number($c('menu-addon-qty').value) : 0 };
+  if (!payload.name) return toast('Add-on name is required', 'error');
+  button.disabled = true;
+  showAppLoader(id ? 'Updating add-on' : 'Adding add-on', `Saving ${payload.name}...`);
+  try {
+    await api(id ? `/api/products/menu-addons/${id}` : '/api/products/menu-addons', id ? 'PUT' : 'POST', payload);
+    toast(id ? 'Add-on updated' : 'Add-on added');
+    hideAppLoader();
+    await openMenuAddonsPanel();
+  } catch (error) { toast(error.message, 'error'); button.disabled = false; hideAppLoader(); }
+}
+
+async function deleteMenuAddon(id) {
+  if (!confirm('Remove this add-on from the reusable catalog? Existing saved products will keep their current selection until edited.')) return;
+  showAppLoader('Removing add-on', 'Updating the menu add-on catalog...');
+  try { await api(`/api/products/menu-addons/${id}`, 'DELETE'); toast('Add-on removed'); hideAppLoader(); await openMenuAddonsPanel(); }
+  catch (error) { toast(error.message, 'error'); hideAppLoader(); }
 }
 
 function addStockProductVariant() {
@@ -2863,6 +2908,7 @@ function openAddProduct() {
 
 async function openAddProductForm(productType) {
   let brands = window._productBrands || (await api("/api/brands"));
+  window._menuAddons = await api('/api/products/menu-addons');
 
   // GET /api/brands auto-creates a default brand if none exist
   if (!brands.length) {
@@ -2909,6 +2955,7 @@ async function openAddProductForm(productType) {
 
 async function openEditProduct(id) {
   const brands = window._productBrands || (await api("/api/brands"));
+  window._menuAddons = await api('/api/products/menu-addons');
   const product = allProducts.find((p) => p.id === id) || {};
   window.ProductImageTools?.resetState?.();
 
@@ -2974,7 +3021,7 @@ async function saveProduct(id) {
       const variantNames = variants.map(v => v.name.trim().toLowerCase());
       if (new Set(variantNames).size !== variantNames.length) return toast('Variant names must be unique', 'error');
       if (variants.some(v => (v.ingredients || []).some(i => !i.raw_stock_id || Number(i.quantity) <= 0))) return toast('Every variant ingredient needs a valid quantity', 'error');
-      if (addons.some(a => !a.name.trim() || !a.raw_stock_id || Number(a.quantity) <= 0 || Number(a.price) < 0)) return toast('Every add-on needs a name, inventory item, used quantity, and valid extra price', 'error');
+      if (addons.some(a => !a.name.trim() || Number(a.price) < 0 || (a.raw_stock_id && Number(a.quantity) <= 0))) return toast('Every add-on needs a name, valid price, and inventory quantity when inventory is linked', 'error');
       const addonNames = addons.map(a => a.name.trim().toLowerCase());
       if (new Set(addonNames).size !== addonNames.length) return toast('Add-on names must be unique', 'error');
       if (!variants.some(v => v.is_default)) variants[0].is_default = true;
