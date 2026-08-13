@@ -14,11 +14,14 @@ function shopLogoBuffer(shop) {
   try {
     const dataMatch = String(source).match(/^data:image\/(?:png|jpe?g);base64,(.+)$/i);
     if (dataMatch) return Buffer.from(dataMatch[1], "base64");
-    const relativePath = String(source).replace(/^\/+/, "");
-    const fullPath = path.resolve(__dirname, "..", "public", relativePath);
     const publicRoot = path.resolve(__dirname, "..", "public");
-    if (!fullPath.startsWith(publicRoot + path.sep) || !fs.existsSync(fullPath)) return null;
-    return fs.readFileSync(fullPath);
+    const relativePath = String(source).replace(/^\/+/, "").replace(/^public[\\/]/i, "");
+    const candidates = [
+      path.resolve(publicRoot, relativePath),
+      path.resolve(publicRoot, "uploads", "receipt-assets", path.basename(relativePath))
+    ];
+    const fullPath = candidates.find((candidate) => candidate.startsWith(publicRoot + path.sep) && fs.existsSync(candidate));
+    return fullPath ? fs.readFileSync(fullPath) : null;
   } catch (_) {
     return null;
   }
@@ -595,23 +598,25 @@ router.get("/:id/ledger.pdf", requireAuth, async (req, res) => {
 
     const W = 515;
     const accent = reportAccent(req.query.accent);
-    const logo = shop?.use_logo_on_receipt ? shopLogoBuffer(shop) : null;
+    const logo = shopLogoBuffer(shop);
     const tDark = "#111827", tMid = "#374151", tLight = "#6b7280", bdr = "#e5e7eb";
 
-    doc.rect(0, 0, doc.page.width, 75).fill(accent);
+    doc.rect(0, 0, doc.page.width, 88).fill(accent);
     let headerTextX = 40;
     if (logo) {
       try {
-        doc.image(logo, 40, 10, { fit: [62, 50], align: "center", valign: "center" });
-        headerTextX = 115;
+        doc.roundedRect(30, 10, 92, 68, 6).fill("#ffffff");
+        doc.image(logo, 38, 16, { fit: [76, 56], align: "center", valign: "center" });
+        headerTextX = 140;
       } catch (_) {}
     }
-    doc.fontSize(20).font("Helvetica-Bold").fillColor("#ffffff").text(shop ? shop.name.toUpperCase() : "POS STORE", headerTextX, 16, { width: 440 - (headerTextX - 40) });
-    doc.fontSize(9).font("Helvetica").fillColor("rgba(255,255,255,0.75)").text("CUSTOMER ACCOUNT STATEMENT", headerTextX, 42);
+    doc.fontSize(20).font("Helvetica-Bold").fillColor("#ffffff").text(shop ? shop.name.toUpperCase() : "POS STORE", headerTextX, 14, { width: 555 - headerTextX });
+    doc.fontSize(9).font("Helvetica").fillColor("#ffffff").text("CUSTOMER ACCOUNT STATEMENT", headerTextX, 40);
     const periodLabel = from || to ? `${from || "All"} → ${to || "Today"}` : "ALL TIME";
-    doc.fillColor("rgba(255,255,255,0.85)").text(`Period: ${periodLabel}   |   Generated: ${new Date().toLocaleDateString("en-GB")}`, 40, 57, { align: "right", width: W });
+    doc.fillColor("#ffffff").text(`Period: ${periodLabel}`, headerTextX, 56, { width: 555 - headerTextX });
+    doc.text(`Generated: ${new Date().toLocaleDateString("en-GB")}`, headerTextX, 69, { width: 555 - headerTextX });
 
-    let y = 90;
+    let y = 103;
     doc.rect(40, y, W, 65).fill("#f9fafb").stroke(bdr);
     doc.fontSize(13).font("Helvetica-Bold").fillColor(tDark).text(customer.name, 55, y + 10);
     doc.fontSize(8).font("Helvetica").fillColor(tLight);
