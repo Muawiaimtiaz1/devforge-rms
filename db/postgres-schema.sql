@@ -563,6 +563,8 @@ CREATE INDEX IF NOT EXISTS idx_product_stock_variants_product_id ON product_stoc
 CREATE INDEX IF NOT EXISTS idx_product_stock_variants_shop_menu ON product_stock_variants(shop_id, is_on_menu);
 CREATE INDEX IF NOT EXISTS idx_customer_ledger_customer_id ON customer_ledger(customer_id);
 CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
+CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
+CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id);
 CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_recipe_id ON recipe_ingredients(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_product_recipe_links_product_id ON product_recipe_links(product_id);
 

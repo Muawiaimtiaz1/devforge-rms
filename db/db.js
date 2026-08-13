@@ -1385,6 +1385,8 @@ try {
     CREATE INDEX IF NOT EXISTS idx_product_batches_product_id ON product_batches(product_id);
     CREATE INDEX IF NOT EXISTS idx_customer_ledger_customer_id ON customer_ledger(customer_id);
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
+    CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id);
     
     -- Dates (Used heavily in reporting and dashboards)
     CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);

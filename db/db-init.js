@@ -855,9 +855,12 @@ async function initPostgres() {
       WHERE table_name = 'customer_ledger' AND column_name = 'payment_method'
     `);
     if (ledgerPaymentMethodCheck.rows.length === 0) {
-      await query("ALTER TABLE customer_ledger ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
-      console.log('âœ… customer_ledger.payment_method added.');
-    }
+    await query("ALTER TABLE customer_ledger ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
+    console.log('âœ… customer_ledger.payment_method added.');
+  }
+
+    await query("CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id)");
+    await query("CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id)");
 
     // Add can_manage_register to users
     const userRegCheck = await query(`

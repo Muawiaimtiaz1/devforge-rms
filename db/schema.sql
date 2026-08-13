@@ -592,3 +592,5 @@ CREATE INDEX IF NOT EXISTS idx_cash_drops_shift_id ON cash_drops(shift_id);
 CREATE INDEX IF NOT EXISTS idx_cash_drops_status ON cash_drops(status);
 CREATE INDEX IF NOT EXISTS idx_third_party_persons_shop_id ON third_party_persons(shop_id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_third_party_person_id ON sale_items(third_party_person_id);
+CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
+CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id);
