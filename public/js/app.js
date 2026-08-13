@@ -12055,12 +12055,12 @@ function _renderShiftHistoryTable() {
           <div class="text-xs font-black text-slate-800 dark:text-white">${shift.cashier_name || "System"}</div>
           <div class="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Closed by ${shift.closed_by_name || (health.isClosed ? "Unknown" : "Open")}</div>
         </td>
+        <td class="px-4 py-5 align-middle min-w-[130px]">
+          <div class="font-black uppercase tracking-widest text-slate-400 text-[9px]">Opening Cash</div>
+          <div class="mt-1 text-sm font-black text-indigo-600 dark:text-indigo-300">${openingText}</div>
+        </td>
         <td class="px-4 py-5 align-middle min-w-[260px]">
-          <div class="grid grid-cols-3 gap-2 text-[11px]">
-            <div>
-              <div class="font-black uppercase tracking-widest text-slate-400 text-[9px]">Opening</div>
-              <div class="mt-1 font-black text-indigo-600 dark:text-indigo-300">${openingText}</div>
-            </div>
+          <div class="grid grid-cols-2 gap-2 text-[11px]">
             <div>
               <div class="font-black uppercase tracking-widest text-slate-400 text-[9px]">Expected</div>
               <div class="mt-1 font-black text-slate-800 dark:text-white">${expectedText}</div>
@@ -12120,6 +12120,7 @@ function _renderShiftHistoryTable() {
               <th class="w-14 px-5 py-4"></th>
               <th class="px-4 py-4">Shift</th>
               <th class="px-4 py-4">Cashier</th>
+              <th class="px-4 py-4">Opening Cash</th>
               <th class="px-4 py-4">Calculations</th>
               <th class="px-4 py-4">Logs</th>
               <th class="px-4 py-4">Cash Movement</th>
