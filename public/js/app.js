@@ -5197,25 +5197,40 @@ async function showOrderCompleteModal(id) {
   const phone = s.customer_phone || '';
   const total = s.total;
   const received = Number(s.amount_received || 0) > 0.01 ? Number(s.amount_received) : Number(s.total);
+  window._completeOrderSelectedCustomer = s.customer_id ? { id: s.customer_id, name, phone } : null;
 
   openModal('Collect Payment', `
     <div class="space-y-4">
       <div class="grid grid-cols-2 gap-3">
-        <div>
+        <div class="relative">
           <label class="block text-xs font-bold text-slate-500 mb-1">Customer Name</label>
-          <input id="op-name" type="text" placeholder="Customer name" value="${name}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+          <input id="op-name" type="text" autocomplete="off" placeholder="Search or enter customer" value="${name}" oninput="suggestCompleteOrderCustomers(this.value, 'op-name')" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+          <div id="op-name-suggestions" class="hidden absolute z-[130] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
         </div>
-        <div>
+        <div class="relative">
           <label class="block text-xs font-bold text-slate-500 mb-1">Phone Number</label>
-          <input id="op-phone" type="text" placeholder="Phone" value="${phone}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+          <input id="op-phone" type="text" autocomplete="off" placeholder="Search or enter phone" value="${phone}" oninput="suggestCompleteOrderCustomers(this.value, 'op-phone')" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+          <div id="op-phone-suggestions" class="hidden absolute z-[130] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
         </div>
       </div>
-      <div class="grid grid-cols-1">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
           <input id="op-received" type="number" step="0.01" value="${received}" 
             oninput="updateCompleteOrderSummary(${total})"
             class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold text-xl text-emerald-600" />
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <button type="button" onclick="$c('op-received').value='0';updateCompleteOrderSummary(${total})" class="py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-black">Pay 0</button>
+            <button type="button" onclick="$c('op-received').value='${Number(total)}';updateCompleteOrderSummary(${total})" class="py-2 rounded-lg bg-emerald-600 text-white text-xs font-black">Pay Full</button>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Payment Method</label>
+          <select id="op-method" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold">
+            <option value="cash" ${s.payment_method === 'cash' ? 'selected' : ''}>Cash</option>
+            <option value="card" ${s.payment_method === 'card' ? 'selected' : ''}>Card</option>
+            <option value="online" ${s.payment_method === 'online' ? 'selected' : ''}>Online</option>
+          </select>
         </div>
       </div>
 
@@ -5236,7 +5251,7 @@ async function showOrderCompleteModal(id) {
 
       <div class="pt-2">
         <button onclick="updateAndCompleteOrder(${id})" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/25 transition-all">
-          Collect Payment
+          Complete Order
         </button>
       </div>
     </div>
@@ -5245,6 +5260,49 @@ async function showOrderCompleteModal(id) {
   // Initial trigger to sync summary
   updateCompleteOrderSummary(total);
   hideAppLoader();
+}
+
+let _completeOrderCustomerSuggestTimer = null;
+function suggestCompleteOrderCustomers(query, targetId) {
+  const q = String(query || '').trim();
+  const suggestionEl = document.getElementById(`${targetId}-suggestions`);
+  if (!suggestionEl) return;
+  const selectedValue = targetId === 'op-phone'
+    ? String(window._completeOrderSelectedCustomer?.phone || '').trim()
+    : String(window._completeOrderSelectedCustomer?.name || '').trim();
+  if (window._completeOrderSelectedCustomer && q !== selectedValue) window._completeOrderSelectedCustomer = null;
+  if (!q) {
+    suggestionEl.classList.add('hidden');
+    suggestionEl.innerHTML = '';
+    return;
+  }
+  clearTimeout(_completeOrderCustomerSuggestTimer);
+  _completeOrderCustomerSuggestTimer = setTimeout(async () => {
+    try {
+      const customers = await api(`/api/customers?status=active&search=${encodeURIComponent(q)}`);
+      const results = Array.isArray(customers) ? customers.slice(0, 6) : [];
+      suggestionEl.innerHTML = results.map((customer) => `
+        <button type="button" onclick="selectCompleteOrderCustomer(${Number(customer.id)})" class="w-full px-4 py-3 text-left border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800">
+          <span class="block text-sm font-black text-slate-900 dark:text-white">${escapeOrderValue(customer.name)}</span>
+          <span class="block text-xs font-bold text-slate-500">${escapeOrderValue(customer.phone || 'No phone')} · Due: ${formatRegisterMoney(customer.current_balance)}</span>
+        </button>`).join('');
+      window._completeOrderCustomerResults = results;
+      suggestionEl.classList.toggle('hidden', !results.length);
+    } catch (_) {
+      suggestionEl.classList.add('hidden');
+    }
+  }, 250);
+}
+
+function selectCompleteOrderCustomer(customerId) {
+  const customer = (window._completeOrderCustomerResults || []).find((item) => Number(item.id) === Number(customerId));
+  if (!customer) return;
+  window._completeOrderSelectedCustomer = customer;
+  if ($c('op-name')) $c('op-name').value = customer.name || '';
+  if ($c('op-phone')) $c('op-phone').value = customer.phone || '';
+  ['op-name-suggestions', 'op-phone-suggestions'].forEach((id) => {
+    document.getElementById(id)?.classList.add('hidden');
+  });
 }
 
 function updateCompleteOrderSummary(total) {
@@ -5285,20 +5343,20 @@ async function updateAndCompleteOrder(id) {
   const previousReceived = Number(s.amount_received || 0);
   const total = Number(s.total || 0);
   const fullyPaid = amountReceived >= total - 0.01;
-  const partialPayment = amountReceived > 0.01 && !fullyPaid;
 
-  if ((s.order_type === 'delivery' || partialPayment) && (!customerName || !customerPhone)) {
+  if ((s.order_type === 'delivery' || !fullyPaid) && (!customerName || !customerPhone)) {
     if (!customerName) nameEl.focus();
     else $c('op-phone').focus();
-    return toast('Customer name and phone are required for delivery or partial payment', 'error');
+    return toast('Customer name and phone are required for delivery or any unpaid balance', 'error');
   }
 
   if (amountReceived > previousReceived + 0.01 && !(await ensureOpenShiftForPayment())) return;
 
   const data = {
+    customer_id: window._completeOrderSelectedCustomer?.id || null,
     customer_name: customerName,
     customer_phone: customerPhone,
-    payment_method: s.payment_method || 'cash'
+    payment_method: $c('op-method')?.value || s.payment_method || 'cash'
   };
   if (Math.abs(amountReceived - previousReceived) > 0.01) data.amount_received = amountReceived;
 
@@ -5307,18 +5365,14 @@ async function updateAndCompleteOrder(id) {
     const updateResult = await api(`/api/sales/${id}/details`, 'PATCH', data);
     if (updateResult?.error) throw new Error(updateResult.error);
 
-    if (!fullyPaid) {
-      toast('Partial payment saved. Order remains active.', 'success');
-      closeModal();
-      renderPOSOrders();
-      return;
-    }
-
     const completed = await completeOrderFromPOS(id, true);
     if (!completed) return;
-    await printCustomerBill(id);
+    if (fullyPaid) await printCustomerBill(id);
+    else await printUnpaidBill(id);
     closeModal();
-    toast('Payment complete. Paid bill printed and order completed.', 'success');
+    toast(fullyPaid
+      ? 'Payment complete. Paid bill printed and order completed.'
+      : 'Order completed. Remaining balance saved to the customer ledger.', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
