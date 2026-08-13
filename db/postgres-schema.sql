@@ -343,6 +343,7 @@ CREATE TABLE IF NOT EXISTS customer_ledger (
   type TEXT NOT NULL DEFAULT 'sale',
   amount DOUBLE PRECISION NOT NULL DEFAULT 0,
   balance_after DOUBLE PRECISION NOT NULL DEFAULT 0,
+  payment_method TEXT NOT NULL DEFAULT 'cash',
   note TEXT,
   created_by INTEGER REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),

@@ -418,6 +418,10 @@
             display: none !important;
         }
 
+        .lobby-active #quick-menu-btn {
+            display: none !important;
+        }
+
         .saas-command-sidebar {
             display: none;
         }
@@ -742,12 +746,6 @@
         </div>
         <div class="flex-1 overflow-y-auto space-y-8 pr-2" id="quick-sidebar-content">
             <!-- Panels will be rendered here via JS -->
-        </div>
-        <div class="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800">
-            <button onclick="returnToNavigationHome()" class="w-full flex items-center justify-center gap-3 h-14 rounded-2xl bg-indigo-600 text-white font-black text-sm shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 transition-all">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                <span id="navigation-home-label">Return to Lobby</span>
-            </button>
         </div>
     </aside>
 

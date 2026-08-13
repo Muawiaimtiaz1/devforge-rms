@@ -24,8 +24,8 @@ router.get("/", requireAuth, async (req, res) => {
 
 // PATCH /api/sales/:id/pay — record payment / update received amount
 router.patch("/:id/pay", requireAuth, async (req, res) => {
-  const { amount, note } = req.body;
-  const finalAmount = await salesService.payDue(req.params.id, req.session.user.shop_id, req.session.user.id, amount, note);
+  const { amount, payment_method = 'cash', note } = req.body;
+  const finalAmount = await salesService.payDue(req.params.id, req.session.user.shop_id, req.session.user.id, amount, payment_method, note);
   res.json({ ok: true, amount_received: finalAmount });
 });
 

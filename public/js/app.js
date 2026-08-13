@@ -314,7 +314,7 @@ async function fetchActiveShift() {
     return;
   }
 
-  if (!currentUserHasPermission('register.view')) {
+  if (!currentUserHasPermission('register.view') && !canCurrentUserManageRegister()) {
     currentShift = null;
     updateShiftStatusUI();
     return;
@@ -440,7 +440,7 @@ function updateSubscriptionQuotaUI() {
 
 function canCurrentUserManageRegister() {
   if (!currentUser || isPlatformOwner()) return false;
-  return !!(currentUser.can_manage_register || currentUser.role === 'admin' || currentUser.role === 'manager');
+  return !!(currentUser.can_manage_register || ['admin', 'manager', 'receptionist'].includes(currentUser.role));
 }
 
 async function ensureOpenShiftForPayment() {
@@ -752,7 +752,6 @@ async function init() {
     const shopMgmtHeader = document.getElementById("header-shop-mgmt");
     const lobbyUserDisplay = document.getElementById("header-username-display");
     const switchModuleButton = document.getElementById("switch-module-btn");
-    const navigationHomeLabel = document.getElementById("navigation-home-label");
 
     if (shopNameHeader)
       shopNameHeader.textContent = currentUser.shop_name || "POS System";
@@ -767,7 +766,6 @@ async function init() {
     }
     if (currentUser.role === "superadmin") {
       if (switchModuleButton) switchModuleButton.title = "SaaS Command Center";
-      if (navigationHomeLabel) navigationHomeLabel.textContent = "Return to Command Center";
     }
     updateSubscriptionQuotaUI();
     updateNotificationTopbarBadge();
@@ -3702,6 +3700,12 @@ async function selectPOSTable(tableId) {
   if (!table || table.status === 'occupied') return toast('This table is currently occupied', 'error');
   window._posSelectedTableId = Number(table.id);
   window._posEntryOrderType = 'dine_in';
+  if (window._posLayoutRestore?.form?.values) {
+    window._posLayoutRestore.form.values['pos-table'] = String(table.id);
+    window._posLayoutRestore.form.values['pos-waiter'] = table.assigned_waiter_id
+      ? String(table.assigned_waiter_id)
+      : '';
+  }
   await renderPOS();
 }
 
@@ -3774,7 +3778,15 @@ async function renderPOS() {
   const riderList = (waiters || []).filter(u => u.role === 'rider');
   const loggedInWaiter = ['waiter', 'order_taker'].includes(currentUser?.role) ? currentUser : null;
   const selectedPOSTable = (tables || []).find(table => Number(table.id) === Number(window._posSelectedTableId));
+  const assignedTableWaiterId = Number(selectedPOSTable?.assigned_waiter_id || 0);
+  const selectedWaiterId = Number(
+    (_editingOrderId ? _tempEditSaleDetails?.waiter_id : assignedTableWaiterId) ||
+    loggedInWaiter?.id ||
+    0
+  );
+  const selectedWaiter = waiterList.find(waiter => Number(waiter.id) === selectedWaiterId);
   const activePOSOrderType = layoutRestore?.form?.orderType || window._posEntryOrderType || (deliveryOnly ? 'delivery' : 'dine_in');
+  const lockTableWaiter = activePOSOrderType === 'dine_in' && !!selectedPOSTable;
   const posOrderTypeMeta = {
     dine_in: {
       label: 'Dine-in Order',
@@ -3925,7 +3937,13 @@ async function renderPOS() {
               </div>
               <div>
                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Assigned Waiter</label>
-                ${loggedInWaiter ? `
+                ${lockTableWaiter ? `
+                  <input id="pos-waiter" type="hidden" value="${selectedWaiterId || ''}" />
+                  <div class="w-full px-3 py-2 rounded-xl ${selectedWaiter ? 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300' : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'} border text-sm font-bold">
+                    ${selectedWaiter ? escapeOrderValue(selectedWaiter.name || selectedWaiter.username || 'Order taker') : 'No order taker assigned to this table'}
+                  </div>
+                  ${selectedWaiter ? '' : '<p class="mt-1 text-[10px] font-bold text-amber-600">Assign an order taker from Table Management before checkout.</p>'}
+                ` : loggedInWaiter ? `
                   <input id="pos-waiter" type="hidden" value="${loggedInWaiter.id}" />
                   <div class="w-full px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-sm font-bold">
                     ${escapeOrderValue(loggedInWaiter.name || loggedInWaiter.username || 'Waiter')}
@@ -3933,7 +3951,7 @@ async function renderPOS() {
                 ` : `
                   <select id="pos-waiter" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
                     <option value="">-- Select Waiter --</option>
-                    ${waiterList.map(w => `<option value="${w.id}">${escapeOrderValue(w.name || w.username || 'Waiter')}</option>`).join('')}
+                    ${waiterList.map(w => `<option value="${w.id}" ${Number(w.id) === selectedWaiterId ? 'selected' : ''}>${escapeOrderValue(w.name || w.username || 'Waiter')}</option>`).join('')}
                   </select>
                 `}
               </div>
@@ -4025,7 +4043,7 @@ async function renderPOS() {
             </div>
 
             <div class="grid ${splitLayout ? 'grid-cols-4 gap-1 text-xs pt-0.5' : 'grid-cols-2 gap-4 text-base pt-2'} border-t border-slate-200 dark:border-slate-800">
-               <!-- Customer identity is shown only for delivery orders. -->
+               <!-- The cashier can link a customer for every order/payment type. -->
                <div id="pos-customer-identity-fields" class="contents hidden">
                <div class="col-span-1 relative">
                  <label id="pos-cust-name-label" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cust. Name</label>
@@ -4354,7 +4372,7 @@ function switchOrderType(type) {
     if (dineEl) dineEl.classList.toggle('hidden', type !== 'dine_in' || isRetail);
     if (deliveryEl) deliveryEl.classList.toggle('hidden', type !== 'delivery' || isRetail);
     if (takeawayEl) takeawayEl.classList.toggle('hidden', type !== 'takeaway' || isRetail);
-    if (customerIdentityEl) customerIdentityEl.classList.toggle('hidden', type !== 'delivery');
+    if (customerIdentityEl) customerIdentityEl.classList.remove('hidden');
   }
 }
 
@@ -4366,18 +4384,21 @@ async function showPrintOptionsModal(id) {
       api("/api/shop-settings/taxes")
     ]);
     const { sale, items } = data;
+    window._printBillSelectedCustomer = sale.customer_id ? { id: sale.customer_id, name: sale.customer_name, phone: sale.customer_phone } : null;
     const subtotal = items.reduce((sum, item) => sum + (Number(item.price_at_sale) * Number(item.quantity)), 0);
 
     openModal('Unpaid Bill Options', `
       <div class="space-y-4">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
+          <div class="relative">
             <label id="pp-customer-name-label" class="block text-xs font-bold text-slate-500 mb-1">Customer Name ${sale.order_type === 'delivery' ? '<span class="text-rose-500">*</span>' : '<span class="font-normal">(optional)</span>'}</label>
-            <input id="pp-customer-name" type="text" value="${escapeOrderValue(sale.customer_name || '')}" oninput="updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+            <input id="pp-customer-name" type="text" value="${escapeOrderValue(sale.customer_name || '')}" autocomplete="off" oninput="suggestPrintBillCustomers(this.value, 'pp-customer-name'); updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+            <div id="pp-customer-name-suggestions" class="hidden absolute z-[120] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
           </div>
-          <div>
+          <div class="relative">
             <label id="pp-customer-phone-label" class="block text-xs font-bold text-slate-500 mb-1">Phone Number ${sale.order_type === 'delivery' ? '<span class="text-rose-500">*</span>' : '<span class="font-normal">(optional)</span>'}</label>
-            <input id="pp-customer-phone" type="tel" value="${escapeOrderValue(sale.customer_phone || '')}" oninput="updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+            <input id="pp-customer-phone" type="tel" value="${escapeOrderValue(sale.customer_phone || '')}" autocomplete="off" oninput="suggestPrintBillCustomers(this.value, 'pp-customer-phone'); updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
+            <div id="pp-customer-phone-suggestions" class="hidden absolute z-[120] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
@@ -4549,6 +4570,7 @@ async function updateAndPrintBill(id, orderType) {
   const taxPercentage = parseFloat($c('pp-tax').value) || 0;
   const finalTotal = Number($c('ps-total').textContent.replace(/[^0-9.-]/g, '')) || 0;
   const partialPayment = amountReceived > 0.01 && amountReceived < finalTotal - 0.01;
+  const fullyPaid = amountReceived >= finalTotal - 0.01;
   const identityRequired = orderType === 'delivery' || partialPayment;
 
   if (identityRequired && (!customerName || !customerPhone)) {
@@ -4558,6 +4580,7 @@ async function updateAndPrintBill(id, orderType) {
   }
 
   const data = {
+    customer_id: window._printBillSelectedCustomer?.id || null,
     customer_name: customerName,
     customer_phone: customerPhone,
     payment_method: $c('pp-method').value,
@@ -4570,7 +4593,15 @@ async function updateAndPrintBill(id, orderType) {
 
   try {
     await api(`/api/sales/${id}/details`, 'PATCH', data);
-    await printUnpaidBill(id);
+    if (fullyPaid) {
+      const completed = await completeOrderFromPOS(id, true);
+      if (!completed) return;
+      await printCustomerBill(id);
+      toast('Customer linked and bill marked paid.', 'success');
+    } else {
+      await printUnpaidBill(id);
+      toast('Customer linked and outstanding amount added to the ledger.', 'success');
+    }
     closeModal();
     renderPOSOrders();
   } catch (e) {
@@ -4793,6 +4824,41 @@ async function markOrderServed(id) {
   } finally {
     hideAppLoader();
   }
+}
+
+let _printBillCustomerSuggestTimer = null;
+function suggestPrintBillCustomers(query, targetId) {
+  const box = $c(`${targetId}-suggestions`);
+  if (!box) return;
+  const q = String(query || '').trim();
+  if (window._printBillSelectedCustomer && ![window._printBillSelectedCustomer.name, window._printBillSelectedCustomer.phone].includes(q)) {
+    window._printBillSelectedCustomer = null;
+  }
+  ['pp-customer-name-suggestions', 'pp-customer-phone-suggestions'].forEach(id => {
+    if (id !== `${targetId}-suggestions`) $c(id)?.classList.add('hidden');
+  });
+  clearTimeout(_printBillCustomerSuggestTimer);
+  if (!q) return box.classList.add('hidden');
+  _printBillCustomerSuggestTimer = setTimeout(async () => {
+    try {
+      const customers = await api(`/api/customers?status=active&search=${encodeURIComponent(q)}`);
+      const matches = Array.isArray(customers) ? customers.slice(0, 6) : [];
+      box.innerHTML = matches.map(customer => `<button type="button" onclick="selectPrintBillCustomer(${Number(customer.id)})" class="w-full border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span class="block text-sm font-black text-slate-900 dark:text-white">${escapeOrderValue(customer.name)}</span><span class="block text-xs text-slate-500">${escapeOrderValue(customer.phone || 'No phone')} · ${Number(customer.current_balance || 0) > 0.01 ? `Due Rs. ${Number(customer.current_balance).toFixed(2)}` : 'No due'}</span></button>`).join('');
+      box.dataset.customers = JSON.stringify(matches);
+      box.classList.toggle('hidden', !matches.length);
+    } catch (_) { box.classList.add('hidden'); }
+  }, 250);
+}
+
+function selectPrintBillCustomer(customerId) {
+  const boxes = [$c('pp-customer-name-suggestions'), $c('pp-customer-phone-suggestions')];
+  const customers = boxes.flatMap(box => { try { return JSON.parse(box?.dataset.customers || '[]'); } catch (_) { return []; } });
+  const customer = customers.find(item => Number(item.id) === Number(customerId));
+  if (!customer) return;
+  window._printBillSelectedCustomer = customer;
+  $c('pp-customer-name').value = customer.name || '';
+  $c('pp-customer-phone').value = customer.phone || '';
+  boxes.forEach(box => box?.classList.add('hidden'));
 }
 
 async function updateDeliveryStatus(id, status) {
@@ -6235,6 +6301,16 @@ async function suggestPOSCustomers(query, targetId) {
   const suggestionEl = document.getElementById(targetId + "-suggestions");
   if (!suggestionEl) return;
 
+  if (_posSelectedCustomer) {
+    const selectedValue = targetId === 'pos-cust-phone'
+      ? String(_posSelectedCustomer.phone || '').trim()
+      : String(_posSelectedCustomer.name || '').trim();
+    if (q !== selectedValue) {
+      _posSelectedCustomer = null;
+      renderPOSSelectedCustomerBadge();
+    }
+  }
+
   // Hide the other one if open
   const otherId = targetId === 'pos-cust-name' ? 'pos-cust-phone' : 'pos-cust-name';
   const otherEl = document.getElementById(otherId + "-suggestions");
@@ -6289,6 +6365,8 @@ function selectSuggestedCustomer(c) {
 
   if (nameInp) nameInp.value = c.name;
   if (phoneInp) phoneInp.value = c.phone || "";
+  _posSelectedCustomer = c;
+  renderPOSSelectedCustomerBadge();
 
   // Hide both containers
   ['pos-cust-name-suggestions', 'pos-cust-phone-suggestions'].forEach(id => {
@@ -6426,6 +6504,10 @@ async function checkout(status = 'completed') {
       toast('Please choose a table for this dine-in order', 'error');
       return renderPOSTableSelection();
     }
+    if (!waiter_id) {
+      resetPOSCheckoutSubmission(status, isEditing);
+      return toast('This table has no assigned order taker. Assign one in Table Management first.', 'error');
+    }
   } else if (orderType === 'delivery') {
     delivery_address = $c('pos-delivery-addr')?.value.trim() || '';
     rider_id = parseInt($c('pos-rider')?.value) || null;
@@ -6499,6 +6581,7 @@ async function checkout(status = 'completed') {
     token_number,
     order_status: status,
     money_received: deliveryMoneyReceived,
+    customer_id: _posSelectedCustomer?.id || null,
   };
 
   const url = isEditing ? `/api/sales/${_editingOrderId}/items` : "/api/sales";
@@ -7577,7 +7660,9 @@ async function markSalePaid(saleId, grandTotal, currentReceived) {
     <div class="space-y-4">
       <p class="text-sm text-slate-500 dark:text-slate-400">Total remaining due is <strong>Rs. ${currentDue.toFixed(2)}</strong>.</p>
       <div><label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">How much is being received now?</label>
-        <input id="dues-recvd-${saleId}" type="number" min="0" value="${currentDue.toFixed(2)}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold text-lg" /></div>
+        <input id="dues-recvd-${saleId}" type="number" min="0.01" max="${currentDue.toFixed(2)}" step="0.01" value="${currentDue.toFixed(2)}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold text-lg" /></div>
+      <div><label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">Payment Method</label>
+        <select id="dues-method-${saleId}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold"><option value="cash">Cash</option><option value="card">Card</option><option value="online">Online Transfer</option></select></div>
       <div><label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">Payment Note (optional)</label>
         <input id="dues-note-${saleId}" type="text" placeholder="e.g. Cash received at counter" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" /></div>
       <button onclick="doMarkSalePaid(${saleId}, ${currentReceived})" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-all shadow-lg hover:shadow-emerald-500/25">Confirm Received</button>
@@ -7590,16 +7675,20 @@ async function doMarkSalePaid(saleId, currentReceived) {
   if (!(await ensureOpenShiftForPayment())) return;
 
   const amountInput = document.getElementById(`dues-recvd-${saleId}`);
+  const methodInput = document.getElementById(`dues-method-${saleId}`);
   const noteInput = document.getElementById(`dues-note-${saleId}`);
   if (!amountInput) return toast("Input not found", "error");
 
   const adding = parseFloat(amountInput.value) || 0;
   if (adding <= 0) return toast("Amount must be > 0", "error");
+  const maxDue = Number(amountInput.max || 0);
+  if (maxDue > 0 && adding > maxDue + 0.01) return toast("Payment cannot exceed the remaining due.", "error");
 
   const totalRecvd = currentReceived + adding;
   const note = noteInput ? noteInput.value.trim() : "";
   const r = await api(`/api/sales/${saleId}/pay`, "PATCH", {
     amount: totalRecvd,
+    payment_method: methodInput?.value || "cash",
     note,
   });
   if (r.error) return toast(r.error, "error");
@@ -8496,6 +8585,8 @@ function openPaymentModal(customerId, customerName, currentBalance) {
       <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Amount Received (Rs.) *</label>
         <input id="pay-amount" type="number" min="0.01" step="0.01" max="${currentBalance}" value="${currentBalance.toFixed(2)}"
           class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold text-lg" /></div>
+      <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Payment Method *</label>
+        <select id="pay-method" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold"><option value="cash">Cash</option><option value="card">Card</option><option value="online">Online Transfer</option></select></div>
       <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Note (Optional)</label>
         <input id="pay-note" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" placeholder="e.g. Cash payment, cheque #1234" /></div>
       <button onclick="submitPayment(${customerId})" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all shadow-lg">Confirm Payment</button>
@@ -8507,11 +8598,13 @@ async function submitPayment(customerId) {
   if (!(await ensureOpenShiftForPayment())) return;
 
   const amount = parseFloat($c("pay-amount")?.value) || 0;
+  const payment_method = $c("pay-method")?.value || "cash";
   const note = $c("pay-note")?.value.trim();
   if (amount <= 0) return toast("Enter a valid amount", "error");
   try {
     const r = await api(`/api/customers/${customerId}/payment`, "POST", {
       amount,
+      payment_method,
       note,
     });
     toast(
@@ -10413,6 +10506,7 @@ function isCurrentUserShiftAdmin() {
 
 let pendingCashDropsLoadError = "";
 let pendingCashHandoversLoadError = "";
+let pendingCashHandoversAccessDenied = false;
 
 async function fetchPendingCashDropsForAdmin() {
   if (!isCurrentUserShiftAdmin()) return [];
@@ -10429,12 +10523,17 @@ async function fetchPendingCashDropsForAdmin() {
 
 async function fetchPendingCashHandoversForRegister() {
   pendingCashHandoversLoadError = "";
+  pendingCashHandoversAccessDenied = false;
   try {
     const handovers = await api("/api/shifts/pending-handovers");
     return Array.isArray(handovers) ? handovers : [];
   } catch (err) {
-    console.warn("Failed to load pending cash handovers:", err);
-    pendingCashHandoversLoadError = err.message || "Failed to load pending cash handovers.";
+    const message = err.message || "Failed to load pending cash handovers.";
+    pendingCashHandoversAccessDenied = /permission|forbidden|unauthori[sz]ed/i.test(message);
+    if (!pendingCashHandoversAccessDenied) {
+      console.warn("Failed to load pending cash handovers:", err);
+      pendingCashHandoversLoadError = message;
+    }
     return [];
   }
 }
@@ -10508,6 +10607,7 @@ function renderPendingCashDropsSection(drops = []) {
 }
 
 function renderPendingCashHandoversSection(handovers = []) {
+  if (pendingCashHandoversAccessDenied) return "";
   const shouldShow = pendingCashHandoversLoadError || handovers.length > 0;
   if (!shouldShow) return "";
 
@@ -10573,6 +10673,23 @@ function renderHandoverRecipientOptions(recipients = []) {
   }).join("")}`;
 }
 
+async function hydrateRegisterOptionalSections() {
+  const [pendingCashHandovers, handoverRecipients] = await Promise.all([
+    fetchPendingCashHandoversForRegister(),
+    fetchRegisterHandoverRecipients()
+  ]);
+  if (_currentPage !== 'register') return;
+
+  const handoverMarkup = renderPendingCashHandoversSection(pendingCashHandovers);
+  const activeHandovers = document.getElementById('register-cash-handovers');
+  if (activeHandovers) activeHandovers.innerHTML = handoverMarkup;
+  const closedHandovers = document.getElementById('register-closed-cash-flow');
+  if (closedHandovers) closedHandovers.innerHTML = handoverMarkup;
+
+  const recipientSelect = document.getElementById('cash-handover-recipient');
+  if (recipientSelect) recipientSelect.innerHTML = renderHandoverRecipientOptions(handoverRecipients);
+}
+
 async function renderRegister() {
   const content = document.getElementById("page-content");
   if (!content) return;
@@ -10600,10 +10717,8 @@ async function renderRegister() {
     return;
   }
 
-  const [pendingCashHandovers, handoverRecipients] = await Promise.all([
-    fetchPendingCashHandoversForRegister(),
-    fetchRegisterHandoverRecipients()
-  ]);
+  const pendingCashHandovers = [];
+  const handoverRecipients = [];
 
   if (!currentShift) {
     content.innerHTML = `
@@ -10622,9 +10737,14 @@ async function renderRegister() {
           </button>
         </div>
 
-        ${renderPendingCashHandoversSection(pendingCashHandovers)}
+        <div class="inline-flex w-full sm:w-auto items-center gap-1.5 p-1.5 mb-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm" role="tablist" aria-label="Register sections">
+          <button id="register-tab-cash-flow" type="button" role="tab" onclick="switchRegisterPanel('cash_flow')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">Cash Flow</button>
+          <button id="register-tab-opening-closing" type="button" role="tab" onclick="switchRegisterPanel('opening_closing')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">Opening / Closing</button>
+        </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] gap-6">
+        <div id="register-closed-cash-flow" class="hidden">${renderPendingCashHandoversSection(pendingCashHandovers)}</div>
+
+        <div id="register-closed-opening-closing" class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] gap-6">
           <section class="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
             <div class="flex items-center gap-4 mb-8">
               <div class="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20">
@@ -10663,6 +10783,9 @@ async function renderRegister() {
         </div>
       </div>
     `;
+    window._registerActivePanel = 'opening_closing';
+    switchRegisterPanel('opening_closing');
+    hydrateRegisterOptionalSections();
     setTimeout(() => document.getElementById("opening-balance-input")?.focus(), 50);
     return;
   }
@@ -10693,12 +10816,25 @@ async function renderRegister() {
         </div>
       </div>
 
-      <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div class="inline-flex w-full sm:w-auto items-center gap-1.5 p-1.5 mb-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm" role="tablist" aria-label="Register sections">
+        <button id="register-tab-cash-flow" type="button" role="tab" onclick="switchRegisterPanel('cash_flow')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">
+          Cash Flow
+        </button>
+        <button id="register-tab-cash-movement" type="button" role="tab" onclick="switchRegisterPanel('cash_movement')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">
+          Cash Movement Request
+        </button>
+        <button id="register-tab-opening-closing" type="button" role="tab" onclick="switchRegisterPanel('opening_closing')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">
+          Opening / Closing
+        </button>
+      </div>
+
+      <section id="register-cash-summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         ${renderRegisterMetric("Expected Cash", summary.expected_balance, "emerald")}
         ${renderRegisterMetric("Opening Cash", summary.opening_balance, "indigo")}
         ${renderRegisterMetric("Cash Sales", summary.net_cash_sales, "emerald")}
         ${renderRegisterMetric("Due Collections", summary.debt_collections, "blue")}
         ${renderRegisterMetric("Card Sales", summary.net_card_sales, "slate")}
+        ${renderRegisterMetric("Online Sales", summary.net_online_sales, "blue")}
         ${renderRegisterMetric("Cash Refunds", summary.total_cash_refunds, "rose", true)}
         ${renderRegisterMetric("Cash Drops", summary.cash_drops, "amber", true)}
         ${Number(summary.pending_cash_drops || 0) > 0 ? renderRegisterMetric("Pending Drops", summary.pending_cash_drops, "amber", true) : ""}
@@ -10706,10 +10842,10 @@ async function renderRegister() {
         ${Number(summary.pending_cash_handovers || 0) > 0 ? renderRegisterMetric("Pending Handovers", summary.pending_cash_handovers, "blue", true) : ""}
       </section>
 
-      ${renderPendingCashHandoversSection(pendingCashHandovers)}
+      <div id="register-cash-handovers">${renderPendingCashHandoversSection(pendingCashHandovers)}</div>
 
-      <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] gap-6">
-        <section class="p-7 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div class="grid grid-cols-1 gap-6">
+        <section id="register-cash-movement-panel" class="hidden p-7 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <div class="flex items-center justify-between gap-4 mb-6">
             <div>
               <h4 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Cash Movement</h4>
@@ -10746,7 +10882,7 @@ async function renderRegister() {
           </div>
         </section>
 
-        <section class="p-7 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <section id="register-opening-closing-panel" class="hidden p-7 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <div class="flex items-center justify-between gap-4 mb-6">
             <div>
               <h4 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Close Register</h4>
@@ -10790,6 +10926,39 @@ async function renderRegister() {
       </div>
     </div>
   `;
+  switchRegisterPanel(window._registerActivePanel || 'cash_flow');
+  hydrateRegisterOptionalSections();
+}
+
+function switchRegisterPanel(panel) {
+  const availablePanels = ['cash_flow', 'cash_movement', 'opening_closing'];
+  const activePanel = availablePanels.includes(panel) ? panel : 'cash_flow';
+  window._registerActivePanel = activePanel;
+  const showingCashFlow = activePanel === 'cash_flow';
+  const showingCashMovement = activePanel === 'cash_movement';
+  const showingOpeningClosing = activePanel === 'opening_closing';
+
+  ['register-cash-summary', 'register-cash-handovers'].forEach((id) => {
+    document.getElementById(id)?.classList.toggle('hidden', !showingCashFlow);
+  });
+  document.getElementById('register-cash-movement-panel')?.classList.toggle('hidden', !showingCashMovement);
+  document.getElementById('register-opening-closing-panel')?.classList.toggle('hidden', !showingOpeningClosing);
+  document.getElementById('register-closed-cash-flow')?.classList.toggle('hidden', !showingCashFlow);
+  document.getElementById('register-closed-opening-closing')?.classList.toggle('hidden', !showingOpeningClosing);
+
+  const activeClasses = ['bg-indigo-600', 'text-white', 'shadow-md', 'shadow-indigo-600/20'];
+  const inactiveClasses = ['text-slate-500', 'dark:text-slate-400', 'hover:bg-slate-100', 'dark:hover:bg-slate-800'];
+  [
+    ['register-tab-cash-flow', showingCashFlow],
+    ['register-tab-cash-movement', showingCashMovement],
+    ['register-tab-opening-closing', showingOpeningClosing]
+  ].forEach(([id, isActive]) => {
+    const button = document.getElementById(id);
+    if (!button) return;
+    button.classList.remove(...activeClasses, ...inactiveClasses);
+    button.classList.add(...(isActive ? activeClasses : inactiveClasses));
+    button.setAttribute('aria-selected', String(isActive));
+  });
 }
 
 function openRegisterModal() {
@@ -10807,6 +10976,7 @@ async function performOpenShift() {
     if (res.ok) {
       toast("Success! Register is now open.");
       closeModal();
+      window._registerActivePanel = 'cash_flow';
       await fetchActiveShift();
       if (_currentPage === "register") {
         await renderRegister();
@@ -10897,7 +11067,7 @@ async function openShiftSummaryModal() {
           </div>
           
           <div class="grid grid-cols-2 gap-4">
-             <button onclick="closeModal(); navigate('register')" class="py-4 rounded-2xl border-2 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-black text-xs uppercase tracking-widest hover:border-indigo-500 dark:hover:border-indigo-400 transition-all">Cash Movement</button>
+             <button onclick="closeModal(); window._registerActivePanel='cash_movement'; navigate('register')" class="py-4 rounded-2xl border-2 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-black text-xs uppercase tracking-widest hover:border-indigo-500 dark:hover:border-indigo-400 transition-all">Cash Movement</button>
              <button onclick="performCloseShift()" class="py-4 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-rose-600/20 transition-all">Close Register</button>
           </div>
         </div>
@@ -11053,8 +11223,9 @@ async function performCloseShift() {
 
   showAppLoader('Closing register', 'Reconciling cash and generating the shift report...');
   try {
+    const closingShiftId = currentShift.id;
     const res = await api("/api/shifts/close", "POST", {
-      shift_id: currentShift.id,
+      shift_id: closingShiftId,
       actual_balance: actual,
       note,
       shortage_reason
@@ -11065,7 +11236,8 @@ async function performCloseShift() {
       const pendingMsg = res.summary.has_pending_verifications ? " Pending verification remains." : "";
 
       toast(`Register closed! ${diffMsg}${pendingMsg}`);
-      openShiftClosedReport(res.summary);
+      openShiftClosedReport(res.summary, closingShiftId);
+      await printShiftCloseReceipt(closingShiftId);
       await fetchActiveShift();
       if (_currentPage === "register") await renderRegister();
     }
@@ -11076,7 +11248,21 @@ async function performCloseShift() {
   }
 }
 
-function openShiftClosedReport(summary) {
+async function printShiftCloseReceipt(shiftId) {
+  try {
+    const result = await api('/api/print-jobs/queue-shift', 'POST', { shift_id: shiftId });
+    if (Number(result.queued || 0) > 0) {
+      toast('Shift summary sent to the receipt printer.');
+      return;
+    }
+    printSaleReceiptUrl(`/print/shifts/${encodeURIComponent(shiftId)}?autoprint=1`);
+  } catch (err) {
+    console.error('Shift receipt print error:', err);
+    printSaleReceiptUrl(`/print/shifts/${encodeURIComponent(shiftId)}?autoprint=1`);
+  }
+}
+
+function openShiftClosedReport(summary, shiftId) {
   const diff = Number(summary.discrepancy || 0);
   const diffClass = Math.abs(diff) <= 0.01 ? "text-emerald-600 dark:text-emerald-400" : diff > 0 ? "text-blue-600 dark:text-blue-400" : "text-rose-600 dark:text-rose-400";
   const diffLabel = Math.abs(diff) <= 0.01 ? "Balanced" : diff > 0 ? "Over" : "Short";
@@ -11108,12 +11294,19 @@ function openShiftClosedReport(summary) {
       <div class="space-y-2 text-sm font-bold">
         <div class="flex justify-between"><span>Opening Cash</span><span>Rs. ${Number(summary.opening_balance || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Cash Sales</span><span>Rs. ${Number(summary.net_cash_sales || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Debt Collections</span><span>Rs. ${Number(summary.debt_collections || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Card Sales</span><span>Rs. ${Number(summary.net_card_sales || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Online Sales</span><span>Rs. ${Number(summary.net_online_sales || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Cash Due Collections</span><span>Rs. ${Number(summary.debt_collections || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Card Due Collections</span><span>Rs. ${Number(summary.card_collections || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Online Due Collections</span><span>Rs. ${Number(summary.online_collections || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Cash Refunds</span><span>- Rs. ${Number(summary.total_cash_refunds || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Cash Drops</span><span>- Rs. ${Number(summary.cash_drops || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Verified Handovers</span><span>- Rs. ${Number(summary.cash_handovers || 0).toFixed(2)}</span></div>
       </div>
-      <button onclick="closeModal()" class="w-full py-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-sm uppercase tracking-widest">Done</button>
+      <div class="grid grid-cols-2 gap-3">
+        <button onclick="printShiftCloseReceipt(${Number(shiftId)})" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest">Print Summary</button>
+        <button onclick="closeModal()" class="w-full py-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-sm uppercase tracking-widest">Done</button>
+      </div>
     </div>
   `);
 }

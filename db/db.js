@@ -744,6 +744,7 @@ if (!tableExists) {
                 type TEXT NOT NULL DEFAULT 'sale',
                 amount REAL NOT NULL DEFAULT 0,
                 balance_after REAL NOT NULL DEFAULT 0,
+                payment_method TEXT NOT NULL DEFAULT 'cash',
                 note TEXT,
                 created_by INTEGER,
                 created_at TEXT DEFAULT (datetime('now')),
@@ -1197,6 +1198,7 @@ try {
   ensureColumn("expenses", "shift_id", "INTEGER");
   ensureColumn("returns", "shift_id", "INTEGER");
   ensureColumn("customer_ledger", "shift_id", "INTEGER");
+  ensureColumn("customer_ledger", "payment_method", "TEXT NOT NULL DEFAULT 'cash'");
   ensureColumn("users", "can_manage_register", "INTEGER DEFAULT 0");
 
   db.exec(`

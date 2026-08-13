@@ -68,6 +68,19 @@ function enforceApiPermissions(req, res, next) {
     if (inboxRead || inboxReadState) return next();
   }
   let action = actionFor(req, resource);
+  // Reception operates its own drawer. Route-level shift checks still restrict
+  // access to the logged-in user's shop and personal shift. Admin verification
+  // and register history remain permission-controlled.
+  if (
+    resource === 'shifts' &&
+    String(req.session?.user?.role || '').toLowerCase() === 'receptionist' &&
+    ['view', 'open', 'close', 'cash_drop', 'handover'].includes(action)
+  ) return next();
+  if (
+    resource === 'users' &&
+    /assignable/.test(req.path) &&
+    String(req.session?.user?.role || '').toLowerCase() === 'receptionist'
+  ) return next();
   const supportingOrderReads = [];
   if (req.method === 'GET' && ['products', 'product-categories', 'tables', 'customers'].includes(resource)) {
     supportingOrderReads.push('orders.create');

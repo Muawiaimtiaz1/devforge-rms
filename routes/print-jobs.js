@@ -158,6 +158,39 @@ router.post('/queue', requireAuth, async (req, res) => {
   });
 });
 
+router.post('/queue-shift', requireAuth, async (req, res) => {
+  const shopId = req.session.user.shop_id;
+  const shiftId = Number(req.body.shift_id);
+  if (!shopId || !Number.isInteger(shiftId) || shiftId <= 0) return res.status(400).json({ error: 'Valid shift_id required' });
+
+  const shift = await db('shifts').where({ id: shiftId, shop_id: shopId, status: 'closed' }).first();
+  if (!shift) return res.status(404).json({ error: 'Closed shift not found' });
+  const shop = await db('shops').where({ id: shopId }).select('customer_bill_printer').first();
+  const route = String(shop?.customer_bill_printer || '').trim();
+  if (!route) return res.json({ ok: true, queued: 0, printer_configured: false });
+
+  const printer = route.startsWith('PRINTER:')
+    ? await db('printers').where({ shop_id: shopId, id: Number(route.slice(8)) }).first()
+    : await db('printers').where({ shop_id: shopId, system_name: route }).first();
+  if (!printer) return res.json({ ok: true, queued: 0, printer_configured: false });
+
+  await db('print_queue').insert({
+    shop_id: shopId,
+    station_name: printer.system_name,
+    content_json: JSON.stringify({
+      type: 'PRINT_URL',
+      format: 'shift_close',
+      shift_id: shiftId,
+      station_name: printer.system_name,
+      route_label: 'Register Shift Close',
+      printer_label: printer.display_name,
+      print_url: `/print/shifts/${shiftId}?shop_id=${shopId}&autoprint=0`
+    }),
+    status: 'pending'
+  });
+  res.json({ ok: true, queued: 1, printer_configured: true });
+});
+
 /**
  * Mark job as printed
  */

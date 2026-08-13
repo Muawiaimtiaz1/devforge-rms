@@ -61,9 +61,12 @@ class ShiftService {
    * Open a new shift for a user.
    */
   async openShift(shopId, userId, openingBalance, terminalId = null) {
+    if (!Number.isFinite(Number(openingBalance)) || Number(openingBalance) < 0) {
+      throw new Error('Opening balance cannot be negative.');
+    }
     // 1. Check if user has permission
     const user = await db('users').where({ id: userId, shop_id: shopId }).first();
-    if (!user || (!user.can_manage_register && user.role !== 'admin' && user.role !== 'superadmin')) {
+    if (!user || (!user.can_manage_register && !['admin', 'manager', 'receptionist'].includes(user.role))) {
       throw new Error('You do not have permission to manage the register.');
     }
 
@@ -145,13 +148,34 @@ class ShiftService {
     
     const cardSales = toMoney(cardTotal?.total);
 
+    const onlineTotal = await db('sales as s')
+      .where({ 's.shift_id': shiftId, 's.shop_id': shopId, 's.payment_method': 'online' })
+      .whereNot('s.order_status', 'payment_pending')
+      .select(db.raw(`
+        COALESCE(SUM(
+          (${retainedSaleAmount}) -
+          COALESCE((SELECT SUM(amount) FROM customer_ledger WHERE sale_id = s.id AND type = 'payment'), 0)
+        ), 0) as total
+      `))
+      .first();
+    const onlineSales = toMoney(onlineTotal?.total);
+
     // Total Debt Collections (Customer Ledger payments in cash)
     const debtCollectionsCount = await db('customer_ledger')
-      .where({ shift_id: shiftId, shop_id: shopId, type: 'payment' })
+      .where({ shift_id: shiftId, shop_id: shopId, type: 'payment', payment_method: 'cash' })
       .sum('amount as total')
       .first();
     
     const cashCollections = toMoney(debtCollectionsCount?.total);
+
+    const cardCollectionsRow = await db('customer_ledger')
+      .where({ shift_id: shiftId, shop_id: shopId, type: 'payment', payment_method: 'card' })
+      .sum('amount as total')
+      .first();
+    const onlineCollectionsRow = await db('customer_ledger')
+      .where({ shift_id: shiftId, shop_id: shopId, type: 'payment', payment_method: 'online' })
+      .sum('amount as total')
+      .first();
 
     // Shop/business expenses are reported separately and do not reduce cashier drawer cash.
     const expensesTotal = await db('expenses')
@@ -199,6 +223,7 @@ class ShiftService {
       opening_balance: toMoney(shift.opening_balance),
       net_cash_sales: cashSales,
       net_card_sales: cardSales,
+      net_online_sales: onlineSales,
       total_expenses: cashExpenses,
       total_cash_refunds: cashRefunds,
       cash_drops: currentDrops,
@@ -208,6 +233,8 @@ class ShiftService {
       pending_cash_handover_count: Number(pendingHandoverCountRow?.count || 0),
       cash_handovers: confirmedHandovers,
       debt_collections: cashCollections,
+      card_collections: toMoney(cardCollectionsRow?.total),
+      online_collections: toMoney(onlineCollectionsRow?.total),
       expected_balance: expectedBalance
     };
   }
@@ -216,6 +243,9 @@ class ShiftService {
    * Close a shift with a physical cash count.
    */
   async closeShift(shiftId, shopId, actualBalance, note = '', closedByUserId, shortage_reason = null) {
+    if (!Number.isFinite(Number(actualBalance)) || Number(actualBalance) < 0) {
+      throw new Error('Cash count cannot be negative.');
+    }
     await this.syncLegacyOpenCashDrops(shopId);
 
     const shift = await db('shifts').where({ id: shiftId, shop_id: shopId }).first();
@@ -671,7 +701,7 @@ class ShiftService {
         .where({ 'r.shift_id': shiftId, 'r.shop_id': shopId })
         .orderBy('r.created_at', 'asc'),
       db('customer_ledger as cl')
-        .select('cl.id', 'cl.sale_id', 'cl.type', 'cl.amount', 'cl.balance_after', 'cl.note', 'cl.created_at')
+        .select('cl.id', 'cl.sale_id', 'cl.type', 'cl.amount', 'cl.payment_method', 'cl.balance_after', 'cl.note', 'cl.created_at')
         .where({ 'cl.shift_id': shiftId, 'cl.shop_id': shopId })
         .orderBy('cl.created_at', 'asc'),
       db('cash_handovers as ch')

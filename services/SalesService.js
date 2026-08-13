@@ -1239,12 +1239,18 @@ class SalesService {
     return await query.orderBy('s.created_at', 'desc');
   }
 
-  async payDue(saleId, shopId, userId, amount, note) {
+  async payDue(saleId, shopId, userId, amount, paymentMethod = 'cash', note) {
     return await db.transaction(async (trx) => {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
       if (!sale) throw new Error("Sale not found");
 
       const finalAmount = amount !== undefined ? parseFloat(amount) : Number(sale.total || 0);
+      const previousAmount = Number(sale.amount_received || 0);
+      const saleTotal = Number(sale.total || 0);
+      if (!Number.isFinite(finalAmount)) throw new Error('Valid payment amount required.');
+      if (finalAmount <= previousAmount + 0.01) throw new Error('Payment must increase the amount received.');
+      if (finalAmount > saleTotal + 0.01) throw new Error('Payment cannot exceed the outstanding balance.');
+      if (!['cash', 'card', 'online'].includes(paymentMethod)) throw new Error('Invalid payment method.');
 
       // Resolve shift for payment
       const activeShift = await trx('shifts')
@@ -1252,8 +1258,7 @@ class SalesService {
         .first();
       
       const updateData = { amount_received: finalAmount, payment_receiver_id: userId, payment_received_at: trx.fn.now() };
-      if (activeShift) updateData.shift_id = activeShift.id;
-      else throw new Error('You must open a register shift to collect payments.');
+      if (!activeShift) throw new Error('You must open a register shift to collect payments.');
 
       await trx('sales').where({ id: saleId }).update(updateData);
 
@@ -1264,7 +1269,8 @@ class SalesService {
 
         if (paymentMade > 0.01) {
           await customerService.addPaymentEntry(trx, {
-            customerId: sale.customer_id, shopId, saleId: sale.id, paymentAmount: paymentMade, note, userId, shiftId: activeShift ? activeShift.id : null
+            customerId: sale.customer_id, shopId, saleId: sale.id, paymentAmount: paymentMade,
+            paymentMethod, note, userId, shiftId: activeShift.id
           });
         }
       }
@@ -1272,7 +1278,7 @@ class SalesService {
     });
   }
 
-  async updateDetails(saleId, shopId, { customer_name, customer_phone, delivery_address, rider_id, payment_method, amount_received, discount, tax_percentage }, userId = null) {
+  async updateDetails(saleId, shopId, { customer_id, customer_name, customer_phone, delivery_address, rider_id, payment_method, amount_received, discount, tax_percentage }, userId = null) {
     return await db.transaction(async (trx) => {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
       if (!sale) throw new Error("Sale not found");
@@ -1283,8 +1289,18 @@ class SalesService {
       let paymentShiftId = null;
       let shouldSyncSaleLedger = false;
 
+      if (customer_id !== undefined && customer_id !== null) {
+        const linkedCustomer = await trx('customers').where({ id: Number(customer_id), shop_id: shopId, status: 'active' }).first();
+        if (!linkedCustomer) throw new Error('Selected customer not found or inactive.');
+        updateData.customer_id = linkedCustomer.id;
+        updateData.customer_name = linkedCustomer.name;
+        updateData.customer_phone = linkedCustomer.phone || '';
+        shouldSyncSaleLedger = true;
+      }
+
       if (customer_name !== undefined) updateData.customer_name = customer_name;
       if (customer_phone !== undefined) updateData.customer_phone = customer_phone;
+      if (customer_name !== undefined || customer_phone !== undefined) shouldSyncSaleLedger = true;
       if (delivery_address !== undefined) updateData.delivery_address = delivery_address;
       if (rider_id !== undefined) updateData.rider_id = rider_id ? parseInt(rider_id, 10) : null;
       if (payment_method !== undefined) updateData.payment_method = payment_method;
@@ -1335,17 +1351,19 @@ class SalesService {
           .del();
 
         const finalTotal = Number(updateData.total !== undefined ? updateData.total : sale.total);
-        const finalReceived = Number(updateData.amount_received || 0);
+        const finalReceived = Number(updateData.amount_received !== undefined ? updateData.amount_received : sale.amount_received || 0);
         const dueAmount = parseFloat((finalTotal - finalReceived).toFixed(2));
+        const customer = await customerService.resolveOrCreateCustomer(trx, {
+          shopId,
+          customerId: updateData.customer_id || sale.customer_id,
+          customerName: updateData.customer_name !== undefined ? updateData.customer_name : sale.customer_name,
+          customerPhone: updateData.customer_phone !== undefined ? updateData.customer_phone : sale.customer_phone
+        });
+
+        // Keep the sale connected to the customer even when the bill is fully paid.
+        if (customer) updateData.customer_id = customer.id;
 
         if (dueAmount > 0.01) {
-          const customer = await customerService.resolveOrCreateCustomer(trx, {
-            shopId,
-            customerId: sale.customer_id,
-            customerName: updateData.customer_name !== undefined ? updateData.customer_name : sale.customer_name,
-            customerPhone: updateData.customer_phone !== undefined ? updateData.customer_phone : sale.customer_phone
-          });
-
           if (!customer) throw new Error('Customer details are required when completing an order with dues.');
 
           const limit = Number(customer.credit_limit || 0);
@@ -1354,7 +1372,6 @@ class SalesService {
             throw new Error(`Credit limit exceeded for ${customer.name}.`);
           }
 
-          updateData.customer_id = customer.id;
           await customerService.addSaleEntry(trx, {
             customerId: customer.id,
             shopId,
@@ -1500,7 +1517,8 @@ class SalesService {
           // Refund to customer balance if paid via ledger
           if (payment_method === 'ledger') {
               await customerService.addPaymentEntry(trx, {
-                  customerId: sale.customer_id, shopId, saleId: null, paymentAmount: totalRefund, 
+                  customerId: sale.customer_id, shopId, saleId: null, paymentAmount: totalRefund,
+                  paymentMethod: 'ledger',
                   note: `Refund for sale SALE-${String(saleId).padStart(5, '0')}`, userId, shiftId: activeShift ? activeShift.id : null
               });
           }

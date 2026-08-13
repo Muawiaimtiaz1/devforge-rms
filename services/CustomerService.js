@@ -104,7 +104,7 @@ class CustomerService {
   /**
    * Add a payment entry (due payment) to the customer ledger and update balance.
    */
-  async addPaymentEntry(trx, { customerId, shopId, saleId, paymentAmount, note, userId, shiftId }) {
+  async addPaymentEntry(trx, { customerId, shopId, saleId, paymentAmount, paymentMethod = 'cash', note, userId, shiftId }) {
     if (!customerId || paymentAmount <= 0.01) return;
 
     const customer = await trx('customers')
@@ -126,6 +126,7 @@ class CustomerService {
       sale_id: saleId || null,
       type: 'payment',
       amount: paymentAmount,
+      payment_method: paymentMethod,
       balance_after: newBalance,
       note: note || (saleId ? `Payment received for SALE-${String(saleId).padStart(5, "0")}` : "Payment received"),
       created_by: userId,

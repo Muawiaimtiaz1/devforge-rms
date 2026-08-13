@@ -64,7 +64,7 @@ router.post('/open', requireAuth, async (req, res) => {
   const { opening_balance, terminal_id } = req.body;
   const balance = parseFloat(opening_balance);
   
-  if (isNaN(balance)) return res.status(400).json({ error: 'Valid opening balance required.' });
+  if (!Number.isFinite(balance) || balance < 0) return res.status(400).json({ error: 'Opening balance cannot be negative.' });
 
   const shiftId = await shiftService.openShift(
     req.session.user.shop_id,
@@ -97,7 +97,7 @@ router.post('/close', requireAuth, async (req, res) => {
   const { shift_id, actual_balance, note, shortage_reason } = req.body;
   const balance = parseFloat(actual_balance);
 
-  if (isNaN(balance)) return res.status(400).json({ error: 'Valid cash count required.' });
+  if (!Number.isFinite(balance) || balance < 0) return res.status(400).json({ error: 'Cash count cannot be negative.' });
   await loadShiftForAccess(req, shift_id, { requireOpen: true });
 
   const summary = await shiftService.closeShift(

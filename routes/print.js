@@ -2,6 +2,8 @@ const express = require("express");
 const db = require("../db/knex");
 const salesService = require("../services/SalesService");
 const { renderSaleReceiptPage } = require("../services/ReceiptPrintService");
+const shiftService = require('../services/ShiftService');
+const { renderShiftReceiptPage } = require('../services/ShiftReceiptService');
 
 const router = express.Router();
 const FORMATS = new Set(["kitchen", "customer", "unpaid"]);
@@ -115,6 +117,17 @@ router.get("/sales/:id", async (req, res) => {
   });
 
   res.type("html").send(html);
+});
+
+router.get('/shifts/:id', async (req, res) => {
+  const shopId = getPrintShopId(req);
+  if (!shopId) return res.status(401).send('Unauthorized print request');
+  const details = await shiftService.getShiftDetails(shopId, req.params.id);
+  if (details.shift.status !== 'closed') return res.status(400).send('Shift is not closed');
+  details.summary.expected_balance = Number(details.shift.expected_balance || 0);
+  details.summary.pending_verification_total = Number(details.summary.pending_cash_drops || 0) + Number(details.summary.pending_cash_handovers || 0);
+  details.shop = await db('shops').where({ id: shopId }).first();
+  res.type('html').send(renderShiftReceiptPage(details, { autoPrint: req.query.autoprint !== '0' }));
 });
 
 module.exports = router;

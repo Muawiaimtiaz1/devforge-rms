@@ -403,8 +403,9 @@ router.delete("/:id", requireAuth, async (req, res) => {
 router.post("/:id/payment", requireAuth, async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
-  const { amount, note = "" } = req.body;
+  const { amount, payment_method = "cash", note = "" } = req.body;
   if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: "Valid payment amount required" });
+  if (!["cash", "card", "online"].includes(payment_method)) return res.status(400).json({ error: "Invalid payment method" });
 
   try {
     let customer;
@@ -430,18 +431,18 @@ router.post("/:id/payment", requireAuth, async (req, res) => {
       await pg.withTransaction(async (client) => {
         await client.query(`UPDATE customers SET current_balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [newBalance, customerId]);
         await client.query(
-          `INSERT INTO customer_ledger (customer_id, shop_id, type, amount, balance_after, note, created_by, shift_id)
-           VALUES ($1, $2, 'payment', $3, $4, $5, $6, $7)`,
-          [customerId, shopId, paymentAmount, newBalance, note || "Payment received", req.session.user.id, activeShift.id]
+          `INSERT INTO customer_ledger (customer_id, shop_id, type, amount, balance_after, payment_method, note, created_by, shift_id)
+           VALUES ($1, $2, 'payment', $3, $4, $5, $6, $7, $8)`,
+          [customerId, shopId, paymentAmount, newBalance, payment_method, note || "Payment received", req.session.user.id, activeShift.id]
         );
       });
     } else {
       getSqlite().transaction(() => {
         getSqlite().prepare(`UPDATE customers SET current_balance = ?, updated_at = datetime('now') WHERE id = ?`).run(newBalance, customerId);
         getSqlite().prepare(
-          `INSERT INTO customer_ledger (customer_id, shop_id, type, amount, balance_after, note, created_by, shift_id)
-           VALUES (?, ?, 'payment', ?, ?, ?, ?, ?)`
-        ).run(customerId, shopId, paymentAmount, newBalance, note || "Payment received", req.session.user.id, activeShift.id);
+          `INSERT INTO customer_ledger (customer_id, shop_id, type, amount, balance_after, payment_method, note, created_by, shift_id)
+           VALUES (?, ?, 'payment', ?, ?, ?, ?, ?, ?)`
+        ).run(customerId, shopId, paymentAmount, newBalance, payment_method, note || "Payment received", req.session.user.id, activeShift.id);
       })();
     }
     res.json({ ok: true, payment_amount: paymentAmount, new_balance: newBalance });

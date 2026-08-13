@@ -850,6 +850,15 @@ async function initPostgres() {
       }
     }
 
+    const ledgerPaymentMethodCheck = await query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'customer_ledger' AND column_name = 'payment_method'
+    `);
+    if (ledgerPaymentMethodCheck.rows.length === 0) {
+      await query("ALTER TABLE customer_ledger ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
+      console.log('âœ… customer_ledger.payment_method added.');
+    }
+
     // Add can_manage_register to users
     const userRegCheck = await query(`
       SELECT column_name FROM information_schema.columns 
