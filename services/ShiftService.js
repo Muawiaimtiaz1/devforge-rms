@@ -102,13 +102,20 @@ class ShiftService {
     const shift = await db('shifts').where({ id: shiftId, shop_id: shopId }).first();
     if (!shift) throw new Error('Shift not found');
 
-    // Total Cash Sales (from sales table - subtracting later debt payments to avoid double counting)
+    // Total Cash Sales (from sales table - subtracting later debt payments to avoid double counting).
+    // amount_received is also used to store the cash tendered so receipts can show change.
+    // Only the amount retained for the sale belongs in the drawer (e.g. Rs. 500
+    // tendered for a Rs. 230 sale adds Rs. 230, because Rs. 270 was returned).
+    const retainedSaleAmount = `CASE
+      WHEN COALESCE(s.amount_received, 0) > COALESCE(s.total, 0) THEN COALESCE(s.total, 0)
+      ELSE COALESCE(s.amount_received, 0)
+    END`;
     const salesTotal = await db('sales as s')
       .where({ 's.shift_id': shiftId, 's.shop_id': shopId, 's.payment_method': 'cash' })
       .whereNot('s.order_status', 'payment_pending')
       .select(db.raw(`
         COALESCE(SUM(
-          s.amount_received - 
+          (${retainedSaleAmount}) -
           COALESCE((
             SELECT SUM(amount) 
             FROM customer_ledger 
@@ -126,7 +133,7 @@ class ShiftService {
       .whereNot('s.order_status', 'payment_pending')
       .select(db.raw(`
         COALESCE(SUM(
-          s.amount_received - 
+          (${retainedSaleAmount}) -
           COALESCE((
             SELECT SUM(amount) 
             FROM customer_ledger 
