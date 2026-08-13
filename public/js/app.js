@@ -8884,13 +8884,53 @@ async function viewCustomerLedger(customerId) {
   }
 }
 
-function downloadLedgerPDF(customerId) {
+async function extractLogoAccent(logoUrl) {
+  if (!logoUrl) return '';
+  return await new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, 64, 64);
+        const pixels = ctx.getImageData(0, 0, 64, 64).data;
+        const buckets = new Map();
+        for (let i = 0; i < pixels.length; i += 16) {
+          const alpha = pixels[i + 3];
+          const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          if (alpha < 160 || max > 242 || max - min < 22) continue;
+          const key = `${Math.round(r / 24) * 24},${Math.round(g / 24) * 24},${Math.round(b / 24) * 24}`;
+          buckets.set(key, (buckets.get(key) || 0) + (max - min));
+        }
+        const dominant = [...buckets.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+        if (!dominant) return resolve('');
+        const hex = dominant.split(',').map((value) => Math.min(255, Number(value)).toString(16).padStart(2, '0')).join('');
+        resolve(`#${hex}`);
+      } catch (_) { resolve(''); }
+    };
+    img.onerror = () => resolve('');
+    img.src = logoUrl;
+  });
+}
+
+async function downloadLedgerPDF(customerId) {
+  const reportWindow = window.open('', '_blank');
   const from = $c("ledger-from")?.value || "";
   const to = $c("ledger-to")?.value || "";
   const params = new URLSearchParams();
   if (from) params.append("from", from);
   if (to) params.append("to", to);
-  window.open(`/api/customers/${customerId}/ledger.pdf?${params}`, "_blank");
+  try {
+    const settings = await api('/api/shop-settings');
+    const logoUrl = settings?.logo_url || settings?.logo_data || settings?.logo_path || '';
+    const accent = await extractLogoAccent(logoUrl);
+    if (accent) params.append('accent', accent);
+  } catch (_) {}
+  const reportUrl = `/api/customers/${customerId}/ledger.pdf?${params}`;
+  if (reportWindow) reportWindow.location.href = reportUrl;
+  else window.location.href = reportUrl;
 }
 
 function downloadSalesReportPDF(customerId) {

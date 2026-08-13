@@ -3,8 +3,31 @@ const { getSqlite, getPostgres, usePostgres } = require("../db/runtime");
 const { requireAuth } = require("../middleware/auth");
 const PDFDocument = require("pdfkit");
 const db = require("../db/knex");
+const fs = require("fs");
+const path = require("path");
 
 const router = express.Router();
+
+function shopLogoBuffer(shop) {
+  const source = shop?.logo_data || shop?.logo_path;
+  if (!source) return null;
+  try {
+    const dataMatch = String(source).match(/^data:image\/(?:png|jpe?g);base64,(.+)$/i);
+    if (dataMatch) return Buffer.from(dataMatch[1], "base64");
+    const relativePath = String(source).replace(/^\/+/, "");
+    const fullPath = path.resolve(__dirname, "..", "public", relativePath);
+    const publicRoot = path.resolve(__dirname, "..", "public");
+    if (!fullPath.startsWith(publicRoot + path.sep) || !fs.existsSync(fullPath)) return null;
+    return fs.readFileSync(fullPath);
+  } catch (_) {
+    return null;
+  }
+}
+
+function reportAccent(value) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "#4f46e5";
+}
 
 function parseDateFilters(query) {
   const from = query.from ? String(query.from).trim() : "";
@@ -571,12 +594,20 @@ router.get("/:id/ledger.pdf", requireAuth, async (req, res) => {
     doc.pipe(res);
 
     const W = 515;
-    const accent = "#4f46e5";
+    const accent = reportAccent(req.query.accent);
+    const logo = shop?.use_logo_on_receipt ? shopLogoBuffer(shop) : null;
     const tDark = "#111827", tMid = "#374151", tLight = "#6b7280", bdr = "#e5e7eb";
 
     doc.rect(0, 0, doc.page.width, 75).fill(accent);
-    doc.fontSize(20).font("Helvetica-Bold").fillColor("#ffffff").text(shop ? shop.name.toUpperCase() : "POS STORE", 40, 16);
-    doc.fontSize(9).font("Helvetica").fillColor("rgba(255,255,255,0.75)").text("CUSTOMER ACCOUNT STATEMENT", 40, 42);
+    let headerTextX = 40;
+    if (logo) {
+      try {
+        doc.image(logo, 40, 10, { fit: [62, 50], align: "center", valign: "center" });
+        headerTextX = 115;
+      } catch (_) {}
+    }
+    doc.fontSize(20).font("Helvetica-Bold").fillColor("#ffffff").text(shop ? shop.name.toUpperCase() : "POS STORE", headerTextX, 16, { width: 440 - (headerTextX - 40) });
+    doc.fontSize(9).font("Helvetica").fillColor("rgba(255,255,255,0.75)").text("CUSTOMER ACCOUNT STATEMENT", headerTextX, 42);
     const periodLabel = from || to ? `${from || "All"} → ${to || "Today"}` : "ALL TIME";
     doc.fillColor("rgba(255,255,255,0.85)").text(`Period: ${periodLabel}   |   Generated: ${new Date().toLocaleDateString("en-GB")}`, 40, 57, { align: "right", width: W });
 
