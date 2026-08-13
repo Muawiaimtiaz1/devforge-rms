@@ -609,6 +609,11 @@ function canCurrentUserAccessRegister() {
 function isPanelAllowedForCurrentUser(panelId) {
   // Every signed-in user receives a private, relevance-filtered notification inbox.
   if (panelId === "notification-inbox") return !!currentUser && currentUser.role !== 'superadmin';
+  // POS is useful only when the user may create a new order or view existing orders.
+  // Other order permissions (pay, complete, return, etc.) must not expose the terminal alone.
+  if (panelId === "pos") {
+    return currentUserHasPermission('orders.create') || currentUserHasPermission('orders.view');
+  }
   if (panelId === "register") return canCurrentUserAccessRegister();
   if (panelId === "logs") {
     return currentUser?.role === 'superadmin' || currentUserHasPermission('activity_logs.view');
@@ -826,6 +831,21 @@ function navigate(page, options = {}) {
     return false;
   }
 
+  const parentMap = {
+    "products-low-stock": "products",
+    "sales-pending": "sales-history",
+    "pending-dues": "sales-history",
+  };
+  const permissionPanel = parentMap[page] || page;
+  if (
+    currentUser.role !== "superadmin" &&
+    AVAILABLE_PANELS.some((panel) => panel.id === permissionPanel) &&
+    !isPanelAllowedForCurrentUser(permissionPanel)
+  ) {
+    toast("You do not have permission to access this module.", "error");
+    return false;
+  }
+
   if (currentUser.role === "superadmin" && !PLATFORM_OWNER_PANELS.includes(page)) {
     // Superadmins can only access platform-level pages
     return false;
@@ -836,11 +856,6 @@ function navigate(page, options = {}) {
     !AVAILABLE_PANELS.map((p) => p.id).includes(page)
   ) {
     // Check sub-pages
-    const parentMap = {
-      "products-low-stock": "products",
-      "sales-pending": "sales-history",
-      "pending-dues": "sales-history",
-    };
     const parent = parentMap[page];
     if (
       parent &&
