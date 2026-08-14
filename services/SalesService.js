@@ -38,6 +38,17 @@ const checkoutSchema = z.object({
 });
 
 class SalesService {
+  async syncTableOccupancy(trx, tableId, shopId) {
+    if (!tableId) return;
+    const activeOrder = await trx('sales')
+      .where({ shop_id: shopId, table_id: tableId, order_type: 'dine_in' })
+      .whereIn('order_status', ['pending', 'preparing', 'ready', 'served', 'payment_pending'])
+      .first();
+    await trx('tables')
+      .where({ id: tableId, shop_id: shopId })
+      .update({ status: activeOrder ? 'occupied' : 'available' });
+  }
+
   async getRoutedKitchenIdsForSale(saleId, shopId) {
     const hasRouteTargets = await db.schema.hasColumn('product_categories', 'route_targets');
     if (!hasRouteTargets) return [];
@@ -751,11 +762,11 @@ class SalesService {
         .returning('id');
       const saleId = typeof saleIdObj === 'object' ? saleIdObj.id : saleIdObj;
 
-      // 4.1 Update Table Status to occupied
+      // Keep occupancy derived from active dine-in orders. A sale can be
+      // created directly as completed, in which case the table must remain
+      // available.
       if (data.table_id) {
-        await trx('tables')
-          .where({ id: data.table_id, shop_id: shopId })
-          .update({ status: 'occupied' });
+        await this.syncTableOccupancy(trx, data.table_id, shopId);
       }
 
       // 5. Process Items and Deduct Stock
@@ -1075,6 +1086,10 @@ class SalesService {
       const grandTotal = subtotal - data.discount + taxAmount;
       const dueAmount = parseFloat((grandTotal - data.amount_received).toFixed(2));
 
+      const updatedTableId = data.order_type === 'dine_in'
+        ? (data.table_id || sale.table_id)
+        : null;
+
       // 5. Update Sale Record
       await trx('sales').where({ id: saleId }).update({
         customer_id: data.customer_id || (sale.customer_id),
@@ -1086,7 +1101,7 @@ class SalesService {
         payment_method: data.payment_method,
         amount_received: data.amount_received,
         order_type: data.order_type,
-        table_id: data.table_id || sale.table_id,
+        table_id: updatedTableId,
         waiter_id: data.waiter_id || sale.waiter_id,
         rider_id: data.rider_id || sale.rider_id,
         kitchen_id: data.kitchen_id || sale.kitchen_id,
@@ -1098,6 +1113,14 @@ class SalesService {
         payment_received_at: data.order_type === 'delivery' ? (data.money_received ? trx.fn.now() : null) : sale.payment_received_at,
         updated_at: trx.fn.now()
       });
+
+      // Editing may complete the order, change its table, or change it away
+      // from dine-in. Recalculate both the former and current table so neither
+      // is left with a stale occupied status.
+      await this.syncTableOccupancy(trx, sale.table_id, shopId);
+      if (updatedTableId && Number(updatedTableId) !== Number(sale.table_id)) {
+        await this.syncTableOccupancy(trx, updatedTableId, shopId);
+      }
 
       // 6. Process NEW items and Deduct Stock
       for (const item of resolvedItems) {
@@ -1302,6 +1325,7 @@ class SalesService {
         total,
         updated_at: trx.fn.now()
       });
+
     });
   }
 

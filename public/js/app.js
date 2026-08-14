@@ -4049,7 +4049,16 @@ async function renderPOS() {
   const kitchenList = (waiters || []).filter(u => u.role === 'kitchen');
   const riderList = (waiters || []).filter(u => u.role === 'rider');
   const loggedInWaiter = ['waiter', 'order_taker'].includes(currentUser?.role) ? currentUser : null;
-  const selectedPOSTable = (tables || []).find(table => Number(table.id) === Number(window._posSelectedTableId));
+  // An order being edited already owns its dine-in table. Restore that table
+  // from the sale instead of relying on the table-map selection from a
+  // previous POS session (which may be empty or stale).
+  const selectedPOSTableId = _editingOrderId
+    ? _tempEditSaleDetails?.table_id
+    : window._posSelectedTableId;
+  const selectedPOSTable = (tables || []).find(table => Number(table.id) === Number(selectedPOSTableId));
+  if (_editingOrderId && selectedPOSTable) {
+    window._posSelectedTableId = Number(selectedPOSTable.id);
+  }
   const assignedTableWaiterId = Number(selectedPOSTable?.assigned_waiter_id || 0);
   const selectedWaiterId = Number(
     (_editingOrderId ? _tempEditSaleDetails?.waiter_id : assignedTableWaiterId) ||
@@ -5417,6 +5426,9 @@ function proceedToPOSUpdate(id) {
   cart = [..._tempEditCart];
   _editingOrderId = id;
   window._posEntryOrderType = _tempEditSaleDetails.order_type || 'dine_in';
+  window._posSelectedTableId = _tempEditSaleDetails.table_id
+    ? Number(_tempEditSaleDetails.table_id)
+    : null;
   _posSelectedCustomer = _tempEditSaleDetails.customer_id ? { 
     id: _tempEditSaleDetails.customer_id, 
     name: _tempEditSaleDetails.customer_name, 

@@ -356,9 +356,14 @@ class InfrastructureService {
         .update(updateData);
 
       if (sale && sale.table_id) {
+        const otherActiveOrder = await db('sales')
+          .where({ shop_id: shopId, table_id: sale.table_id, order_type: 'dine_in' })
+          .whereNot({ id: saleId })
+          .whereIn('order_status', ['pending', 'preparing', 'ready', 'served', 'payment_pending'])
+          .first();
         await db('tables')
           .where({ id: sale.table_id, shop_id: shopId })
-          .update({ status: 'available' });
+          .update({ status: otherActiveOrder ? 'occupied' : 'available' });
       }
       return;
     }
