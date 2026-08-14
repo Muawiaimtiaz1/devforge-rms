@@ -125,28 +125,29 @@ class ProductService {
         }));
     }
 
-    let total = null;
-    if (options.paginate) {
-      const countRow = await baseQuery.clone().clearSelect().clearOrder().countDistinct('p.id as total').first();
-      total = Number(countRow?.total || 0);
-    }
     const page = Math.max(1, Number(options.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(options.pageSize) || 20));
     const productsQuery = baseQuery.orderBy('p.name', 'asc');
     if (options.paginate) productsQuery.limit(pageSize).offset((page - 1) * pageSize);
-    const products = await productsQuery;
-    const stockVariantRows = products.length ? await db('product_stock_variants')
-      .where({ shop_id: shopId, is_active: true })
-      .whereIn('product_id', products.map(product => product.id))
-      .orderBy([{ column: 'is_default', order: 'desc' }, { column: 'name', order: 'asc' }]) : [];
-    const stockVariantsByProduct = new Map();
-    for (const variant of stockVariantRows) {
-      if (!stockVariantsByProduct.has(variant.product_id)) stockVariantsByProduct.set(variant.product_id, []);
-      stockVariantsByProduct.get(variant.product_id).push(variant);
+    let total = null;
+    let products;
+    if (options.paginate) {
+      const [countRow, productRows] = await Promise.all([
+        baseQuery.clone().clearSelect().clearOrder().countDistinct('p.id as total').first(),
+        productsQuery
+      ]);
+      total = Number(countRow?.total || 0);
+      products = productRows;
+    } else {
+      products = await productsQuery;
     }
 
     const productIds = products.map(product => product.id);
-    const [componentRows, ingredientRows, batchRows] = productIds.length ? await Promise.all([
+    const [stockVariantRows, componentRows, ingredientRows, batchRows] = productIds.length ? await Promise.all([
+      db('product_stock_variants')
+        .where({ shop_id: shopId, is_active: true })
+        .whereIn('product_id', productIds)
+        .orderBy([{ column: 'is_default', order: 'desc' }, { column: 'name', order: 'asc' }]),
       db('product_compositions as pc')
         .select('pc.parent_product_id', 'pc.component_product_id as id', db.raw('COALESCE(cp.name, pc.custom_name) as name'), 'pc.quantity', 'pc.price', 'cp.sku', 'cp.stock')
         .leftJoin('products as cp', 'pc.component_product_id', 'cp.id')
@@ -157,7 +158,13 @@ class ProductService {
         .join('raw_stocks as rs', 'ri.raw_stock_id', 'rs.id')
         .whereIn('prl.product_id', productIds),
       db('product_batches').whereIn('product_id', productIds).where('quantity', '>', 0).orderBy('created_at', 'asc')
-    ]) : [[], [], []];
+    ]) : [[], [], [], []];
+    const stockVariantsByProduct = new Map();
+    for (const variant of stockVariantRows) {
+      if (!stockVariantsByProduct.has(variant.product_id)) stockVariantsByProduct.set(variant.product_id, []);
+      stockVariantsByProduct.get(variant.product_id).push(variant);
+    }
+
     const groupByProduct = (rows, key) => rows.reduce((map, row) => {
       const productId = row[key];
       if (!map.has(productId)) map.set(productId, []);

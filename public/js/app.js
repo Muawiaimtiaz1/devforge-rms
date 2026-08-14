@@ -2374,6 +2374,12 @@ function inventoryStockFilterLabel(filter) {
 }
 
 async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {}) {
+  const renderRequestId = (window._inventoryRenderRequestId || 0) + 1;
+  window._inventoryRenderRequestId = renderRequestId;
+  const currentSearchInput = document.getElementById('inventory-search');
+  const searchWasFocused = document.activeElement === currentSearchInput;
+  const searchSelectionStart = searchWasFocused ? currentSearchInput.selectionStart : null;
+  const searchSelectionEnd = searchWasFocused ? currentSearchInput.selectionEnd : null;
   const selectedStockFilter = onlyLowStock ? "low" : (state.stockFilter || "all");
   const inventorySearch = String(state.search || '').trim();
   const productParams = new URLSearchParams({
@@ -2383,9 +2389,11 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
   if (inventorySearch) productParams.set('search', inventorySearch);
   const [productResponse, brands, menuAddons] = await Promise.all([
     api(`/api/products?${productParams.toString()}`),
-    api("/api/brands"),
-    api("/api/products/menu-addons"),
+    window._productBrands ? Promise.resolve(window._productBrands) : api("/api/brands"),
+    Array.isArray(window._menuAddons) ? Promise.resolve(window._menuAddons) : api("/api/products/menu-addons"),
   ]);
+  if (renderRequestId !== window._inventoryRenderRequestId) return;
+  if (currentSearchInput?.isConnected && currentSearchInput.value.trim() !== inventorySearch) return;
   const products = Array.isArray(productResponse?.items) ? productResponse.items : [];
   const productPagination = productResponse?.pagination || { page: 1, page_size: INVENTORY_PRODUCTS_PER_PAGE, total: products.length, total_pages: 1 };
   _inventoryProductPage = Number(productPagination.page || 1);
@@ -2537,6 +2545,16 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
         </tbody>
       </table>
     </div>`;
+  const renderedSearchInput = document.getElementById('inventory-search');
+  if (currentSearchInput && renderedSearchInput) {
+    renderedSearchInput.replaceWith(currentSearchInput);
+    if (searchWasFocused) {
+      currentSearchInput.focus({ preventScroll: true });
+      const caretStart = Math.min(searchSelectionStart ?? inventorySearch.length, currentSearchInput.value.length);
+      const caretEnd = Math.min(searchSelectionEnd ?? caretStart, currentSearchInput.value.length);
+      currentSearchInput.setSelectionRange(caretStart, caretEnd);
+    }
+  }
   window._productBrands = brands;
   const clearFilterBtn = document.getElementById("inventory-clear-filter");
   if (clearFilterBtn) clearFilterBtn.classList.toggle("hidden", !inventorySearch && selectedStockFilter === "all");
@@ -2567,7 +2585,7 @@ const filterInventory = debounce(() => {
   renderProducts(_currentPage === "products-low-stock", 1, {
     search: document.getElementById("inventory-search")?.value || "",
     stockFilter: document.getElementById("inventory-stock-filter")?.value || "all"
-  }).then(() => document.getElementById("inventory-search")?.focus());
+  });
 }, 300);
 
 function changeInventoryFilter() {
