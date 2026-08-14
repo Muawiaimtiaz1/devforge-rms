@@ -5703,6 +5703,7 @@ async function printUnpaidBillInquiry(id) {
     });
     await printUnpaidBill(id);
     closeModal();
+    await renderPOSOrders();
     toast('Unpaid bill printed. No payment was recorded.', 'success');
   } catch (e) {
     toast(e.message || 'Could not print unpaid bill', 'error');
