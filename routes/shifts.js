@@ -8,6 +8,10 @@ function isShiftAdmin(user) {
   return ['admin', 'superadmin', 'manager'].includes(user?.role);
 }
 
+function canVerifyRegisterCash(req) {
+  return req.session?.user?.role === 'superadmin' || (req.permissions || []).includes('register.verify_cash');
+}
+
 function isShopRegisterUser(user) {
   return !!user && user.role !== 'superadmin';
 }
@@ -132,7 +136,7 @@ router.post('/cash-drop', requireAuth, async (req, res) => {
 // GET /api/shifts/cash-drops/pending
 // Admin/manager view of cash drops waiting for verification
 router.get('/cash-drops/pending', requireAuth, async (req, res) => {
-  if (!isShiftAdmin(req.session.user)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canVerifyRegisterCash(req)) return res.status(403).json({ error: 'Forbidden' });
   const drops = await shiftService.listPendingCashDrops(shiftAdminShopScope(req.session.user));
   res.json(drops);
 });
@@ -140,7 +144,7 @@ router.get('/cash-drops/pending', requireAuth, async (req, res) => {
 // POST /api/shifts/cash-drops/:id/verify
 // Admin/manager verifies or rejects a requested cash drop.
 router.post('/cash-drops/:id/verify', requireAuth, async (req, res) => {
-  if (!isShiftAdmin(req.session.user)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canVerifyRegisterCash(req)) return res.status(403).json({ error: 'Forbidden' });
   const { status } = req.body;
   if (!['verified', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status.' });
 
@@ -185,9 +189,9 @@ router.post('/handover', requireAuth, async (req, res) => {
 // GET /api/shifts/pending-handovers
 // Get handovers waiting for current user to verify
 router.get('/pending-handovers', requireAuth, async (req, res) => {
-  const isAdmin = isShiftAdmin(req.session.user);
-  const shopScope = isAdmin ? shiftAdminShopScope(req.session.user) : req.session.user.shop_id;
-  const receiverScope = isAdmin ? null : req.session.user.id;
+  const canVerifyAll = canVerifyRegisterCash(req);
+  const shopScope = canVerifyAll ? shiftAdminShopScope(req.session.user) : req.session.user.shop_id;
+  const receiverScope = canVerifyAll ? null : req.session.user.id;
   const handovers = await shiftService.listPendingHandovers(shopScope, receiverScope);
 
   res.json(handovers);
@@ -201,10 +205,10 @@ router.post('/verify-handover', requireAuth, async (req, res) => {
   
   await shiftService.verifyHandover(
     handover_id,
-    isShiftAdmin(req.session.user) ? shiftAdminShopScope(req.session.user) : req.session.user.shop_id,
+    canVerifyRegisterCash(req) ? shiftAdminShopScope(req.session.user) : req.session.user.shop_id,
     req.session.user.id,
     status,
-    isShiftAdmin(req.session.user)
+    canVerifyRegisterCash(req)
   );
 
   res.json({ ok: true });

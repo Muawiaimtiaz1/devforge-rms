@@ -23,6 +23,7 @@ function actionFor(req, resource) {
   if (resource === 'delivery') return method === 'GET' ? 'view' : (/\/payment$/.test(path) ? 'take_payment' : 'update_status');
   if (resource === 'shifts') {
     if (/history|details|summary|active/.test(path) && method === 'GET') return path.includes('history') ? 'view_history' : 'view';
+    if (/cash-drops\/pending/.test(path)) return 'verify_cash';
     if (/cash-drop/.test(path)) return path.includes('verify') ? 'verify_cash' : 'cash_drop';
     if (/handover/.test(path)) return path.includes('verify') ? 'verify_cash' : 'handover';
     if (/close/.test(path)) return 'close';
@@ -81,6 +82,9 @@ function enforceApiPermissions(req, res, next) {
     /assignable/.test(req.path) &&
     String(req.session?.user?.role || '').toLowerCase() === 'receptionist'
   ) return next();
+  if (resource === 'shifts' && req.method === 'GET' && /pending-handovers/.test(req.path)) {
+    return requirePermission('register.handover', 'register.verify_cash')(req, res, next);
+  }
   const supportingOrderReads = [];
   if (req.method === 'GET' && ['products', 'product-categories', 'tables', 'customers'].includes(resource)) {
     supportingOrderReads.push('orders.create');

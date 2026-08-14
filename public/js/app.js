@@ -10930,7 +10930,7 @@ function renderRegisterMetric(label, value, tone = "slate", isNegative = false) 
 }
 
 function isCurrentUserShiftAdmin() {
-  return ["admin", "superadmin", "manager"].includes(currentUser?.role);
+  return currentUserHasPermission('register.verify_cash');
 }
 
 let pendingCashDropsLoadError = "";
@@ -11612,7 +11612,7 @@ async function performCashMovement() {
 }
 
 async function verifyCashDrop(cashDropId, status) {
-  if (!isCurrentUserShiftAdmin()) return toast("Only admin or manager can verify cash drops.", "error");
+  if (!isCurrentUserShiftAdmin()) return toast("You do not have permission to verify cash drops.", "error");
   const label = status === "verified" ? "verify" : "reject";
   if (!confirm(`Are you sure you want to ${label} this cash drop?`)) return;
 
