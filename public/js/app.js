@@ -5926,7 +5926,7 @@ function toggleKitchenNoteSuggestion(button) {
 function addToCart(productId) {
   const product = productMap[productId];
   if (!product) return;
-  const isRecipe = (product.ingredients && product.ingredients.length > 0) || (product.variants || []).some(v => (v.ingredients || []).length > 0);
+  const isRecipe = inventoryIsRecipeProduct(product);
   if (!isRecipe && getProductMenuStock(product) <= 0) return toast("Out of stock", "error");
 
   // COMPOSITE PRODUCTS STILL NEED MODAL
@@ -6040,9 +6040,7 @@ function addToCart(productId) {
   }
 
   // STANDARD MODAL FOR REGULAR PRODUCTS
-  const configuredVariants = isRecipe
-    ? (product.variants || [])
-    : (product.stock_variants || []).filter(variant => variant.is_on_menu).map(variant => ({ ...variant, price: Number(variant.selling_price) }));
+  const configuredVariants = getProductMenuVariants(product);
   const configuredAddons = isRecipe ? (product.addons || []) : [];
   const defaultVariant = isRecipe
     ? (configuredVariants.find(v => v.is_default) || configuredVariants[0])
@@ -6104,9 +6102,7 @@ function addToCart(productId) {
 }
 
 function getConfiguredProductSelection(product) {
-  const variants = inventoryIsRecipeProduct(product)
-    ? (product.variants || [])
-    : (product.stock_variants || []).filter(variant => variant.is_on_menu).map(variant => ({ ...variant, price: Number(variant.selling_price) }));
+  const variants = getProductMenuVariants(product);
   const selectedVariantId = document.querySelector('input[name="pos-product-variant"]:checked')?.value;
   const variant = variants.length ? variants.find(v => String(v.id) === String(selectedVariantId)) : null;
   const selectedAddonIds = [...document.querySelectorAll('input[name="pos-product-addon"]:checked')].map(el => el.value);
@@ -6343,7 +6339,7 @@ function updateCartLineQty(index, qty) {
     return toast('You may increase quantity, but reducing the original quantity requires Remove Order Items access.', 'error');
   }
   const product = item.product || productMap[item.product_id];
-  const isRecipe = (product?.ingredients || []).length > 0 || (product?.variants || []).some(v => (v.ingredients || []).length > 0);
+  const isRecipe = inventoryIsRecipeProduct(product);
   const stockVariant = item.stock_variant_id ? (product?.stock_variants || []).find(v => Number(v.id) === Number(item.stock_variant_id)) : null;
   if (!isRecipe && product && qty > Number(stockVariant?.stock ?? product.stock)) return toast('Exceeds stock', 'error');
   if (qty < 1) return toast('Quantity cannot be less than 1', 'warning');
