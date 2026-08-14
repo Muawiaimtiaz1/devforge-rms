@@ -7,6 +7,17 @@ const fs = require('fs');
 const db = require('../db/knex');
 const router = express.Router();
 
+// Short-lived, shop/user-scoped protection for retries of one create form.
+const pendingProductCreates = new Map();
+const completedProductCreates = new Map();
+const PRODUCT_CREATE_RESULT_TTL_MS = 5 * 60 * 1000;
+
+function getProductCreateKey(req) {
+  const requestId = String(req.body.client_request_id || '').trim();
+  if (!requestId || requestId.length > 100 || !/^[A-Za-z0-9_-]+$/.test(requestId)) return null;
+  return `${req.session.user.shop_id}:${req.session.user.id}:${requestId}`;
+}
+
 function parseAddonConfig(value) {
   if (Array.isArray(value)) return value;
   try { return JSON.parse(value || '[]'); } catch (_) { return []; }
@@ -83,6 +94,19 @@ router.post('/', requireAuth, (req, res, next) => {
     });
 }, async (req, res) => {
     const { components, ingredients, variants, addons, stock_variants } = req.body;
+    const createKey = getProductCreateKey(req);
+
+    if (createKey) {
+      const completed = completedProductCreates.get(createKey);
+      if (completed && completed.expiresAt > Date.now()) {
+        return res.json({ ok: true, id: completed.productId });
+      }
+      if (completed) completedProductCreates.delete(createKey);
+      if (pendingProductCreates.has(createKey)) {
+        const productId = await pendingProductCreates.get(createKey);
+        return res.json({ ok: true, id: productId });
+      }
+    }
     
     // Parse strings to arrays if needed (FormData sends strings)
     const parse = (val) => {
@@ -110,8 +134,23 @@ router.post('/', requireAuth, (req, res, next) => {
       image_path: req.file ? "/uploads/products/" + req.file.filename : null
     };
 
-    const productId = await productService.createProduct(payload, req.session.user.shop_id, req.session.user.id);
-    res.json({ ok: true, id: productId });
+    const createPromise = productService.createProduct(payload, req.session.user.shop_id, req.session.user.id);
+    if (createKey) pendingProductCreates.set(createKey, createPromise);
+
+    try {
+      const productId = await createPromise;
+      if (createKey) completedProductCreates.set(createKey, {
+        productId,
+        expiresAt: Date.now() + PRODUCT_CREATE_RESULT_TTL_MS
+      });
+      if (createKey) {
+        const cleanupTimer = setTimeout(() => completedProductCreates.delete(createKey), PRODUCT_CREATE_RESULT_TTL_MS);
+        cleanupTimer.unref?.();
+      }
+      res.json({ ok: true, id: productId });
+    } finally {
+      if (createKey) pendingProductCreates.delete(createKey);
+    }
 });
 
 // Restaurant-level reusable add-on catalog.

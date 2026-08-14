@@ -3124,6 +3124,7 @@ async function openAddProductForm(productType) {
   }
 
   window._formComponents = [];
+  window._productFormRequestId = (window.crypto?.randomUUID?.() || `product-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   window._formProductType = productType === 'recipe_based' ? 'recipe_based' : 'stock_based';
   if (window._formProductType === 'recipe_based') {
     const rawStocks = await api('/api/raw-stock');
@@ -3147,7 +3148,7 @@ async function openAddProductForm(productType) {
   openModal(
     "Add Product",
     productFormHtml({ sku: randomSku, product_type: window._formProductType }, brands) +
-    `<button onclick="saveProduct()" class="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all">Save Product</button>`,
+    `<button id="product-save-button" type="button" onclick="saveProduct()" class="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 text-white font-medium transition-all">Save Product</button>`,
     "max-w-4xl",
   );
   renderFormCompositionList();
@@ -3196,7 +3197,7 @@ async function openEditProduct(id) {
   openModal(
     "Edit Product",
     productFormHtml(product, brands) +
-    `<button onclick="saveProduct(${id})" class="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all">Update Product</button>`,
+    `<button id="product-save-button" type="button" onclick="saveProduct(${id})" class="w-full mt-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 text-white font-medium transition-all">Update Product</button>`,
     "max-w-4xl",
   );
   recalculateComponentPrices(); // To handle readOnly/hidden states
@@ -3213,6 +3214,17 @@ async function openEditProduct(id) {
 }
 
 async function saveProduct(id) {
+  if (window._productSaveInProgress) return;
+
+  window._productSaveInProgress = true;
+  const saveButton = document.getElementById('product-save-button');
+  const idleButtonLabel = id ? 'Update Product' : 'Save Product';
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.setAttribute('aria-busy', 'true');
+    saveButton.textContent = id ? 'Updating Product...' : 'Saving Product...';
+  }
+
   try {
     const isRestaurant = currentUser.shop_type === 'restaurant';
     const productType = $c('pf-product-type')?.value === 'recipe_based' ? 'recipe_based' : 'stock_based';
@@ -3287,6 +3299,7 @@ async function saveProduct(id) {
     formData.append('variants', JSON.stringify(variants));
     formData.append('addons', JSON.stringify(addons));
     formData.append('stock_variants', JSON.stringify(stockVariants));
+    if (!id && window._productFormRequestId) formData.append('client_request_id', window._productFormRequestId);
     if (imageFile) formData.append('image', imageFile);
 
     const url = id ? `/api/products/${id}` : '/api/products';
@@ -3315,6 +3328,14 @@ async function saveProduct(id) {
   } catch (err) {
     console.error("[CRITICAL] saveProduct failed:", err);
     toast("Error: " + err.message, "error");
+  } finally {
+    window._productSaveInProgress = false;
+    const currentSaveButton = document.getElementById('product-save-button');
+    if (currentSaveButton) {
+      currentSaveButton.disabled = false;
+      currentSaveButton.removeAttribute('aria-busy');
+      currentSaveButton.textContent = idleButtonLabel;
+    }
   }
 }
 
