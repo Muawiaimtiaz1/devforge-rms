@@ -16,6 +16,30 @@ router.post('/', requireAuth, async (req, res) => {
     res.json({ ok: true, id });
 });
 
+router.patch('/:id', requireAuth, async (req, res) => {
+    const shopId = req.session.user.shop_id;
+    const catId = Number(req.params.id);
+    const nextName = String(req.body.name || '').trim();
+    if (!nextName) return res.status(400).json({ error: 'Category name is required' });
+    await db.transaction(async trx => {
+        const category = await trx('expense_categories').where({ id: catId, shop_id: shopId }).first();
+        if (!category) {
+            const error = new Error('Category not found');
+            error.status = 404;
+            throw error;
+        }
+        const duplicate = await trx('expense_categories').where({ shop_id: shopId }).whereNot({ id: catId }).whereRaw('LOWER(name) = ?', [nextName.toLowerCase()]).first();
+        if (duplicate) {
+            const error = new Error('A category with this name already exists');
+            error.status = 400;
+            throw error;
+        }
+        await trx('expenses').where({ shop_id: shopId, category: category.name }).update({ category: nextName });
+        await trx('expense_categories').where({ id: catId, shop_id: shopId }).update({ name: nextName });
+    });
+    res.json({ ok: true });
+});
+
 // DELETE /api/expense-categories/:id
 router.delete('/:id', requireAuth, async (req, res) => {
     const shopId = req.session.user.shop_id;

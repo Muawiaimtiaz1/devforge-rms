@@ -69,24 +69,40 @@ router.post('/', requireAuth, async (req, res) => {
 
 // PATCH /api/product-categories/:id
 router.patch('/:id', requireAuth, async (req, res) => {
-    const { printer_station, route_targets } = req.body;
+    const { name, printer_station, route_targets } = req.body;
     const catId = parseInt(req.params.id);
     const shopId = req.session.user.shop_id;
     const isPostgres = usePostgres();
     try {
         await ensureRouteTargetsSchema();
-        const targets = normalizeRouteTargets(route_targets, route_targets === undefined ? printer_station : null);
-        const query = isPostgres
-            ? 'UPDATE product_categories SET printer_station = $1, route_targets = $2 WHERE id = $3 AND shop_id = $4'
-            : 'UPDATE product_categories SET printer_station = ?, route_targets = ? WHERE id = ? AND shop_id = ?';
-        
-        if (isPostgres) await getPostgres().query(query, [targets[0] || null, JSON.stringify(targets), catId, shopId]);
-        else getSqlite().prepare(query).run(targets[0] || null, JSON.stringify(targets), catId, shopId);
+        await db.transaction(async trx => {
+            const category = await trx('product_categories').where({ id: catId, shop_id: shopId }).first();
+            if (!category) {
+                const error = new Error('Category not found');
+                error.status = 404;
+                throw error;
+            }
+            const updates = {};
+            if (name !== undefined) {
+                const nextName = String(name || '').trim();
+                if (!nextName) throw new Error('Category name is required');
+                const duplicate = await trx('product_categories').where({ shop_id: shopId }).whereNot({ id: catId }).whereRaw('LOWER(name) = ?', [nextName.toLowerCase()]).first();
+                if (duplicate) throw new Error('A category with this name already exists');
+                updates.name = nextName;
+                await trx('products').where({ shop_id: shopId, category: category.name }).update({ category: nextName });
+            }
+            if (route_targets !== undefined || printer_station !== undefined) {
+                const targets = normalizeRouteTargets(route_targets, route_targets === undefined ? printer_station : null);
+                updates.printer_station = targets[0] || null;
+                updates.route_targets = JSON.stringify(targets);
+            }
+            if (Object.keys(updates).length) await trx('product_categories').where({ id: catId, shop_id: shopId }).update(updates);
+        });
         
         res.json({ ok: true });
     } catch (err) {
         console.error("Update category error:", err);
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 400).json({ error: err.message });
     }
 });
 

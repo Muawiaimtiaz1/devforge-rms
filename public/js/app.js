@@ -1038,7 +1038,7 @@ async function logout() {
 
 async function fetchCategories() {
   const canReadProductCategories = [
-    'products.view', 'orders.view', 'orders.create'
+    'products.view', 'orders.create'
   ].some(permission => currentUserHasPermission(permission));
   const canReadExpenseCategories = currentUserHasPermission('expenses.view');
 
@@ -1473,13 +1473,18 @@ function updateCategoryListInPopup(type) {
       <div class="flex items-center gap-3">
         ${type === 'expense' && c.emoji ? `<span class="text-lg">${c.emoji}</span>` : `<div class="w-2 h-2 rounded-full bg-indigo-500"></div>`}
         <div>
-          <span class="text-sm font-bold text-slate-800 dark:text-slate-200">${c.name}</span>
+          <span class="text-sm font-bold text-slate-800 dark:text-slate-200">${escapeOrderValue(c.name)}</span>
           ${type === 'product' ? `<div class="text-[9px] font-black text-indigo-500/60 uppercase tracking-tighter">${getPrinterRouteLabel(c.printer_station)}</div>` : ''}
         </div>
       </div>
-      <button onclick="deleteCategoryFromPopup('${type}', ${c.id}, '${c.name.replace(/'/g, "\\'")}')" class="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-      </button>
+      <div class="flex items-center gap-1">
+        <button onclick="editCategoryName('${type}', ${c.id})" class="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all" title="Edit category name" aria-label="Edit category name">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.5-9.5a2.121 2.121 0 013 3L12 13l-4 1 1-4 6.5-6.5z"/></svg>
+        </button>
+        <button onclick="deleteCategoryFromPopup('${type}', ${c.id}, '${c.name.replace(/'/g, "\\'")}')" class="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all" title="Delete category" aria-label="Delete category">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
     </div>
   `).join('');
 }
@@ -2423,6 +2428,26 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
   window._productBrands = brands;
   const clearFilterBtn = document.getElementById("inventory-clear-filter");
   if (clearFilterBtn) clearFilterBtn.classList.toggle("hidden", !inventorySearch && selectedStockFilter === "all");
+}
+
+async function editCategoryName(type, id) {
+  const categories = type === 'product' ? _productCategories : _expenseCategories;
+  const category = categories.find(item => Number(item.id) === Number(id));
+  if (!category) return toast('Category not found', 'error');
+  const nextName = prompt('Enter the new category name:', category.name || '');
+  if (nextName === null) return;
+  const name = nextName.trim();
+  if (!name) return toast('Category name is required', 'error');
+  if (name.toLowerCase() === String(category.name || '').trim().toLowerCase()) return;
+  const url = type === 'product' ? `/api/product-categories/${id}` : `/api/expense-categories/${id}`;
+  try {
+    await api(url, 'PATCH', { name });
+    await fetchCategories();
+    updateCategoryListInPopup(type);
+    toast('Category name updated', 'success');
+  } catch (error) {
+    // The shared API helper already shows the server validation message.
+  }
 }
 
 const filterInventory = debounce(() => {
@@ -3654,7 +3679,8 @@ function loadPOSBootstrapData() {
   if (_posBootstrapCache && Date.now() - _posBootstrapCachedAt < 30000) return _posBootstrapCache;
   _posBootstrapCachedAt = Date.now();
   _posBootstrapCache = Promise.all([
-    api("/api/products"), api("/api/tables").catch(() => []), api("/api/users/assignable").catch(() => []),
+    api(`/api/products?paginate=1&page=1&page_size=${POS_PRODUCTS_PER_PAGE}&menu_only=1&exclude_components=1`),
+    api("/api/tables").catch(() => []), api("/api/users/assignable").catch(() => []),
     api("/api/tables/floors").catch(() => []), api("/api/shop-settings/discounts").catch(() => []), api("/api/shop-settings/taxes").catch(() => [])
   ]).catch(error => { _posBootstrapCache = null; throw error; });
   return _posBootstrapCache;
@@ -3887,16 +3913,17 @@ async function renderPOS() {
   const splitLayout = !deliveryOnly && getPOSLayout() === "split";
   const layoutRestore = window._posLayoutRestore || null;
   window._posLayoutRestore = null;
-  const [products, tables, waiters, floors, discounts, taxes] = await loadPOSBootstrapData();
+  const [productResponse, tables, waiters, floors, discounts, taxes] = await loadPOSBootstrapData();
   // Consume the prefetch once so later visits refresh live table/order data.
   _posBootstrapCache = null;
+  const products = Array.isArray(productResponse?.items) ? productResponse.items : [];
+  const productPagination = productResponse?.pagination || { page: 1, page_size: POS_PRODUCTS_PER_PAGE, total: products.length, total_pages: 1 };
   allProducts = products;
   _posFloors = floors;
   _posAllTables = tables;
   _posDiscountPresets = Array.isArray(discounts) ? discounts : [];
   _posTaxPresets = Array.isArray(taxes) ? taxes : [];
   syncProductMap(products);
-  updateLowStockBadge(products);
 
   if (!_editingOrderId && !layoutRestore) {
     cart = [];
@@ -4358,7 +4385,8 @@ async function renderPOS() {
 
   _posProductCategory = "";
   _posProductSearch = "";
-  await loadPOSProductsPage(1);
+  _posServerPagination = productPagination;
+  renderPOSProducts(products, productPagination.page, productPagination);
   renderCart();
   if (layoutRestore) restorePOSLayoutState(layoutRestore);
   else if (!_editingOrderId) {

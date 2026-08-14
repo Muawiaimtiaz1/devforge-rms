@@ -145,6 +145,29 @@ class ProductService {
       stockVariantsByProduct.get(variant.product_id).push(variant);
     }
 
+    const productIds = products.map(product => product.id);
+    const [componentRows, ingredientRows, batchRows] = productIds.length ? await Promise.all([
+      db('product_compositions as pc')
+        .select('pc.parent_product_id', 'pc.component_product_id as id', db.raw('COALESCE(cp.name, pc.custom_name) as name'), 'pc.quantity', 'pc.price', 'cp.sku', 'cp.stock')
+        .leftJoin('products as cp', 'pc.component_product_id', 'cp.id')
+        .whereIn('pc.parent_product_id', productIds),
+      db('product_recipe_links as prl')
+        .select('prl.product_id', 'ri.raw_stock_id as id', 'rs.name', 'rs.unit', 'rs.usage_unit', 'rs.conversion_factor', 'ri.quantity')
+        .join('recipe_ingredients as ri', 'prl.recipe_id', 'ri.recipe_id')
+        .join('raw_stocks as rs', 'ri.raw_stock_id', 'rs.id')
+        .whereIn('prl.product_id', productIds),
+      db('product_batches').whereIn('product_id', productIds).where('quantity', '>', 0).orderBy('created_at', 'asc')
+    ]) : [[], [], []];
+    const groupByProduct = (rows, key) => rows.reduce((map, row) => {
+      const productId = row[key];
+      if (!map.has(productId)) map.set(productId, []);
+      map.get(productId).push(row);
+      return map;
+    }, new Map());
+    const componentsByProduct = groupByProduct(componentRows, 'parent_product_id');
+    const ingredientsByProduct = groupByProduct(ingredientRows, 'product_id');
+    const batchesByProduct = groupByProduct(batchRows, 'product_id');
+
     // To prevent the "n+1" query problem while maintaining the complex structure, 
     // we'll fetch related data in separate queries and merge them.
     // In a mature ERP, we'd use more optimized joins or specialized views.
@@ -155,24 +178,9 @@ class ProductService {
       delete p.variants_config;
       delete p.addons_config;
       p.stock_variants = stockVariantsByProduct.get(p.id) || [];
-      // Components
-      p.components = await db('product_compositions as pc')
-        .select('pc.component_product_id as id', db.raw('COALESCE(cp.name, pc.custom_name) as name'), 'pc.quantity', 'pc.price', 'cp.sku', 'cp.stock')
-        .leftJoin('products as cp', 'pc.component_product_id', 'cp.id')
-        .where('pc.parent_product_id', p.id);
-
-      // Ingredients
-      p.ingredients = await db('product_recipe_links as prl')
-        .select('ri.raw_stock_id as id', 'rs.name', 'rs.unit', 'rs.usage_unit', 'rs.conversion_factor', 'ri.quantity')
-        .join('recipe_ingredients as ri', 'prl.recipe_id', 'ri.recipe_id')
-        .join('raw_stocks as rs', 'ri.raw_stock_id', 'rs.id')
-        .where('prl.product_id', p.id);
-
-      // Batches
-      p.batches = await db('product_batches')
-        .where('product_id', p.id)
-        .where('quantity', '>', 0)
-        .orderBy('created_at', 'asc');
+      p.components = (componentsByProduct.get(p.id) || []).map(({ parent_product_id, ...component }) => component);
+      p.ingredients = (ingredientsByProduct.get(p.id) || []).map(({ product_id, ...ingredient }) => ingredient);
+      p.batches = batchesByProduct.get(p.id) || [];
       
       // Formatting
       if (p.image_path) p.image_url = p.image_path;
