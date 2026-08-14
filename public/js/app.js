@@ -4522,13 +4522,13 @@ async function showPrintOptionsModal(id) {
 
     openModal('Unpaid Bill Options', `
       <div class="space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 gap-3">
           <div class="relative">
-            <label id="pp-customer-name-label" class="block text-xs font-bold text-slate-500 mb-1">Customer Name ${sale.order_type === 'delivery' ? '<span class="text-rose-500">*</span>' : '<span class="font-normal">(optional)</span>'}</label>
+            <label id="pp-customer-name-label" class="block text-xs font-bold text-slate-500 mb-1">Customer Name <span class="font-normal">(optional)</span></label>
             <input id="pp-customer-name" type="text" value="${escapeOrderValue(sale.customer_name || '')}" autocomplete="off" oninput="suggestPrintBillCustomers(this.value, 'pp-customer-name'); updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
             <div id="pp-customer-name-suggestions" class="hidden absolute z-[120] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
           </div>
-          <div class="relative">
+          <div class="relative hidden">
             <label id="pp-customer-phone-label" class="block text-xs font-bold text-slate-500 mb-1">Phone Number ${sale.order_type === 'delivery' ? '<span class="text-rose-500">*</span>' : '<span class="font-normal">(optional)</span>'}</label>
             <input id="pp-customer-phone" type="tel" value="${escapeOrderValue(sale.customer_phone || '')}" autocomplete="off" oninput="suggestPrintBillCustomers(this.value, 'pp-customer-phone'); updatePrintSummary(${subtotal}, '${sale.order_type}')" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
             <div id="pp-customer-phone-suggestions" class="hidden absolute z-[120] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
@@ -4555,14 +4555,6 @@ async function showPrintOptionsModal(id) {
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
-          <input id="pp-received" type="number" min="0" step="0.01" value="${Number(sale.amount_received || 0)}" data-original="${Number(sale.amount_received || 0)}"
-            oninput="updatePrintSummary(${subtotal}, '${sale.order_type}')"
-            class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold" />
-          <p class="mt-1 text-[10px] font-medium text-slate-400">Customer name and phone become required when this is a partial payment.</p>
-        </div>
-        
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Discount</label>
           <div class="flex gap-2">
@@ -4601,7 +4593,7 @@ async function showPrintOptionsModal(id) {
         </div>
 
         <div class="pt-2">
-          <button onclick="updateAndPrintBill(${id}, '${sale.order_type}')" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg shadow-indigo-600/25 transition-all">
+          <button onclick="printUnpaidBillInquiry(${id})" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg shadow-indigo-600/25 transition-all">
             🖨️ Update & Print Unpaid Bill
           </button>
         </div>
@@ -4685,13 +4677,8 @@ function updatePrintSummary(subtotal, orderType = '') {
   if (gs) gs.textContent = `PKR ${total.toLocaleString()}`;
   if (dueEl) dueEl.textContent = `PKR ${due.toLocaleString()}`;
 
-  const hasOutstandingBalance = received < total - 0.01;
-  const identityRequired = orderType === 'delivery' || hasOutstandingBalance;
-  ['pp-customer-name', 'pp-customer-phone'].forEach((id) => {
-    const input = document.getElementById(id);
-    if (!input) return;
-    input.classList.toggle('border-rose-500', identityRequired && !input.value.trim());
-  });
+  // An inquiry/unpaid bill is print-only. Customer identity and received
+  // payment are deliberately not validated here.
 }
 
 async function updateAndPrintBill(id, orderType) {
@@ -5522,6 +5509,26 @@ function filterPOSByCategory(cat) {
   });
   _posProductCategory = cat || "";
   loadPOSProductsPage(1);
+}
+
+async function printUnpaidBillInquiry(id) {
+  const customerName = $c('pp-customer-name')?.value.trim() || '';
+  const paymentMethod = $c('pp-method')?.value || 'cash';
+  const discount = Math.max(parseFloat($c('pp-discount')?.value) || 0, 0);
+  const taxPercentage = Math.max(parseFloat($c('pp-tax')?.value) || 0, 0);
+  try {
+    await api(`/api/sales/${id}/inquiry-bill`, 'PATCH', {
+      customer_name: customerName,
+      payment_method: paymentMethod,
+      discount,
+      tax_percentage: taxPercentage
+    });
+    await printUnpaidBill(id);
+    closeModal();
+    toast('Unpaid bill printed. No payment was recorded.', 'success');
+  } catch (e) {
+    toast(e.message || 'Could not print unpaid bill', 'error');
+  }
 }
 
 async function loadPOSProductsPage(page = 1) {

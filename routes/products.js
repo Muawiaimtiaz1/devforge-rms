@@ -67,6 +67,7 @@ router.get('/', requireAuth, async (req, res) => {
       pageSize: req.query.page_size,
       search: req.query.search,
       category: req.query.category,
+      productType: req.query.product_type,
       stockFilter: req.query.stock_filter,
       menuOnly: req.query.menu_only === '1' || req.query.menu_only === 'true',
       excludeComponents: req.query.exclude_components === '1' || req.query.exclude_components === 'true'

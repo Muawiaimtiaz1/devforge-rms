@@ -112,6 +112,7 @@ class ProductService {
         .orWhereRaw('LOWER(p.sku) LIKE ?', [`%${search}%`]));
     }
     if (options.category) baseQuery.andWhere('p.category', options.category);
+    if (options.productType) baseQuery.andWhere('p.product_type', options.productType);
     if (options.excludeComponents) baseQuery.andWhere(builder => builder.whereNull('p.is_component').orWhere('p.is_component', '!=', 1));
     if (options.stockFilter === 'out') baseQuery.andWhere('p.product_type', '!=', 'recipe_based').andWhere('p.stock', '<=', 0);
     if (options.stockFilter === 'low') baseQuery.andWhere('p.product_type', '!=', 'recipe_based').andWhereRaw('p.stock <= COALESCE(p.min_stock_level, 0)');

@@ -20,6 +20,10 @@ router.get('/', requireAuth, async (req, res) => {
     const isPostgres = usePostgres();
     const shopId = req.session.user.shop_id;
     try {
+        const paginate = req.query.paginate === '1' || req.query.paginate === 'true';
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+        const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.page_size, 10) || 20));
+        const offset = (page - 1) * pageSize;
         const query = isPostgres ? `
             SELECT rs.*,
             (SELECT buying_price FROM raw_stock_batches WHERE raw_stock_id = rs.id ORDER BY id DESC LIMIT 1) as buying_price,
@@ -38,6 +42,7 @@ router.get('/', requireAuth, async (req, res) => {
             FROM raw_stocks rs
             WHERE rs.shop_id = $1 AND rs.is_deleted = 0
             ORDER BY rs.name ASC
+            ${paginate ? 'LIMIT $2 OFFSET $3' : ''}
         ` : `
             SELECT rs.*,
             (SELECT buying_price FROM raw_stock_batches WHERE raw_stock_id = rs.id ORDER BY id DESC LIMIT 1) as buying_price,
@@ -56,14 +61,21 @@ router.get('/', requireAuth, async (req, res) => {
             FROM raw_stocks rs
             WHERE rs.shop_id = ? AND rs.is_deleted = 0
             ORDER BY rs.name ASC
+            ${paginate ? 'LIMIT ? OFFSET ?' : ''}
         `;
 
         let stocks;
+        let total = null;
         if (isPostgres) {
-            const { rows } = await getPostgres().query(query, [shopId]);
+            if (paginate) {
+                const countResult = await getPostgres().query('SELECT COUNT(*)::int AS total FROM raw_stocks WHERE shop_id = $1 AND is_deleted = 0', [shopId]);
+                total = Number(countResult.rows[0]?.total || 0);
+            }
+            const { rows } = await getPostgres().query(query, paginate ? [shopId, pageSize, offset] : [shopId]);
             stocks = rows;
         } else {
-            stocks = getSqlite().prepare(query).all(shopId);
+            if (paginate) total = Number(getSqlite().prepare('SELECT COUNT(*) AS total FROM raw_stocks WHERE shop_id = ? AND is_deleted = 0').get(shopId)?.total || 0);
+            stocks = getSqlite().prepare(query).all(...(paginate ? [shopId, pageSize, offset] : [shopId]));
         }
 
         stocks.forEach(s => {
@@ -77,7 +89,10 @@ router.get('/', requireAuth, async (req, res) => {
             if (!Array.isArray(s.batches) || s.batches.length === 0) s.batches = [];
         });
 
-        res.json(stocks);
+        res.json(paginate ? {
+            items: stocks,
+            pagination: { page, page_size: pageSize, total, total_pages: Math.max(1, Math.ceil(total / pageSize)) }
+        } : stocks);
     } catch (e) {
         console.error("Raw stock fetch error:", e);
         res.status(500).json({ error: e.message });

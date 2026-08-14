@@ -1278,6 +1278,27 @@ class SalesService {
     });
   }
 
+  async updateInquiryBill(saleId, shopId, data = {}) {
+    return db.transaction(async (trx) => {
+      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
+      if (!sale) throw new Error('Sale not found');
+      const discount = Math.max(Number(data.discount) || 0, 0);
+      const taxPercentage = Math.max(Number(data.tax_percentage) || 0, 0);
+      const items = await trx('sale_items').where({ sale_id: saleId });
+      const subtotal = items.reduce((sum, item) => sum + Number(item.price_at_sale) * Number(item.quantity), 0);
+      if (discount > subtotal) throw new Error('Discount cannot exceed the bill subtotal.');
+      const total = subtotal - discount + ((subtotal - discount) * taxPercentage / 100);
+      await trx('sales').where({ id: saleId, shop_id: shopId }).update({
+        customer_name: String(data.customer_name || '').trim().slice(0, 120),
+        payment_method: ['cash', 'card', 'online'].includes(data.payment_method) ? data.payment_method : 'cash',
+        discount,
+        tax_percentage: taxPercentage,
+        total,
+        updated_at: trx.fn.now()
+      });
+    });
+  }
+
   async updateDetails(saleId, shopId, { customer_id, customer_name, customer_phone, delivery_address, rider_id, payment_method, amount_received, discount, tax_percentage }, userId = null) {
     return await db.transaction(async (trx) => {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();

@@ -185,14 +185,55 @@ async function updateKDSStatus(id, status) {
   }
 }
 
-async function renderRawStock() {
+const INVENTORY_CATALOG_PAGE_SIZE = 12;
+let _inventoryIngredientPage = 1;
+let _inventoryStockProductPage = 1;
+
+function inventoryCatalogPaginationHtml(kind, pagination) {
+  if (!pagination || !Number(pagination.total)) return '';
+  const page = Number(pagination.page || 1);
+  const totalPages = Number(pagination.total_pages || 1);
+  const pageSize = Number(pagination.page_size || INVENTORY_CATALOG_PAGE_SIZE);
+  const first = ((page - 1) * pageSize) + 1;
+  const last = Math.min(page * pageSize, Number(pagination.total));
+  const changeFunction = kind === 'ingredients' ? 'changeInventoryIngredientPage' : 'changeInventoryStockProductPage';
+  return `<div class="mb-5 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Showing ${first}-${last} of ${Number(pagination.total)}</div>
+    <div class="flex items-center gap-2">
+      <button type="button" onclick="${changeFunction}(${page - 1})" ${page <= 1 ? 'disabled' : ''} class="h-8 rounded-lg border border-slate-200 px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700">Previous</button>
+      <span class="min-w-[5rem] text-center text-xs font-black text-slate-700 dark:text-slate-200">${page} / ${totalPages}</span>
+      <button type="button" onclick="${changeFunction}(${page + 1})" ${page >= totalPages ? 'disabled' : ''} class="h-8 rounded-lg border border-slate-200 px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700">Next</button>
+    </div>
+  </div>`;
+}
+
+function changeInventoryIngredientPage(page) {
+  _inventoryIngredientPage = Math.max(1, Number(page) || 1);
+  renderRawStock(_inventoryIngredientPage, _inventoryStockProductPage);
+}
+
+function changeInventoryStockProductPage(page) {
+  _inventoryStockProductPage = Math.max(1, Number(page) || 1);
+  renderRawStock(_inventoryIngredientPage, _inventoryStockProductPage);
+}
+
+async function renderRawStock(ingredientPage = 1, stockProductPage = 1) {
   const content = document.getElementById("page-content");
   content.innerHTML = '<div class="flex items-center justify-center h-40 text-slate-600">Loading Ingredients…</div>';
 
   try {
-    const [rawStocks, products] = await Promise.all([api("/api/raw-stock"), api("/api/products")]);
-    window._rawStocksList = Array.isArray(rawStocks) ? rawStocks : [];
-    const stockProducts = (Array.isArray(products) ? products : []).filter(product => product.product_type === 'stock_based' && product.is_component !== 1);
+    const [rawStockResponse, productResponse] = await Promise.all([
+      api(`/api/raw-stock?paginate=1&page=${encodeURIComponent(ingredientPage)}&page_size=${INVENTORY_CATALOG_PAGE_SIZE}`),
+      api(`/api/products?paginate=1&page=${encodeURIComponent(stockProductPage)}&page_size=${INVENTORY_CATALOG_PAGE_SIZE}&product_type=stock_based&exclude_components=1`)
+    ]);
+    const rawStocks = Array.isArray(rawStockResponse?.items) ? rawStockResponse.items : [];
+    const rawStockPagination = rawStockResponse?.pagination;
+    const products = Array.isArray(productResponse?.items) ? productResponse.items : [];
+    const productPagination = productResponse?.pagination;
+    _inventoryIngredientPage = Number(rawStockPagination?.page || 1);
+    _inventoryStockProductPage = Number(productPagination?.page || 1);
+    window._rawStocksList = rawStocks;
+    const stockProducts = products.filter(product => product.product_type === 'stock_based' && product.is_component !== 1);
     window._inventoryStockProducts = stockProducts;
 
     let html = `
@@ -224,6 +265,7 @@ async function renderRawStock() {
         </div>
 
         <section id="inventory-ingredients-section"><div class="mb-4"><h4 class="text-xl font-black text-slate-900 dark:text-white">Raw Ingredients</h4><p class="text-xs text-slate-500">Ingredients consumed by recipe products and add-ons.</p></div>
+        ${inventoryCatalogPaginationHtml('ingredients', rawStockPagination)}
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           ${rawStocks.map(rs => `
             <div data-inventory-search="${escapeWasteValue(`${rs.ingredient_code || ''} ${rs.name} ${rs.unit} ${rs.usage_unit || ''}`.toLowerCase())}" class="inventory-catalog-item bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition-all shadow-sm group">
@@ -254,6 +296,7 @@ async function renderRawStock() {
         </div></section>
 
         <section id="inventory-stock-section"><div class="mb-4"><h4 class="text-xl font-black text-slate-900 dark:text-white">Finished Stock Products</h4><p class="text-xs text-slate-500">Purchase stock here, then publish individual variants to Menu.</p></div>
+          ${inventoryCatalogPaginationHtml('stock', productPagination)}
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             ${stockProducts.map(product => `
               <div data-inventory-search="${escapeWasteValue(`${product.name} ${product.category} ${(product.stock_variants || []).map(v => `${v.name} ${v.sku} ${v.barcode || ''}`).join(' ')}`.toLowerCase())}" class="inventory-catalog-item bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">

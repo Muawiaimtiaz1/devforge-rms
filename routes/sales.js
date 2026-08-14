@@ -35,6 +35,12 @@ router.patch("/:id/details", requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Updates printable inquiry-bill details without collecting payment or closing the order.
+router.patch("/:id/inquiry-bill", requireAuth, async (req, res) => {
+  await salesService.updateInquiryBill(req.params.id, req.session.user.shop_id, req.body);
+  res.json({ ok: true });
+});
+
 // GET /api/sales/:id/bill — get full bill details
 router.get("/:id/bill", requireAuth, async (req, res) => {
   const details = await salesService.getBill(req.params.id, req.session.user.shop_id);
