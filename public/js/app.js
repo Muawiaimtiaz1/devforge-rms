@@ -4831,12 +4831,12 @@ async function updateAndPrintBill(id, orderType) {
   const taxPercentage = parseFloat($c('pp-tax').value) || 0;
   const finalTotal = Number($c('ps-total').textContent.replace(/[^0-9.-]/g, '')) || 0;
   const fullyPaid = amountReceived >= finalTotal - 0.01;
-  const identityRequired = orderType === 'delivery' || !fullyPaid;
+  const identityRequired = !fullyPaid;
 
   if (identityRequired && (!customerName || !customerPhone)) {
     if (!customerName) $c('pp-customer-name').focus();
     else $c('pp-customer-phone').focus();
-    return toast("Customer name and phone are required for delivery or any unpaid balance", "error");
+    return toast("Customer name and phone are required when a balance remains unpaid", "error");
   }
 
   const data = {
@@ -5605,10 +5605,10 @@ async function updateAndCompleteOrder(id) {
   const total = Number(s.total || 0);
   const fullyPaid = amountReceived >= total - 0.01;
 
-  if ((s.order_type === 'delivery' || !fullyPaid) && (!customerName || !customerPhone)) {
+  if (!fullyPaid && (!customerName || !customerPhone)) {
     if (!customerName) nameEl.focus();
     else $c('op-phone').focus();
-    return toast('Customer name and phone are required for delivery or any unpaid balance', 'error');
+    return toast('Customer name and phone are required when a balance remains unpaid', 'error');
   }
 
   if (amountReceived > previousReceived + 0.01 && !(await ensureOpenShiftForPayment())) return;
@@ -6898,20 +6898,6 @@ async function checkout(status = 'completed') {
   const sidebarPhone = $c('pos-cust-phone')?.value.trim();
   if (sidebarName) customer_name = sidebarName;
   if (sidebarPhone) customer_phone = sidebarPhone;
-
-  // Validate only after both delivery-specific and shared customer fields are synchronized.
-  if (orderType === 'delivery') {
-    if (!customer_name) {
-      $c('pos-cust-name')?.focus();
-      resetPOSCheckoutSubmission(status, isEditing);
-      return toast("Customer name required for delivery", "error");
-    }
-    if (!customer_phone) {
-      $c('pos-cust-phone')?.focus();
-      resetPOSCheckoutSubmission(status, isEditing);
-      return toast("Customer phone required for delivery", "error");
-    }
-  }
 
   // Validation for Pending Dues
   if (status === 'completed' && amount_received < grandTotal - 0.01) {
