@@ -860,6 +860,8 @@ async function initPostgres() {
   }
 
     await query("CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id)");
+    await query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_request_id TEXT");
+    await query("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_shop_client_request ON sales(shop_id, client_request_id) WHERE client_request_id IS NOT NULL");
     await query("CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id)");
     await query("ALTER TABLE raw_stocks ADD COLUMN IF NOT EXISTS ingredient_code TEXT");
     await query("UPDATE raw_stocks SET ingredient_code = 'ING-' || LPAD(id::text, 5, '0') WHERE ingredient_code IS NULL OR BTRIM(ingredient_code) = ''");

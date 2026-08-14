@@ -35,6 +35,7 @@ const checkoutSchema = z.object({
   kitchen_id: z.number().int().nullable().optional(),
   order_status: z.string().default('pending'),
   money_received: z.boolean().optional().default(false),
+  client_request_id: z.string().trim().min(8).max(100).nullable().optional(),
 });
 
 class SalesService {
@@ -624,11 +625,19 @@ class SalesService {
    */
   async createSale(payload, shopId, userId) {
     const data = checkoutSchema.parse(payload);
+    if (data.client_request_id) {
+      const existing = await db('sales')
+        .where({ shop_id: shopId, client_request_id: data.client_request_id })
+        .first();
+      if (existing) return { saleId: existing.id, total: Number(existing.total || 0), duplicate: true };
+    }
     if (data.order_type === 'dine_in' && data.table_id) {
       await infrastructureService.assertTableAccess(shopId, data.table_id, userId);
     }
 
-    const result = await db.transaction(async (trx) => {
+    let result;
+    try {
+      result = await db.transaction(async (trx) => {
       // 0. Shift Resolution
       let shiftId = data.order_status === 'payment_pending' ? null : payload.shift_id;
       if (!shiftId && data.order_status !== 'payment_pending') {
@@ -640,6 +649,25 @@ class SalesService {
         } else if (data.order_status === 'completed' || (Number(data.amount_received || 0) > 0.01 && data.order_type !== 'delivery')) {
           data.order_status = 'payment_pending';
           data.amount_received = 0;
+        }
+      }
+
+      // Lock the selected table so concurrent devices cannot create two
+      // active dine-in orders for it.
+      if (data.order_type === 'dine_in' && data.table_id) {
+        const table = await trx('tables')
+          .where({ id: data.table_id, shop_id: shopId })
+          .forUpdate()
+          .first();
+        if (!table) { const error = new Error('Table not found'); error.status = 404; throw error; }
+        const activeOrder = await trx('sales')
+          .where({ shop_id: shopId, table_id: data.table_id, order_type: 'dine_in' })
+          .whereIn('order_status', ['pending', 'preparing', 'ready', 'served', 'payment_pending'])
+          .first();
+        if (activeOrder) {
+          const error = new Error(`This table already has active order #${activeOrder.id}. Open that order instead.`);
+          error.status = 409;
+          throw error;
         }
       }
 
@@ -757,7 +785,8 @@ class SalesService {
           order_status: data.order_status,
           shift_id: shiftId,
           payment_receiver_id: data.order_type === 'delivery' && data.money_received ? userId : null,
-          payment_received_at: data.order_type === 'delivery' && data.money_received ? trx.fn.now() : null
+          payment_received_at: data.order_type === 'delivery' && data.money_received ? trx.fn.now() : null,
+          client_request_id: data.client_request_id || null
         })
         .returning('id');
       const saleId = typeof saleIdObj === 'object' ? saleIdObj.id : saleIdObj;
@@ -904,7 +933,17 @@ class SalesService {
         print_jobs_queued: printResult.queued,
         printer_configured: printResult.printer_configured
       };
-    });
+      });
+    } catch (error) {
+      const duplicateRequest = error?.code === '23505' ||
+        (String(error?.code || '').startsWith('SQLITE_CONSTRAINT') && String(error?.message || '').includes('client_request_id'));
+      if (!duplicateRequest || !data.client_request_id) throw error;
+      const existing = await db('sales')
+        .where({ shop_id: shopId, client_request_id: data.client_request_id })
+        .first();
+      if (!existing) throw error;
+      return { saleId: existing.id, total: Number(existing.total || 0), duplicate: true };
+    }
     const routedKitchenIds = await this.getRoutedKitchenIdsForSale(result.saleId, shopId);
     await this.notifyNewOrder({
       saleId: result.saleId,

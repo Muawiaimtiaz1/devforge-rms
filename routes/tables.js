@@ -1,6 +1,7 @@
 const express = require("express");
 const infraService = require("../services/InfrastructureService");
 const { requireAuth } = require("../middleware/auth");
+const { requirePermission } = require('../authorization/middleware');
 const router = express.Router();
 
 function requireTableManager(req, res, next) {
@@ -55,15 +56,32 @@ router.patch("/:id/assignment", requireAuth, requireTableManager, async (req, re
 });
 
 // POST /api/tables
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, requirePermission('tables.create', 'tables.manage'), async (req, res) => {
   const shopId = req.session.user.shop_id;
   const id = await infraService.createTable(req.body, shopId);
   res.json({ id, shop_id: shopId, ...req.body, status: 'available' });
 });
 
 // PATCH /api/tables/:id/status
-router.patch("/:id/status", requireAuth, async (req, res) => {
+router.patch("/:id/status", requireAuth, requirePermission('tables.manage', 'tables.update', 'tables.delete'), async (req, res) => {
   const shopId = req.session.user.shop_id;
+  if (req.body.action === 'update') {
+    if (!(req.permissions || []).some(key => ['tables.update', 'tables.manage'].includes(key))) {
+      return res.status(403).json({ error: 'You do not have permission to edit tables.' });
+    }
+    await infraService.updateTable(req.params.id, req.body, shopId);
+    return res.json({ success: true });
+  }
+  if (req.body.action === 'delete') {
+    if (!(req.permissions || []).some(key => ['tables.delete', 'tables.manage'].includes(key))) {
+      return res.status(403).json({ error: 'You do not have permission to delete tables.' });
+    }
+    await infraService.deleteTable(req.params.id, shopId);
+    return res.json({ success: true });
+  }
+  if (!(req.permissions || []).includes('tables.manage')) {
+    return res.status(403).json({ error: 'You do not have permission to change table status.' });
+  }
   await infraService.updateTableStatus(req.params.id, req.body.status, shopId);
   res.json({ success: true, status: req.body.status });
 });

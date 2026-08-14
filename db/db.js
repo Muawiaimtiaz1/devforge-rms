@@ -1352,6 +1352,7 @@ try {
   ensureColumn("sale_items", "third_party_person_id", "INTEGER REFERENCES third_party_persons(id) ON DELETE SET NULL");
   ensureColumn("sale_items", "commission_percentage_at_sale", "REAL NOT NULL DEFAULT 0");
   ensureColumn("sale_items", "commission_amount_at_sale", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales", "client_request_id", "TEXT");
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_sale_items_third_party_person_id ON sale_items(third_party_person_id);
@@ -1407,6 +1408,7 @@ try {
     CREATE INDEX IF NOT EXISTS idx_customer_ledger_customer_id ON customer_ledger(customer_id);
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
     CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_shop_client_request ON sales(shop_id, client_request_id) WHERE client_request_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_stocks_shop_ingredient_code ON raw_stocks(shop_id, ingredient_code) WHERE ingredient_code IS NOT NULL;
     

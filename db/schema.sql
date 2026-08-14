@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS sales (
   kitchen_completed_at TEXT,
   guest_count INTEGER DEFAULT 1,
   token_number TEXT,
+  client_request_id TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id),
@@ -462,6 +463,9 @@ CREATE TABLE IF NOT EXISTS raw_stock_batches (
   FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE CASCADE,
   FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_shop_client_request
+  ON sales(shop_id, client_request_id) WHERE client_request_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS menu_addons (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

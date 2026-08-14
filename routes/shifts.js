@@ -218,6 +218,30 @@ router.post('/verify-handover', requireAuth, async (req, res) => {
 // Admin-only shift list
 router.get('/history', requireAuth, async (req, res) => {
   const filters = { ...req.query };
+  if (filters.view === 'payment_shift_dates') {
+    return res.json({ dates: await shiftService.listUserPaymentShiftDates(req.session.user.shop_id, req.session.user.id) });
+  }
+  if (filters.view === 'payment_shifts') {
+    return res.json(await shiftService.listUserPaymentShifts(
+      req.session.user.shop_id,
+      req.session.user.id,
+      { page: filters.page, pageSize: filters.page_size, date: filters.date }
+    ));
+  }
+  if (filters.view === 'received_payments') {
+    return res.json(await shiftService.listReceivedPayments(
+      req.session.user.shop_id,
+      req.session.user.id,
+      {
+        shiftId: filters.shift_id,
+        page: filters.page,
+        pageSize: filters.page_size,
+        search: filters.search,
+        paymentMethod: filters.payment_method,
+        orderType: filters.order_type
+      }
+    ));
+  }
   if (!isShiftAdmin(req.session.user)) filters.userId = req.session.user.id;
 
   const history = await shiftService.listHistory(shiftAdminShopScope(req.session.user), filters);

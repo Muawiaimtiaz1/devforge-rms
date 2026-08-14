@@ -9,7 +9,7 @@ const MODULES = {
   brands: ['view', 'create', 'update', 'delete', 'manage_payments'],
   customers: ['view', 'create', 'update', 'delete', 'manage_ledger'],
   expenses: ['view', 'create', 'update', 'delete', 'export'],
-  tables: ['view', 'manage'],
+  tables: ['view', 'manage', 'create', 'update', 'delete'],
   analytics: ['view'],
   register: ['view', 'open', 'close', 'cash_drop', 'verify_cash', 'handover', 'view_history'],
   settings: ['view', 'update', 'manage_discounts', 'manage_taxes', 'manage_printers'],

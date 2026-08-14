@@ -162,15 +162,54 @@ class InfrastructureService {
   }
 
   async createTable(payload, shopId) {
-    const { table_number, capacity, floor_id } = payload;
+    const table_number = String(payload.table_number || '').trim();
+    const capacity = Number(payload.capacity || 4);
+    const floor_id = payload.floor_id ? Number(payload.floor_id) : null;
+    if (!table_number) { const error = new Error('Table number / name is required'); error.status = 400; throw error; }
+    if (!Number.isInteger(capacity) || capacity < 1) { const error = new Error('Capacity must be at least 1'); error.status = 400; throw error; }
+    if (floor_id) {
+      const floor = await db('floors').where({ id: floor_id, shop_id: shopId }).first();
+      if (!floor) { const error = new Error('Selected floor was not found'); error.status = 400; throw error; }
+    }
     const [idObj] = await db('tables').insert({
       shop_id: shopId,
       table_number,
-      capacity: capacity || 4,
-      floor_id: floor_id || null,
+      capacity,
+      floor_id,
       status: 'available'
     }).returning('id');
     return typeof idObj === 'object' ? idObj.id : idObj;
+  }
+
+  async updateTable(id, payload, shopId) {
+    const table = await db('tables').where({ id, shop_id: shopId }).first();
+    if (!table) { const error = new Error('Table not found'); error.status = 404; throw error; }
+    const tableNumber = String(payload.table_number || '').trim();
+    const capacity = Number(payload.capacity);
+    const floorId = payload.floor_id ? Number(payload.floor_id) : null;
+    if (!tableNumber) { const error = new Error('Table number / name is required'); error.status = 400; throw error; }
+    if (!Number.isInteger(capacity) || capacity < 1) { const error = new Error('Capacity must be at least 1'); error.status = 400; throw error; }
+    if (floorId) {
+      const floor = await db('floors').where({ id: floorId, shop_id: shopId }).first();
+      if (!floor) { const error = new Error('Selected floor was not found'); error.status = 400; throw error; }
+    }
+    await db('tables').where({ id: table.id, shop_id: shopId }).update({
+      table_number: tableNumber,
+      capacity,
+      floor_id: floorId
+    });
+  }
+
+  async deleteTable(id, shopId) {
+    const table = await db('tables').where({ id, shop_id: shopId }).first();
+    if (!table) { const error = new Error('Table not found'); error.status = 404; throw error; }
+    const linkedOrder = await db('sales').where({ table_id: table.id, shop_id: shopId }).first();
+    if (linkedOrder) {
+      const error = new Error('This table has linked order history and cannot be deleted. Edit or mark it available instead.');
+      error.status = 409;
+      throw error;
+    }
+    await db('tables').where({ id: table.id, shop_id: shopId }).del();
   }
 
   async updateTableStatus(id, status, shopId) {

@@ -6996,6 +6996,9 @@ async function checkout(status = 'completed') {
     order_status: status,
     money_received: deliveryMoneyReceived,
     customer_id: _posSelectedCustomer?.id || null,
+    client_request_id: window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `pos-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   };
 
   const url = isEditing ? `/api/sales/${_editingOrderId}/items` : "/api/sales";
@@ -9960,11 +9963,16 @@ let _allTables = [];
 let _currentTableFloorFilter = "";
 let _tableAccessConfig = { mode: "all", order_takers: [] };
 
+function canManageTableAction(action) {
+  return currentUserHasPermission(`tables.${action}`) ||
+    currentUserHasPermission('tables.manage');
+}
+
 async function renderTables() {
   let tables = [];
   let floors = [];
   try {
-    const canConfigureAccess = ["admin", "superadmin", "manager"].includes(currentUser.role);
+    const canConfigureAccess = canManageTableAction('manage');
     const data = await Promise.all([
       api("/api/tables"),
       api("/api/tables/floors"),
@@ -9981,9 +9989,10 @@ async function renderTables() {
     : tables;
 
   const isReadOnly =
-    currentUser.role !== "admin" &&
-    currentUser.role !== "superadmin" &&
-    currentUser.role !== "manager";
+    !canManageTableAction('manage') &&
+    !canManageTableAction('create') &&
+    !canManageTableAction('update') &&
+    !canManageTableAction('delete');
   const statusColor = {
     available: "bg-emerald-500",
     occupied: "bg-red-500",
@@ -10038,14 +10047,14 @@ async function renderTables() {
           ${!isReadOnly
       ? `
           <div class="flex gap-2">
-            <button onclick="renderFloors()" class="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm transition-all border border-slate-200 dark:border-slate-700 flex items-center gap-2">
+            <button onclick="renderFloors()" class="${canManageTableAction('manage') ? '' : 'hidden'} px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm transition-all border border-slate-200 dark:border-slate-700 flex items-center gap-2">
               🏢 Floors
             </button>
-            <button onclick="showTableAccessModal()" class="px-5 py-2.5 rounded-xl bg-violet-50 dark:bg-violet-950/30 hover:bg-violet-100 text-violet-700 dark:text-violet-300 font-bold text-sm transition-all border border-violet-200 dark:border-violet-800">Table Access</button>
-            <button onclick="showAddTableModal()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2">
+            <button onclick="showTableAccessModal()" class="${canManageTableAction('manage') ? '' : 'hidden'} px-5 py-2.5 rounded-xl bg-violet-50 dark:bg-violet-950/30 hover:bg-violet-100 text-violet-700 dark:text-violet-300 font-bold text-sm transition-all border border-violet-200 dark:border-violet-800">Table Access</button>
+            ${canManageTableAction('create') ? `<button onclick="showAddTableModal()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
               Add Table
-            </button>
+            </button>` : ''}
           </div>
           `
       : ""
@@ -10067,7 +10076,7 @@ async function renderTables() {
           <div class="col-span-full flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
             <div class="text-5xl mb-3">🪑</div>
             <p class="text-slate-500 text-sm font-medium">No tables found in this section</p>
-            <button onclick="showAddTableModal()" class="mt-4 px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-500 transition-all">Add New Table</button>
+            ${canManageTableAction('create') ? '<button onclick="showAddTableModal()" class="mt-4 px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-500 transition-all">Add New Table</button>' : ''}
           </div>
         `
       : filteredTables
@@ -10075,8 +10084,7 @@ async function renderTables() {
           (t) => `
           <div class="group relative flex flex-col items-center justify-center p-5 rounded-2xl border-2 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl ${statusBg[t.status] || "bg-white border-slate-200"
             }"
-               onclick="showTableActions(${t.id}, '${t.table_number}', '${t.status
-            }', ${t.capacity})">
+               onclick="showTableActions(${t.id})">
             <div class="absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${statusColor[t.status] || "bg-slate-400"
             }"></div>
             <div class="text-3xl mb-1">🪑</div>
@@ -10218,6 +10226,7 @@ async function deleteFloor(id) {
 }
 
 async function showAddTableModal() {
+  if (!canManageTableAction('create')) return toast('You do not have permission to add tables.', 'error');
   let floors = [];
   try { floors = await api('/api/tables/floors'); } catch (e) { }
 
@@ -10244,6 +10253,7 @@ async function showAddTableModal() {
 }
 
 async function addTable() {
+  if (!canManageTableAction('create')) return toast('You do not have permission to add tables.', 'error');
   const table_number = $c('new-table-number').value.trim();
   const capacity = parseInt($c('new-table-capacity').value) || 4;
   const floor_id = parseInt($c('new-table-floor')?.value) || null;
@@ -10258,13 +10268,20 @@ async function addTable() {
   }
 }
 
-function showTableActions(id, tableNumber, status, capacity) {
-  const isReadOnly = currentUser.role !== 'admin' && currentUser.role !== 'superadmin' && currentUser.role !== 'manager';
-  openModal(`Table ${tableNumber}`, `
+function showTableActions(id) {
+  const table = _allTables.find(item => Number(item.id) === Number(id));
+  if (!table) return toast('Table not found', 'error');
+  const status = table.status;
+  const canChangeStatus = canManageTableAction('manage');
+  const canEdit = canManageTableAction('update');
+  const canDelete = canManageTableAction('delete');
+  openModal(`Table ${escapeOrderValue(table.table_number)}`, `
     <div class="space-y-3">
       <p class="text-slate-500 text-sm">Current status: <span class="font-bold ${status === 'available' ? 'text-emerald-600' : status === 'occupied' ? 'text-red-600' : 'text-amber-600'}">${status.toUpperCase()}</span></p>
       <div class="grid grid-cols-1 gap-2">
-        ${!isReadOnly ? `
+        ${canEdit ? `<button onclick="showEditTableModal(${id})" class="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold transition-all">Edit Table</button>` : ''}
+        ${canDelete ? `<button onclick="deleteTable(${id})" class="w-full py-3 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-bold transition-all">Delete Table</button>` : ''}
+        ${canChangeStatus ? `
         <button onclick="setTableStatus(${id},'available')" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all flex items-center justify-center gap-2">✅ Mark Available</button>
         <button onclick="setTableStatus(${id},'occupied')" class="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold transition-all flex items-center justify-center gap-2">🔴 Mark Occupied</button>
         <button onclick="setTableStatus(${id},'reserved')" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-white font-bold transition-all flex items-center justify-center gap-2">🟡 Mark Reserved</button>
@@ -10273,6 +10290,49 @@ function showTableActions(id, tableNumber, status, capacity) {
       </div>
     </div>
   `, 'max-w-sm');
+}
+
+async function showEditTableModal(id) {
+  if (!canManageTableAction('update')) return toast('You do not have permission to edit tables.', 'error');
+  const table = _allTables.find(item => Number(item.id) === Number(id));
+  if (!table) return toast('Table not found', 'error');
+  let floors = [];
+  try { floors = await api('/api/tables/floors'); } catch (e) { }
+  openModal('Edit Table', `
+    <div class="space-y-4">
+      <div><label class="block text-xs font-bold text-slate-500 mb-1">Floor</label><select id="edit-table-floor" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"><option value="">-- No Floor --</option>${floors.map(f => `<option value="${f.id}" ${Number(f.id) === Number(table.floor_id) ? 'selected' : ''}>${escapeOrderValue(f.name)}</option>`).join('')}</select></div>
+      <div><label class="block text-xs font-bold text-slate-500 mb-1">Table Number / Name</label><input id="edit-table-number" value="${escapeOrderValue(table.table_number)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"></div>
+      <div><label class="block text-xs font-bold text-slate-500 mb-1">Capacity (guests)</label><input id="edit-table-capacity" type="number" min="1" value="${Number(table.capacity || 4)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"></div>
+      <button onclick="saveTableEdit(${id})" class="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold">Save Changes</button>
+    </div>`, 'max-w-sm');
+}
+
+async function saveTableEdit(id) {
+  if (!canManageTableAction('update')) return toast('You do not have permission to edit tables.', 'error');
+  const table_number = $c('edit-table-number').value.trim();
+  const capacity = Number($c('edit-table-capacity').value);
+  const floor_id = Number($c('edit-table-floor').value) || null;
+  if (!table_number) return toast('Table number/name is required', 'error');
+  if (!Number.isInteger(capacity) || capacity < 1) return toast('Capacity must be at least 1', 'error');
+  try {
+    await api(`/api/tables/${id}/status`, 'PATCH', { action: 'update', table_number, capacity, floor_id });
+    toast('Table updated');
+    closeModal();
+    renderTables();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteTable(id) {
+  if (!canManageTableAction('delete')) return toast('You do not have permission to delete tables.', 'error');
+  const table = _allTables.find(item => Number(item.id) === Number(id));
+  if (!table) return toast('Table not found', 'error');
+  if (!confirm(`Delete table ${table.table_number}? This cannot be undone.`)) return;
+  try {
+    await api(`/api/tables/${id}/status`, 'PATCH', { action: 'delete' });
+    toast('Table deleted');
+    closeModal();
+    renderTables();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function setTableStatus(id, status) {
@@ -11198,12 +11258,14 @@ async function renderRegister() {
           </button>
         </div>
 
-        <div class="inline-flex w-full sm:w-auto items-center gap-1.5 p-1.5 mb-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm" role="tablist" aria-label="Register sections">
+        <div class="flex w-full sm:w-auto sm:inline-flex items-center gap-1.5 p-1.5 mb-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto" role="tablist" aria-label="Register sections">
           <button id="register-tab-cash-flow" type="button" role="tab" onclick="switchRegisterPanel('cash_flow')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">Cash Flow</button>
+          <button id="register-tab-payments" type="button" role="tab" onclick="switchRegisterPanel('payments')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">Payments</button>
           <button id="register-tab-opening-closing" type="button" role="tab" onclick="switchRegisterPanel('opening_closing')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">Opening / Closing</button>
         </div>
 
         <div id="register-closed-cash-flow" class="hidden">${renderPendingCashHandoversSection(pendingCashHandovers)}</div>
+        <section id="register-payments-panel" class="hidden"></section>
 
         <div id="register-closed-opening-closing" class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] gap-6">
           <section class="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -11277,9 +11339,12 @@ async function renderRegister() {
         </div>
       </div>
 
-      <div class="inline-flex w-full sm:w-auto items-center gap-1.5 p-1.5 mb-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm" role="tablist" aria-label="Register sections">
+      <div class="flex w-full sm:w-auto sm:inline-flex items-center gap-1.5 p-1.5 mb-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto" role="tablist" aria-label="Register sections">
         <button id="register-tab-cash-flow" type="button" role="tab" onclick="switchRegisterPanel('cash_flow')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">
           Cash Flow
+        </button>
+        <button id="register-tab-payments" type="button" role="tab" onclick="switchRegisterPanel('payments')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">
+          Payments
         </button>
         <button id="register-tab-cash-movement" type="button" role="tab" onclick="switchRegisterPanel('cash_movement')" class="flex-1 sm:flex-none px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all">
           Cash Movement Request
@@ -11304,6 +11369,7 @@ async function renderRegister() {
       </section>
 
       <div id="register-cash-handovers">${renderPendingCashHandoversSection(pendingCashHandovers)}</div>
+      <section id="register-payments-panel" class="hidden"></section>
 
       <div class="grid grid-cols-1 gap-6">
         <section id="register-cash-movement-panel" class="hidden p-7 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -11392,10 +11458,11 @@ async function renderRegister() {
 }
 
 function switchRegisterPanel(panel) {
-  const availablePanels = ['cash_flow', 'cash_movement', 'opening_closing'];
+  const availablePanels = ['cash_flow', 'payments', 'cash_movement', 'opening_closing'];
   const activePanel = availablePanels.includes(panel) ? panel : 'cash_flow';
   window._registerActivePanel = activePanel;
   const showingCashFlow = activePanel === 'cash_flow';
+  const showingPayments = activePanel === 'payments';
   const showingCashMovement = activePanel === 'cash_movement';
   const showingOpeningClosing = activePanel === 'opening_closing';
 
@@ -11403,14 +11470,17 @@ function switchRegisterPanel(panel) {
     document.getElementById(id)?.classList.toggle('hidden', !showingCashFlow);
   });
   document.getElementById('register-cash-movement-panel')?.classList.toggle('hidden', !showingCashMovement);
+  document.getElementById('register-payments-panel')?.classList.toggle('hidden', !showingPayments);
   document.getElementById('register-opening-closing-panel')?.classList.toggle('hidden', !showingOpeningClosing);
   document.getElementById('register-closed-cash-flow')?.classList.toggle('hidden', !showingCashFlow);
   document.getElementById('register-closed-opening-closing')?.classList.toggle('hidden', !showingOpeningClosing);
+  if (showingPayments && typeof renderRegisterPaymentsPanel === 'function') renderRegisterPaymentsPanel({ refreshShifts: true });
 
   const activeClasses = ['bg-indigo-600', 'text-white', 'shadow-md', 'shadow-indigo-600/20'];
   const inactiveClasses = ['text-slate-500', 'dark:text-slate-400', 'hover:bg-slate-100', 'dark:hover:bg-slate-800'];
   [
     ['register-tab-cash-flow', showingCashFlow],
+    ['register-tab-payments', showingPayments],
     ['register-tab-cash-movement', showingCashMovement],
     ['register-tab-opening-closing', showingOpeningClosing]
   ].forEach(([id, isActive]) => {

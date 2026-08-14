@@ -11,6 +11,15 @@ function firstTotal(rows) {
   return toMoney(rows[0].total);
 }
 
+function shiftDateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 class ShiftService {
   async syncLegacyOpenCashDrops(shopId = null) {
     const legacyShiftsQuery = db('shifts')
@@ -671,6 +680,136 @@ class ShiftService {
     if (filters.status) query = query.where('s.status', filters.status);
 
     return query.orderBy('s.start_time', 'desc');
+  }
+
+  async listReceivedPayments(shopId, userId, filters = {}) {
+    const shiftId = Number(filters.shiftId);
+    const shift = await db('shifts')
+      .where({ id: shiftId, shop_id: shopId, user_id: userId })
+      .first();
+    if (!shift) { const error = new Error('Shift not found'); error.status = 404; throw error; }
+
+    const directSales = await db('sales as s')
+      .select('s.id', 's.order_type', 's.order_status', 's.payment_method', 's.total', 's.amount_received', 's.created_at', 's.payment_received_at', 's.customer_name', 't.table_number')
+      .leftJoin('tables as t', 's.table_id', 't.id')
+      .where({ 's.shop_id': shopId, 's.shift_id': shiftId })
+      .where('s.amount_received', '>', 0)
+      .where(function () {
+        this.where('s.payment_receiver_id', userId).orWhereNull('s.payment_receiver_id');
+      });
+
+    const saleIds = directSales.map(sale => sale.id);
+    const allLedgerForDirectSales = saleIds.length
+      ? await db('customer_ledger')
+        .whereIn('sale_id', saleIds)
+        .where({ shop_id: shopId, type: 'payment' })
+        .select('sale_id', 'amount')
+      : [];
+    const ledgerPaidBySale = new Map();
+    for (const entry of allLedgerForDirectSales) {
+      ledgerPaidBySale.set(Number(entry.sale_id), toMoney(ledgerPaidBySale.get(Number(entry.sale_id))) + toMoney(entry.amount));
+    }
+
+    const receivedLedger = await db('customer_ledger as cl')
+      .select('cl.sale_id', 'cl.amount', 'cl.payment_method', 'cl.created_at', 's.order_type', 's.order_status', 's.customer_name', 't.table_number')
+      .leftJoin('sales as s', 'cl.sale_id', 's.id')
+      .leftJoin('tables as t', 's.table_id', 't.id')
+      .where({ 'cl.shop_id': shopId, 'cl.shift_id': shiftId, 'cl.created_by': userId, 'cl.type': 'payment' });
+
+    const orders = new Map();
+    const addPayment = (payment) => {
+      const id = Number(payment.sale_id || payment.id);
+      if (!id || toMoney(payment.amount) <= 0) return;
+      const existing = orders.get(id) || {
+        order_id: id,
+        order_type: payment.order_type || 'dine_in',
+        order_status: payment.order_status || '',
+        customer_name: payment.customer_name || '',
+        table_number: payment.table_number || null,
+        payment_amount: 0,
+        payment_methods: new Set(),
+        payment_time: null
+      };
+      existing.payment_amount += toMoney(payment.amount);
+      if (payment.payment_method) existing.payment_methods.add(payment.payment_method);
+      const timestamp = payment.payment_time || payment.created_at;
+      if (timestamp && (!existing.payment_time || new Date(timestamp) > new Date(existing.payment_time))) existing.payment_time = timestamp;
+      orders.set(id, existing);
+    };
+
+    for (const sale of directSales) {
+      const retained = Math.min(toMoney(sale.total), toMoney(sale.amount_received));
+      addPayment({
+        ...sale,
+        sale_id: sale.id,
+        amount: Math.max(0, retained - toMoney(ledgerPaidBySale.get(Number(sale.id)))),
+        payment_time: sale.payment_received_at || sale.created_at
+      });
+    }
+    receivedLedger.forEach(addPayment);
+
+    let rows = [...orders.values()].map(row => ({
+      ...row,
+      payment_method: row.payment_methods.size > 1 ? 'mixed' : ([...row.payment_methods][0] || 'cash'),
+      payment_methods: undefined,
+      payment_amount: Number(row.payment_amount.toFixed(2))
+    }));
+    const shiftTotalOrders = rows.length;
+    const shiftTotalAmount = Number(rows.reduce((sum, row) => sum + row.payment_amount, 0).toFixed(2));
+    const search = String(filters.search || '').trim().toLowerCase();
+    if (search) rows = rows.filter(row => String(row.order_id).includes(search) || String(row.customer_name).toLowerCase().includes(search));
+    if (filters.paymentMethod) rows = rows.filter(row => row.payment_method === filters.paymentMethod);
+    if (filters.orderType) rows = rows.filter(row => row.order_type === filters.orderType);
+    rows.sort((a, b) => new Date(b.payment_time || 0) - new Date(a.payment_time || 0));
+
+    const totalOrders = rows.length;
+    const pageSize = Math.min(Math.max(Number(filters.pageSize) || 10, 5), 50);
+    const totalPages = Math.max(1, Math.ceil(totalOrders / pageSize));
+    const page = Math.min(Math.max(Number(filters.page) || 1, 1), totalPages);
+    return {
+      shift,
+      summary: { total_orders: shiftTotalOrders, total_amount: shiftTotalAmount },
+      items: rows.slice((page - 1) * pageSize, page * pageSize),
+      pagination: { page, page_size: pageSize, total: totalOrders, total_pages: totalPages }
+    };
+  }
+
+  async listUserPaymentShifts(shopId, userId, filters = {}) {
+    const pageSize = Math.min(Math.max(Number(filters.pageSize) || 8, 5), 20);
+    const baseFilters = { shop_id: shopId, user_id: userId };
+    let total;
+    let shifts;
+    if (filters.date) {
+      const datedShifts = (await db('shifts').where(baseFilters).orderBy('start_time', 'desc'))
+        .filter(shift => shiftDateKey(shift.start_time) === filters.date);
+      total = datedShifts.length;
+      const requestedPage = Math.max(Number(filters.page) || 1, 1);
+      shifts = datedShifts.slice((requestedPage - 1) * pageSize, requestedPage * pageSize);
+    } else {
+      total = Number((await db('shifts').where(baseFilters).count('id as count').first())?.count || 0);
+    }
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(Math.max(Number(filters.page) || 1, 1), totalPages);
+    if (!filters.date) {
+      shifts = await db('shifts').where(baseFilters).orderBy('start_time', 'desc').limit(pageSize).offset((page - 1) * pageSize);
+    } else if (page !== Math.max(Number(filters.page) || 1, 1)) {
+      const datedShifts = (await db('shifts').where(baseFilters).orderBy('start_time', 'desc'))
+        .filter(shift => shiftDateKey(shift.start_time) === filters.date);
+      shifts = datedShifts.slice((page - 1) * pageSize, page * pageSize);
+    }
+    const items = await Promise.all(shifts.map(async (shift) => {
+      const payments = await this.listReceivedPayments(shopId, userId, { shiftId: shift.id, page: 1, pageSize: 5 });
+      return { ...shift, payment_order_count: payments.summary.total_orders, payment_total: payments.summary.total_amount };
+    }));
+    return { items, pagination: { page, page_size: pageSize, total, total_pages: totalPages } };
+  }
+
+  async listUserPaymentShiftDates(shopId, userId) {
+    const rows = await db('shifts')
+      .where({ shop_id: shopId, user_id: userId })
+      .select('start_time')
+      .orderBy('start_time', 'desc');
+    return [...new Set(rows.map(row => shiftDateKey(row.start_time)).filter(Boolean))];
   }
 
   /**
