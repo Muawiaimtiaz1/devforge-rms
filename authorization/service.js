@@ -67,16 +67,11 @@ async function seedStandardRoles() {
   for (const shop of shops) {
     for (const [name, keys] of Object.entries(STANDARD_ROLES)) {
       let role = await db('roles').where({ shop_id: shop.id, name }).first();
+      // These are per-shop starting templates. Once created, a restaurant owner's
+      // permission choices are authoritative and must never be reset on startup/listing.
       if (!role) {
         const inserted = await db('roles').insert({ shop_id: shop.id, name, description: 'Standard restaurant role', is_system: true }).returning('id');
         role = { id: typeof inserted[0] === 'object' ? inserted[0].id : inserted[0] };
-        const rows = keys.map(key => ({ role_id: role.id, permission_id: permissionId.get(key) })).filter(row => row.permission_id);
-        if (rows.length) await db('role_permissions').insert(rows).onConflict(['role_id', 'permission_id']).ignore();
-      } else if (role.is_system && name === 'Waiter') {
-        // Security correction: the built-in waiter preset must never implicitly edit orders.
-        const updatePermissionId = permissionId.get('orders.update');
-        if (updatePermissionId) await db('role_permissions').where({ role_id: role.id, permission_id: updatePermissionId }).del();
-      } else if (role.is_system && ['Restaurant Admin', 'Manager'].includes(name)) {
         const rows = keys.map(key => ({ role_id: role.id, permission_id: permissionId.get(key) })).filter(row => row.permission_id);
         if (rows.length) await db('role_permissions').insert(rows).onConflict(['role_id', 'permission_id']).ignore();
       }
@@ -132,9 +127,12 @@ async function getUserPermissions(user) {
     }
   }
   const rows = await db('user_roles as ur')
+    .join('roles as r', 'r.id', 'ur.role_id')
     .join('role_permissions as rp', 'rp.role_id', 'ur.role_id')
     .join('permissions as p', 'p.id', 'rp.permission_id')
-    .where('ur.user_id', user.id).distinct('p.key');
+    .where('ur.user_id', user.id)
+    .where('r.shop_id', user.shop_id)
+    .distinct('p.key');
   return rows.map((row) => row.key);
 }
 

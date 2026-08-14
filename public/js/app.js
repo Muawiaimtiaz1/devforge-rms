@@ -839,6 +839,7 @@ function navigate(page, options = {}) {
   const parentMap = {
     "products-low-stock": "products",
     "menu-addons": "products",
+    "product-categories": "products",
     "sales-pending": "sales-history",
     "pending-dues": "sales-history",
   };
@@ -905,6 +906,7 @@ function navigate(page, options = {}) {
     dashboard: "Dashboard",
     brands: "Brands",
     products: "Menu",
+    "product-categories": "Product Categories",
     "menu-addons": "Menu Add-ons",
     pos: "POS / Checkout",
     delivery: "Delivery Panel",
@@ -950,6 +952,7 @@ function navigate(page, options = {}) {
     dashboard: renderDashboard,
     brands: renderBrands,
     products: renderProducts,
+    "product-categories": renderProductCategoriesPage,
     "menu-addons": renderMenuAddons,
     "products-low-stock": () => renderProducts(true),
     pos: renderPOS,
@@ -1367,7 +1370,113 @@ function renderPrinterRouteOptions(selectedRoute = "") {
   `;
 }
 
+function getCategoryRouteTargetsForPage(category) {
+  if (Array.isArray(category?.route_targets)) return category.route_targets;
+  try {
+    const parsed = JSON.parse(category?.route_targets || '[]');
+    if (Array.isArray(parsed)) return parsed;
+  } catch (_) {}
+  return category?.printer_station ? [category.printer_station] : [];
+}
+
+async function renderProductCategoriesPage() {
+  const [categories] = await Promise.all([
+    api('/api/product-categories'),
+    ensurePrinterRouteChoicesLoaded()
+  ]);
+  _productCategories = Array.isArray(categories) ? categories : [];
+  const totalLinked = _productCategories.reduce((sum, category) => sum + Number(category.product_count || 0), 0);
+  $c('page-content').innerHTML = `
+    <div class="space-y-6 animate-in fade-in duration-300">
+      <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div><p class="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Menu setup</p><h2 class="mt-1 text-2xl font-black text-slate-950 dark:text-white">Product Categories</h2><p class="mt-1 text-sm font-medium text-slate-500">Create categories, manage routing, and see how many products use each category.</p></div>
+          <div class="flex gap-3"><div class="rounded-2xl bg-slate-50 px-5 py-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Categories</p><p class="text-xl font-black">${_productCategories.length}</p></div><div class="rounded-2xl bg-indigo-50 px-5 py-3 dark:bg-indigo-950/30"><p class="text-[10px] font-black uppercase tracking-widest text-indigo-400">Linked products</p><p class="text-xl font-black text-indigo-700 dark:text-indigo-300">${totalLinked}</p></div></div>
+        </div>
+      </section>
+
+      <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div><label class="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">New category name</label><input id="category-page-name" onkeydown="if(event.key==='Enter') createProductCategoryFromPage()" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3.5 font-bold outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950" placeholder="e.g. Main Course"></div>
+          <button onclick="createProductCategoryFromPage()" class="rounded-2xl bg-indigo-600 px-7 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500">Add Category</button>
+        </div>
+        <details class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+          <summary class="cursor-pointer text-xs font-black uppercase tracking-widest text-slate-500">Optional kitchen and printer routes</summary>
+          <div class="mt-4 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
+            ${_allPrinters.map(printer => `<label class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"><input type="checkbox" class="category-page-route h-4 w-4" value="PRINTER:${printer.id}"><span class="text-xs font-bold">Printer: ${escapeOrderValue(printer.display_name)}</span></label>`).join('')}
+            ${_printerRoutingKitchens.map(kitchen => `<label class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"><input type="checkbox" class="category-page-route h-4 w-4" value="KITCHEN:${kitchen.id}"><span class="text-xs font-bold">Kitchen: ${escapeOrderValue(kitchen.name || kitchen.username)}</span></label>`).join('')}
+          </div>
+        </details>
+      </section>
+
+      <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="flex flex-col gap-3 border-b border-slate-200 p-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between"><div class="relative w-full max-w-md"><input id="category-page-search" oninput="filterProductCategoryRows()" class="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm font-bold outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950" placeholder="Search categories..."><span class="absolute left-4 top-3 text-slate-400">&#128269;</span></div><button id="category-delete-selected" onclick="deleteSelectedProductCategories()" class="hidden rounded-xl bg-rose-50 px-4 py-2.5 text-xs font-black text-rose-600 dark:bg-rose-950/30">Delete selected</button></div>
+        <div class="overflow-x-auto"><table class="w-full min-w-[720px] text-left"><thead class="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:bg-slate-950"><tr><th class="w-14 px-5 py-4"><input id="category-select-all" type="checkbox" onchange="toggleAllProductCategories(this.checked)" class="h-4 w-4 rounded"></th><th class="px-5 py-4">Category</th><th class="px-5 py-4">Linked products</th><th class="px-5 py-4">Print route</th><th class="px-5 py-4 text-right">Actions</th></tr></thead><tbody id="category-page-rows"></tbody></table></div>
+        <div id="category-page-empty" class="hidden p-12 text-center text-sm font-bold text-slate-400">No matching categories found.</div>
+      </section>
+    </div>`;
+  renderProductCategoryRows(_productCategories);
+}
+
+function renderProductCategoryRows(categories) {
+  const body = $c('category-page-rows');
+  if (!body) return;
+  body.innerHTML = categories.map(category => {
+    const routes = getCategoryRouteTargetsForPage(category);
+    return `<tr class="category-page-row border-b border-slate-100 last:border-0 dark:border-slate-800" data-name="${escapeOrderValue(String(category.name || '').toLowerCase())}"><td class="px-5 py-4"><input type="checkbox" class="category-row-check h-4 w-4 rounded" value="${category.id}" onchange="updateCategorySelectionState()"></td><td class="px-5 py-4"><p class="font-black text-slate-900 dark:text-white">${escapeOrderValue(category.name)}</p></td><td class="px-5 py-4"><span class="inline-flex min-w-10 justify-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">${Number(category.product_count || 0)}</span></td><td class="px-5 py-4 text-xs font-bold text-slate-500">${routes.length ? routes.map(getPrinterRouteLabel).map(escapeOrderValue).join(', ') : 'No route assigned'}</td><td class="px-5 py-4"><div class="flex justify-end gap-2"><button onclick="editCategoryName('product', ${category.id})" class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-600 dark:bg-indigo-950/30">Edit</button><button onclick="deleteCategoryFromPopup('product', ${category.id}, '${String(category.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" ${Number(category.product_count || 0) > 0 ? 'title="Remove or reassign linked products before deleting"' : ''} class="rounded-xl bg-rose-50 px-3 py-2 text-xs font-black text-rose-600 dark:bg-rose-950/30">Delete</button></div></td></tr>`;
+  }).join('');
+  $c('category-page-empty')?.classList.toggle('hidden', categories.length > 0);
+}
+
+function filterProductCategoryRows() {
+  const query = ($c('category-page-search')?.value || '').trim().toLowerCase();
+  renderProductCategoryRows(_productCategories.filter(category => String(category.name || '').toLowerCase().includes(query)));
+  updateCategorySelectionState();
+}
+
+function toggleAllProductCategories(checked) {
+  document.querySelectorAll('.category-row-check').forEach(input => { input.checked = checked; });
+  updateCategorySelectionState();
+}
+
+function updateCategorySelectionState() {
+  const count = document.querySelectorAll('.category-row-check:checked').length;
+  const button = $c('category-delete-selected');
+  if (button) { button.classList.toggle('hidden', count === 0); button.textContent = `Delete selected (${count})`; }
+}
+
+async function createProductCategoryFromPage() {
+  const input = $c('category-page-name');
+  const name = input?.value.trim();
+  if (!name) return toast('Category name is required', 'error');
+  const routeTargets = [...document.querySelectorAll('.category-page-route:checked')].map(item => item.value);
+  try {
+    await api('/api/product-categories', 'POST', { name, route_targets: routeTargets });
+    toast('Category added successfully', 'success');
+    await fetchCategories();
+    await renderProductCategoriesPage();
+  } catch (_) {}
+}
+
+async function deleteSelectedProductCategories() {
+  const ids = [...document.querySelectorAll('.category-row-check:checked')].map(input => Number(input.value));
+  if (!ids.length || !confirm(`Delete ${ids.length} selected categories? Categories linked to products cannot be deleted.`)) return;
+  let deleted = 0;
+  let failed = 0;
+  for (const id of ids) {
+    try { await api(`/api/product-categories/${id}`, 'DELETE'); deleted += 1; } catch (_) { failed += 1; }
+  }
+  if (deleted) toast(`${deleted} categories deleted`, 'success');
+  if (failed) toast(`${failed} categories could not be deleted because they are in use`, 'error');
+  await fetchCategories();
+  await renderProductCategoriesPage();
+}
+
 async function openAddCategoryPopup(type) {
+  if (type === 'product') {
+    navigate('product-categories');
+    return;
+  }
   // Hide both potential menus
   const menu1 = document.getElementById("add-category-menu");
   const menu2 = document.getElementById("lobby-category-menu");
@@ -1515,7 +1624,8 @@ async function deleteCategoryFromPopup(type, id, name) {
 
     toast('Category deleted successfully!');
     await fetchCategories();
-    updateCategoryListInPopup(type);
+    if (type === 'product' && _currentPage === 'product-categories') await renderProductCategoriesPage();
+    else updateCategoryListInPopup(type);
     if (_currentPage === 'dashboard') renderDashboard();
   } catch (e) {
     toast('Failed to delete category', 'error');
@@ -2443,7 +2553,8 @@ async function editCategoryName(type, id) {
   try {
     await api(url, 'PATCH', { name });
     await fetchCategories();
-    updateCategoryListInPopup(type);
+    if (type === 'product' && _currentPage === 'product-categories') await renderProductCategoriesPage();
+    else updateCategoryListInPopup(type);
     toast('Category name updated', 'success');
   } catch (error) {
     // The shared API helper already shows the server validation message.

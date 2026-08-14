@@ -28,12 +28,19 @@ function normalizeRouteTargets(value, legacyRoute = null) {
 // GET /api/product-categories
 router.get('/', requireAuth, async (req, res) => {
     const shopId = req.session.user.shop_id;
-    const isPostgres = usePostgres();
     try {
-        const query = isPostgres ? 'SELECT * FROM product_categories WHERE shop_id = $1 ORDER BY id ASC' : 'SELECT * FROM product_categories WHERE shop_id = ? ORDER BY id ASC';
-        let categories;
-        if (isPostgres) categories = (await getPostgres().query(query, [shopId])).rows;
-        else categories = getSqlite().prepare(query).all(shopId);
+        const categories = await db('product_categories as pc')
+            .leftJoin('products as p', function () {
+                this.on('p.shop_id', '=', 'pc.shop_id')
+                    .andOn('p.category', '=', 'pc.name')
+                    .andOn('p.is_deleted', '=', db.raw('?', [0]));
+            })
+            .where('pc.shop_id', shopId)
+            .groupBy('pc.id', 'pc.shop_id', 'pc.name', 'pc.printer_station', 'pc.route_targets')
+            .select('pc.*')
+            .count('p.id as product_count')
+            .orderBy('pc.name', 'asc');
+        categories.forEach(category => { category.product_count = Number(category.product_count || 0); });
         res.json(categories);
     } catch (err) {
         console.error("Fetch categories error:", err);

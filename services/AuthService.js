@@ -198,14 +198,20 @@ class AuthService {
       if (user.role === 'admin') {
         allowedPanels = shopPanels;
       } else {
-        const hasRbacAccess = !!(await db('user_roles').where({ user_id: user.id }).first());
+        const hasRbacAccess = !!(await db('user_roles as ur')
+          .join('roles as r', 'r.id', 'ur.role_id')
+          .where('ur.user_id', user.id)
+          .where('r.shop_id', user.shop_id)
+          .first());
         allowedPanels = hasRbacAccess ? shopPanels : allowedPanels.filter(p => shopPanels.includes(p));
       }
       subscription = await this.getSubscriptionSummary(user.shop_id);
     }
 
     const roles = user.role === 'superadmin' ? [] : await db('user_roles as ur')
-      .join('roles as r', 'r.id', 'ur.role_id').where('ur.user_id', user.id)
+      .join('roles as r', 'r.id', 'ur.role_id')
+      .where('ur.user_id', user.id)
+      .where('r.shop_id', user.shop_id)
       .select('r.id', 'r.name');
 
     return {
