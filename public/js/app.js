@@ -186,6 +186,11 @@ let allProducts = [];
 let productMap = {}; // Index for O(1) lookups
 const POS_PRODUCTS_PER_PAGE = 20;
 let _posProductPage = 1;
+let _posProductCategory = "";
+let _posProductSearch = "";
+let _posServerPagination = null;
+let _inventoryProductPage = 1;
+const INVENTORY_PRODUCTS_PER_PAGE = 20;
 let _posFilteredProducts = [];
 
 function syncProductMap(products) {
@@ -2251,12 +2256,22 @@ function inventoryStockFilterLabel(filter) {
   return INVENTORY_STOCK_FILTER_LABELS[filter] || INVENTORY_STOCK_FILTER_LABELS.all;
 }
 
-async function renderProducts(onlyLowStock = false) {
-  const [products, brands, menuAddons] = await Promise.all([
-    api("/api/products"),
+async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {}) {
+  const selectedStockFilter = onlyLowStock ? "low" : (state.stockFilter || "all");
+  const inventorySearch = String(state.search || '').trim();
+  const productParams = new URLSearchParams({
+    paginate: '1', page: String(requestedPage), page_size: String(INVENTORY_PRODUCTS_PER_PAGE),
+    menu_only: '1', exclude_components: '1', stock_filter: selectedStockFilter
+  });
+  if (inventorySearch) productParams.set('search', inventorySearch);
+  const [productResponse, brands, menuAddons] = await Promise.all([
+    api(`/api/products?${productParams.toString()}`),
     api("/api/brands"),
     api("/api/products/menu-addons"),
   ]);
+  const products = Array.isArray(productResponse?.items) ? productResponse.items : [];
+  const productPagination = productResponse?.pagination || { page: 1, page_size: INVENTORY_PRODUCTS_PER_PAGE, total: products.length, total_pages: 1 };
+  _inventoryProductPage = Number(productPagination.page || 1);
   window._menuAddons = menuAddons;
   // Filter out components from global list for UI purposes
   allProducts = products;
@@ -2264,22 +2279,20 @@ async function renderProducts(onlyLowStock = false) {
   const mainProducts = products.filter((p) => p.is_component !== 1 && isProductPublishedToMenu(p));
   updateLowStockBadge(mainProducts);
 
-  const selectedStockFilter = onlyLowStock ? "low" : "all";
-
   $c("page-content").innerHTML = `
     <div class="flex flex-col xl:flex-row xl:items-center gap-4 mb-8">
       <div class="flex-1 relative group w-full">
         <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         </div>
-        <input type="text" id="inventory-search" oninput="filterInventory()" 
+        <input type="text" id="inventory-search" value="${escapeOrderValue(inventorySearch)}" oninput="filterInventory()"
                placeholder="Search by name or category..." 
                class="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm" />
       </div>
 
       <div class="relative shrink-0 w-full sm:w-[180px]">
         <label for="inventory-stock-filter" class="sr-only">Stock filter</label>
-        <select id="inventory-stock-filter" onchange="filterInventory()" class="appearance-none w-full pl-4 pr-10 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm">
+        <select id="inventory-stock-filter" onchange="changeInventoryFilter()" class="appearance-none w-full pl-4 pr-10 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm">
           <option value="all" ${selectedStockFilter === "all" ? "selected" : ""}>All Stock</option>
           <option value="low" ${selectedStockFilter === "low" ? "selected" : ""}>Low Stock</option>
           <option value="out" ${selectedStockFilter === "out" ? "selected" : ""}>Out of Stock</option>
@@ -2303,9 +2316,17 @@ async function renderProducts(onlyLowStock = false) {
     </div>
 
     <div class="flex items-center gap-3 mb-4 px-2">
-      <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]"><span id="product-count">${mainProducts.length}</span> <span id="product-count-label">${inventoryStockFilterLabel(selectedStockFilter)}</span></p>
+      <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]"><span id="product-count">${Number(productPagination.total || 0)}</span> <span id="product-count-label">${inventoryStockFilterLabel(selectedStockFilter)}</span></p>
       <button id="inventory-clear-filter" onclick="resetInventoryFilters()" class="hidden text-[10px] font-bold text-indigo-500 hover:text-indigo-600 transition-colors uppercase tracking-widest">Clear Filter</button>
     </div>
+    ${productPagination.total ? `<div class="mb-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Showing ${((_inventoryProductPage - 1) * Number(productPagination.page_size)) + 1}-${Math.min(_inventoryProductPage * Number(productPagination.page_size), Number(productPagination.total))} of ${Number(productPagination.total)}</div>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="changeInventoryPage(${_inventoryProductPage - 1})" ${_inventoryProductPage <= 1 ? 'disabled' : ''} class="h-8 rounded-lg border border-slate-200 px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700">Previous</button>
+        <span class="min-w-[5rem] text-center text-xs font-black">${_inventoryProductPage} / ${Number(productPagination.total_pages || 1)}</span>
+        <button type="button" onclick="changeInventoryPage(${_inventoryProductPage + 1})" ${_inventoryProductPage >= Number(productPagination.total_pages || 1) ? 'disabled' : ''} class="h-8 rounded-lg border border-slate-200 px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700">Next</button>
+      </div>
+    </div>` : ''}
     <div class="glass rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800 transition-all">
       <table class="w-full text-sm" id="inventory-table">
         <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-left bg-slate-50 dark:bg-black/20">
@@ -2400,40 +2421,29 @@ async function renderProducts(onlyLowStock = false) {
       </table>
     </div>`;
   window._productBrands = brands;
-  filterInventory();
+  const clearFilterBtn = document.getElementById("inventory-clear-filter");
+  if (clearFilterBtn) clearFilterBtn.classList.toggle("hidden", !inventorySearch && selectedStockFilter === "all");
 }
 
+const filterInventory = debounce(() => {
+  renderProducts(_currentPage === "products-low-stock", 1, {
+    search: document.getElementById("inventory-search")?.value || "",
+    stockFilter: document.getElementById("inventory-stock-filter")?.value || "all"
+  }).then(() => document.getElementById("inventory-search")?.focus());
+}, 300);
 
-function filterInventory() {
-  const searchEl = document.getElementById("inventory-search");
-  const stockFilterEl = document.getElementById("inventory-stock-filter");
-  const q = searchEl ? searchEl.value.toLowerCase().trim() : "";
-  const stockFilter = stockFilterEl ? stockFilterEl.value : "all";
-  const rows = document.querySelectorAll(".inventory-row");
-  let visibleCount = 0;
-
-  rows.forEach(row => {
-    const name = row.querySelector(".product-name").textContent.toLowerCase();
-    const cat = row.querySelector(".product-category").textContent.toLowerCase();
-    const status = row.dataset.stockStatus || "ok";
-    const barcode = row.dataset.barcode ? row.dataset.barcode.toLowerCase() : "";
-    const matchesText = name.includes(q) || cat.includes(q) || barcode.includes(q);
-    const matchesStock = inventoryMatchesStockFilter(status, stockFilter);
-
-    if (matchesText && matchesStock) {
-      row.classList.remove("hidden");
-      visibleCount++;
-    } else {
-      row.classList.add("hidden");
-    }
+function changeInventoryFilter() {
+  renderProducts(_currentPage === "products-low-stock", 1, {
+    search: document.getElementById("inventory-search")?.value || "",
+    stockFilter: document.getElementById("inventory-stock-filter")?.value || "all"
   });
+}
 
-  const countEl = document.getElementById("product-count");
-  if (countEl) countEl.textContent = visibleCount;
-  const countLabelEl = document.getElementById("product-count-label");
-  if (countLabelEl) countLabelEl.textContent = inventoryStockFilterLabel(stockFilter);
-  const clearFilterBtn = document.getElementById("inventory-clear-filter");
-  if (clearFilterBtn) clearFilterBtn.classList.toggle("hidden", !q && stockFilter === "all");
+function changeInventoryPage(page) {
+  renderProducts(_currentPage === "products-low-stock", page, {
+    search: document.getElementById("inventory-search")?.value || "",
+    stockFilter: document.getElementById("inventory-stock-filter")?.value || "all"
+  });
 }
 
 function resetInventoryFilters() {
@@ -4012,8 +4022,8 @@ async function renderPOS() {
             <button onclick="filterPOSByCategory(null)" class="cat-pill active px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-bold border border-transparent transition-all" data-cat="">All</button>
             ${(_productCategories || []).map(c => `<button onclick="filterPOSByCategory('${c.name}')" class="cat-pill px-4 py-1.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-all" data-cat="${c.name}">${c.name}</button>`).join('')}
           </div>
-          <div id="pos-products" class="${splitLayout ? 'h-[calc(100vh-16rem)] min-h-0 overflow-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900' : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 items-start min-h-[50vh] max-h-[calc(100vh-21rem)] overflow-y-auto pr-1 pb-4'}"></div>
           <div id="pos-products-pagination" class="hidden"></div>
+          <div id="pos-products" class="${splitLayout ? 'h-[calc(100vh-16rem)] min-h-0 overflow-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900' : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 items-start min-h-[50vh] max-h-[calc(100vh-21rem)] overflow-y-auto pr-1 pb-4'}"></div>
         </div>
 
         <!-- Checkout Drawer -->
@@ -4346,8 +4356,9 @@ async function renderPOS() {
     });
   }
 
-  const mainProducts = products.filter((p) => p.is_component !== 1 && isProductPublishedToMenu(p));
-  renderPOSProducts(mainProducts, 1);
+  _posProductCategory = "";
+  _posProductSearch = "";
+  await loadPOSProductsPage(1);
   renderCart();
   if (layoutRestore) restorePOSLayoutState(layoutRestore);
   else if (!_editingOrderId) {
@@ -5509,22 +5520,35 @@ function filterPOSByCategory(cat) {
       ? 'cat-pill active px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-bold border border-transparent transition-all'
       : 'cat-pill px-4 py-1.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-all';
   });
-  const filtered = cat
-    ? allProducts.filter(p => p.is_component !== 1 && p.category === cat)
-    : allProducts.filter(p => p.is_component !== 1);
-  renderPOSProducts(filtered, 1);
+  _posProductCategory = cat || "";
+  loadPOSProductsPage(1);
 }
 
-function renderPOSProducts(products, requestedPage = 1) {
+async function loadPOSProductsPage(page = 1) {
+  const params = new URLSearchParams({
+    paginate: '1', page: String(page), page_size: String(POS_PRODUCTS_PER_PAGE),
+    menu_only: '1', exclude_components: '1'
+  });
+  if (_posProductSearch) params.set('search', _posProductSearch);
+  if (_posProductCategory) params.set('category', _posProductCategory);
+  const response = await api(`/api/products?${params.toString()}`);
+  const products = Array.isArray(response?.items) ? response.items : [];
+  _posServerPagination = response?.pagination || { page: 1, page_size: POS_PRODUCTS_PER_PAGE, total: products.length, total_pages: 1 };
+  products.forEach(product => { productMap[product.id] = product; });
+  allProducts = products;
+  renderPOSProducts(products, _posServerPagination.page, _posServerPagination);
+}
+
+function renderPOSProducts(products, requestedPage = 1, serverPagination = null) {
   const el = $c("pos-products");
   if (!el) return;
 
   _posFilteredProducts = Array.isArray(products) ? products : [];
-  const totalProducts = _posFilteredProducts.length;
-  const totalPages = Math.max(1, Math.ceil(totalProducts / POS_PRODUCTS_PER_PAGE));
+  const totalProducts = serverPagination ? Number(serverPagination.total || 0) : _posFilteredProducts.length;
+  const totalPages = serverPagination ? Number(serverPagination.total_pages || 1) : Math.max(1, Math.ceil(totalProducts / POS_PRODUCTS_PER_PAGE));
   _posProductPage = Math.min(Math.max(Number(requestedPage) || 1, 1), totalPages);
-  const pageStart = (_posProductPage - 1) * POS_PRODUCTS_PER_PAGE;
-  products = _posFilteredProducts.slice(pageStart, pageStart + POS_PRODUCTS_PER_PAGE);
+  const pageStart = serverPagination ? (_posProductPage - 1) * Number(serverPagination.page_size || POS_PRODUCTS_PER_PAGE) : (_posProductPage - 1) * POS_PRODUCTS_PER_PAGE;
+  products = serverPagination ? _posFilteredProducts : _posFilteredProducts.slice(pageStart, pageStart + POS_PRODUCTS_PER_PAGE);
 
   if (getPOSLayout() === "split" && _currentPage === "pos") {
     el.innerHTML = products.length ? `
@@ -5689,7 +5713,8 @@ function renderPOSProductsPagination(totalProducts, totalPages, pageStart) {
 }
 
 function changePOSProductsPage(page) {
-  renderPOSProducts(_posFilteredProducts, page);
+  if (_posServerPagination) loadPOSProductsPage(page);
+  else renderPOSProducts(_posFilteredProducts, page);
   $c("pos-products")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -5708,17 +5733,8 @@ function refreshSplitPOSCartQuantities() {
 }
 
 var filterPOSProducts = debounce(() => {
-  const q = $c("pos-search").value.toLowerCase();
-  renderPOSProducts(
-    allProducts.filter(
-      (p) =>
-        !p.is_component &&
-        (p.name.toLowerCase().includes(q) ||
-          (p.brand_name || "").toLowerCase().includes(q) ||
-          (p.barcode || "").toLowerCase().includes(q)),
-    ),
-    1,
-  );
+  _posProductSearch = $c("pos-search")?.value.trim() || "";
+  loadPOSProductsPage(1);
 });
 
 /**

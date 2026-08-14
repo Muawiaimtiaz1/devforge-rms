@@ -60,7 +60,17 @@ const upload = multer({
 
 // GET /api/products
 router.get('/', requireAuth, async (req, res) => {
-    const products = await productService.getAllProducts(req.session.user.shop_id);
+    const paginate = req.query.paginate === '1' || req.query.paginate === 'true';
+    const products = await productService.getAllProducts(req.session.user.shop_id, {
+      paginate,
+      page: req.query.page,
+      pageSize: req.query.page_size,
+      search: req.query.search,
+      category: req.query.category,
+      stockFilter: req.query.stock_filter,
+      menuOnly: req.query.menu_only === '1' || req.query.menu_only === 'true',
+      excludeComponents: req.query.exclude_components === '1' || req.query.exclude_components === 'true'
+    });
     res.json(products);
 });
 

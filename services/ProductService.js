@@ -84,7 +84,7 @@ class ProductService {
   /**
    * Get all products for a shop with their brands, components, ingredients, and batches.
    */
-  async getAllProducts(shopId) {
+  async getAllProducts(shopId, options = {}) {
     const isPostgres = db.client.config.client === 'pg';
 
     // Helper for JSON aggregation based on database engine
@@ -97,12 +97,43 @@ class ProductService {
     // Note: Due to the complexity of the existing subqueries, we'll start with clean Knex queries 
     // but keep the same data structure.
     
-    const products = await db('products as p')
+    const baseQuery = db('products as p')
       .select('p.*', 'b.name as brand_name')
       .leftJoin('brands as b', 'p.brand_id', 'b.id')
       .where('p.shop_id', shopId)
-      .where('p.is_deleted', 0)
-      .orderBy('p.name', 'asc');
+      .where('p.is_deleted', 0);
+
+    const search = String(options.search || '').trim().toLowerCase();
+    if (search) {
+      baseQuery.andWhere(builder => builder
+        .whereRaw('LOWER(p.name) LIKE ?', [`%${search}%`])
+        .orWhereRaw('LOWER(p.category) LIKE ?', [`%${search}%`])
+        .orWhereRaw('LOWER(COALESCE(p.barcode, ?)) LIKE ?', ['', `%${search}%`])
+        .orWhereRaw('LOWER(p.sku) LIKE ?', [`%${search}%`]));
+    }
+    if (options.category) baseQuery.andWhere('p.category', options.category);
+    if (options.excludeComponents) baseQuery.andWhere(builder => builder.whereNull('p.is_component').orWhere('p.is_component', '!=', 1));
+    if (options.stockFilter === 'out') baseQuery.andWhere('p.product_type', '!=', 'recipe_based').andWhere('p.stock', '<=', 0);
+    if (options.stockFilter === 'low') baseQuery.andWhere('p.product_type', '!=', 'recipe_based').andWhereRaw('p.stock <= COALESCE(p.min_stock_level, 0)');
+    if (options.menuOnly) {
+      baseQuery.andWhere(builder => builder
+        .where('p.product_type', 'recipe_based')
+        .orWhereExists(function () {
+          this.select(db.raw('1')).from('product_stock_variants as psv')
+            .whereRaw('psv.product_id = p.id').andWhere('psv.is_active', true).andWhere('psv.is_on_menu', true);
+        }));
+    }
+
+    let total = null;
+    if (options.paginate) {
+      const countRow = await baseQuery.clone().clearSelect().clearOrder().countDistinct('p.id as total').first();
+      total = Number(countRow?.total || 0);
+    }
+    const page = Math.max(1, Number(options.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(options.pageSize) || 20));
+    const productsQuery = baseQuery.orderBy('p.name', 'asc');
+    if (options.paginate) productsQuery.limit(pageSize).offset((page - 1) * pageSize);
+    const products = await productsQuery;
     const stockVariantRows = products.length ? await db('product_stock_variants')
       .where({ shop_id: shopId, is_active: true })
       .whereIn('product_id', products.map(product => product.id))
@@ -146,7 +177,11 @@ class ProductService {
       if (p.image_path) p.image_url = p.image_path;
     }
 
-    return products;
+    if (!options.paginate) return products;
+    return {
+      items: products,
+      pagination: { page, page_size: pageSize, total, total_pages: Math.max(1, Math.ceil(total / pageSize)) }
+    };
   }
 
   /**
