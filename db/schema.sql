@@ -255,6 +255,7 @@ CREATE TABLE IF NOT EXISTS product_categories (
   name TEXT NOT NULL,
   printer_station TEXT,
   route_targets TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
 );

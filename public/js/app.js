@@ -1064,6 +1064,7 @@ const PLATFORM_OWNER_HIDDEN_SETTINGS_TABS = new Set(["receipt", "printer-routing
 function getSettingsNavItems() {
   const items = [
     { id: 'profile', label: 'Account Profile', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+    { id: 'category-order', label: 'POS Category Order', icon: 'M4 6h16M4 12h16M4 18h16' },
     { id: 'receipt', label: 'Receipt Settings', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
     { id: 'printer-routing', label: 'Printers & Routing', icon: 'M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z' }
   ];
@@ -1088,6 +1089,7 @@ async function renderSettings(tab) {
   if (_activeSettingsTab === "receipt") {
     await fetchReceiptSettings();
   }
+  if (_activeSettingsTab === "category-order") await fetchCategories();
 
   // Populate the Sidebar/Drawer content
   const navHtml = navItems.map(item => `
@@ -1266,6 +1268,8 @@ async function renderActiveSettingsContent() {
     return await renderReceiptSettings();
   }
 
+  if (_activeSettingsTab === "category-order") return renderPosCategoryOrderSettings();
+
   // Printer Routing Tab
   if (_activeSettingsTab === "printer-routing") {
     return await renderPrinterRouting();
@@ -1273,6 +1277,91 @@ async function renderActiveSettingsContent() {
 
 
   return "";
+}
+
+function renderPosCategoryOrderSettings() {
+  return `
+    <section class="mx-auto max-w-3xl animate-in fade-in slide-in-from-right-4 duration-500">
+      <header class="mb-6">
+        <h3 class="text-3xl font-black tracking-tight text-slate-950 dark:text-white">POS Category Order</h3>
+        <p class="mt-2 text-sm font-medium text-slate-500">Drag categories into the order staff should see while making an order. Changes save automatically.</p>
+      </header>
+      <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="mb-3 flex items-center justify-between px-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+          <span>Category</span><span id="category-order-status" role="status" aria-live="polite">Saved order</span>
+        </div>
+        <div id="pos-category-order-list" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" ondragover="dragOverPosCategory(event)" ondrop="dropPosCategory(event)">
+          ${(_productCategories || []).map((category, index) => `
+            <div class="pos-category-order-item flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 transition dark:border-slate-700 dark:bg-slate-950" draggable="true" data-category-id="${category.id}" ondragstart="startPosCategoryDrag(event)" ondragend="endPosCategoryDrag(event)">
+              <button type="button" class="cursor-grab touch-none rounded-xl p-2 text-slate-400 active:cursor-grabbing" title="Drag to reorder" aria-label="Drag ${escapeOrderValue(category.name)} to reorder">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="7" r="1.5"/><circle cx="16" cy="7" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="17" r="1.5"/><circle cx="16" cy="17" r="1.5"/></svg>
+              </button>
+              <span class="min-w-0 flex-1 truncate font-black text-slate-800 dark:text-slate-100" title="${escapeOrderValue(category.name)}">${escapeOrderValue(category.name)}</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="movePosCategory(${category.id}, -1)" ${index === 0 ? 'disabled' : ''} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-black disabled:opacity-30 dark:border-slate-700" aria-label="Move ${escapeOrderValue(category.name)} up">&#8593;</button>
+                <button type="button" onclick="movePosCategory(${category.id}, 1)" ${index === _productCategories.length - 1 ? 'disabled' : ''} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-black disabled:opacity-30 dark:border-slate-700" aria-label="Move ${escapeOrderValue(category.name)} down">&#8595;</button>
+              </div>
+            </div>`).join('') || '<p class="p-8 text-center text-sm font-bold text-slate-400">No product categories available.</p>'}
+        </div>
+      </div>
+    </section>`;
+}
+
+let _draggedPosCategory = null;
+function startPosCategoryDrag(event) {
+  _draggedPosCategory = event.currentTarget;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', event.currentTarget.dataset.categoryId);
+  event.currentTarget.classList.add('opacity-50');
+}
+
+function dragOverPosCategory(event) {
+  event.preventDefault();
+  if (!_draggedPosCategory) return;
+  const target = event.target.closest('.pos-category-order-item');
+  if (!target || target === _draggedPosCategory) return;
+  const rect = target.getBoundingClientRect();
+  const pointerIsOnSameRow = event.clientY >= rect.top && event.clientY <= rect.bottom;
+  const before = pointerIsOnSameRow ? event.clientX < rect.left + rect.width / 2 : event.clientY < rect.top + rect.height / 2;
+  target.parentNode.insertBefore(_draggedPosCategory, before ? target : target.nextSibling);
+}
+
+function endPosCategoryDrag(event) {
+  event.currentTarget.classList.remove('opacity-50');
+}
+
+async function dropPosCategory(event) {
+  event.preventDefault();
+  _draggedPosCategory?.classList.remove('opacity-50');
+  _draggedPosCategory = null;
+  await savePosCategoryOrder();
+}
+
+function movePosCategory(categoryId, direction) {
+  const index = _productCategories.findIndex(category => Number(category.id) === Number(categoryId));
+  const nextIndex = index + Number(direction);
+  if (index < 0 || nextIndex < 0 || nextIndex >= _productCategories.length) return;
+  [_productCategories[index], _productCategories[nextIndex]] = [_productCategories[nextIndex], _productCategories[index]];
+  document.getElementById('page-content').querySelector('section').outerHTML = renderPosCategoryOrderSettings();
+  savePosCategoryOrder();
+}
+
+async function savePosCategoryOrder() {
+  const list = document.getElementById('pos-category-order-list');
+  const orderedIds = [...(list?.querySelectorAll('.pos-category-order-item') || [])].map(item => Number(item.dataset.categoryId));
+  if (!orderedIds.length) return;
+  const status = document.getElementById('category-order-status');
+  if (status) status.textContent = 'Saving...';
+  try {
+    await api(`/api/product-categories/${orderedIds[0]}`, 'PATCH', { ordered_ids: orderedIds });
+    const byId = new Map(_productCategories.map(category => [Number(category.id), category]));
+    _productCategories = orderedIds.map(id => byId.get(id)).filter(Boolean);
+    if (status) status.textContent = 'Saved';
+  } catch (error) {
+    if (status) status.textContent = 'Could not save';
+    await fetchCategories();
+    renderSettings('category-order');
+  }
 }
 
 function toggleAddCategoryMenu() {

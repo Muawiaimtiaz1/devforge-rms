@@ -485,6 +485,8 @@ async function initPostgres() {
       console.log("✅ product_categories.printer_station added.");
     }
 
+    await query("ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0");
+
     // Check for print_queue table
     const printQueueTableCheck = await query(`
       SELECT EXISTS (
