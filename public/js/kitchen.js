@@ -90,7 +90,7 @@ async function loadKDSOrders() {
             </div>
           </div>
 
-          ${order.order_notes ? `<div class="mb-4 p-2 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/40 rounded-xl text-[10px] text-rose-600 dark:text-rose-400 italic">📌 ${order.order_notes}</div>` : ''}
+          ${order.order_notes ? `<div class="mb-4 p-2 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/40 rounded-xl text-[10px] text-rose-600 dark:text-rose-400 italic">📌 ${escapeOrderValue(order.order_notes)}</div>` : ''}
 
           <div class="grid grid-cols-2 gap-3">
              <button onclick="showKDSOrderModal(${order.id})" class="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all active:scale-95">
@@ -133,7 +133,7 @@ function showKDSOrderModal(orderId) {
     <div class="flex items-start justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800">
       <div>
         <div class="font-black text-slate-900 dark:text-white">${escapeWasteValue(kdsConfiguredItemName(item))}</div>
-        ${item.special_instructions ? `<div class="text-xs text-rose-500 italic mt-1 font-medium">📝 Note: ${item.special_instructions}</div>` : ''}
+        ${item.special_instructions ? `<div class="text-xs text-rose-500 italic mt-1 font-medium">📝 Note: ${escapeOrderValue(item.special_instructions)}</div>` : ''}
       </div>
       <div class="flex flex-col items-end">
         <div class="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black">×${item.quantity}</div>
@@ -153,7 +153,7 @@ function showKDSOrderModal(orderId) {
       ${order.order_notes ? `
         <div class="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/40 rounded-2xl">
           <p class="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Kitchen Instructions</p>
-          <p class="text-sm text-amber-800 dark:text-amber-200 font-medium">${order.order_notes}</p>
+          <p class="text-sm text-amber-800 dark:text-amber-200 font-medium">${escapeOrderValue(order.order_notes)}</p>
         </div>
       ` : ''}
       <button onclick="closeModal()" class="w-full py-4 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-sm transition-all hover:scale-[1.02] active:scale-95 shadow-xl">Got it, Back to Kitchen</button>

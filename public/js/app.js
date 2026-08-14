@@ -5724,6 +5724,41 @@ var filterPOSProducts = debounce(() => {
 /**
  * Prompts user for quantity and selling price before adding to cart
  */
+const POS_KITCHEN_NOTE_SUGGESTIONS = [
+  "Less spicy", "More spicy", "No spice", "No salt", "Less salt",
+  "No onion", "No garlic", "No sauce", "Sauce on side", "Extra cheese",
+  "Well done", "Lightly cooked", "Cut in half", "Pack separately"
+];
+
+function kitchenNotePickerHtml() {
+  return `
+    <div class="space-y-2 pt-1">
+      <div class="flex items-center justify-between gap-3">
+        <label for="add-cart-note" class="text-sm font-bold text-slate-700 dark:text-slate-300">Kitchen / waiter note</label>
+        <span class="text-[9px] font-black uppercase tracking-widest text-orange-500">Prints on kitchen ticket</span>
+      </div>
+      <div class="flex gap-2 overflow-x-auto pb-2 custom-scrollbar snap-x" aria-label="Common kitchen note suggestions">
+        ${POS_KITCHEN_NOTE_SUGGESTIONS.map(note => `<button type="button" data-kitchen-note="${escapeOrderValue(note)}" onclick="toggleKitchenNoteSuggestion(this)" class="shrink-0 snap-start rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[11px] font-bold text-orange-700 transition hover:border-orange-400 dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-orange-300">${escapeOrderValue(note)}</button>`).join('')}
+      </div>
+      <textarea id="add-cart-note" rows="2" maxlength="300" placeholder="e.g. allergy alert, serve first, no garnish..." class="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"></textarea>
+    </div>`;
+}
+
+function toggleKitchenNoteSuggestion(button) {
+  const input = $c("add-cart-note");
+  if (!input) return;
+  const suggestion = String(button?.dataset?.kitchenNote || '').trim();
+  const notes = input.value.split(',').map(value => value.trim()).filter(Boolean);
+  const existingIndex = notes.findIndex(value => value.toLowerCase() === suggestion.toLowerCase());
+  if (existingIndex >= 0) notes.splice(existingIndex, 1);
+  else notes.push(suggestion);
+  input.value = notes.join(', ');
+  button.classList.toggle('bg-orange-500', existingIndex < 0);
+  button.classList.toggle('text-white', existingIndex < 0);
+  button.classList.toggle('border-orange-500', existingIndex < 0);
+  button.setAttribute('aria-pressed', existingIndex < 0 ? 'true' : 'false');
+}
+
 function addToCart(productId) {
   const product = productMap[productId];
   if (!product) return;
@@ -5824,6 +5859,8 @@ function addToCart(productId) {
           </div>
         </div>
 
+        ${kitchenNotePickerHtml()}
+
         <div class="flex flex-col gap-2 pt-2">
         
           <button onclick="commitAddCart(${product.id})" class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2">
@@ -5890,6 +5927,8 @@ function addToCart(productId) {
         </div>
       </div>
 
+      ${kitchenNotePickerHtml()}
+
       <div class="flex gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
         <button onclick="closeModal()" class="flex-1 py-3 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 font-bold transition-all">Cancel</button>
         <button onclick="commitAddCart(${productId})" class="flex-[2] py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-500/20 transition-all">Add to Cart</button>
@@ -5924,6 +5963,7 @@ function commitAddCart(productId) {
   const priceInput = $c("add-cart-price");
   const qty = parseInt(qtyInput.value);
   const price = parseFloat(priceInput.value);
+  const specialInstructions = String($c("add-cart-note")?.value || '').trim().replace(/\s+/g, ' ').slice(0, 300) || null;
   const product = allProducts.find((p) => p.id === productId);
   const isRecipe = inventoryIsRecipeProduct(product);
   const selection = getConfiguredProductSelection(product);
@@ -5939,7 +5979,7 @@ function commitAddCart(productId) {
     if (qty > availableStock)
       return toast(`Only ${availableStock} items available`, "error");
 
-    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}`;
+    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}:${(specialInstructions || '').toLowerCase()}`;
     const existing = cart.find((c) => c.product_id === productId && c.selection_key === selectionKey);
     if (existing) {
       if (existing.quantity + qty > availableStock)
@@ -5951,7 +5991,7 @@ function commitAddCart(productId) {
     }
   } else {
     // Recipe item bypasses stock checks
-    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}`;
+    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}:${(specialInstructions || '').toLowerCase()}`;
     const existing = cart.find((c) => c.product_id === productId && c.selection_key === selectionKey);
     if (existing) {
       existing.quantity += qty;
@@ -5969,7 +6009,8 @@ function commitAddCart(productId) {
       selling_price: price,
       product,
       batch_id: defaultBatch,
-      selection_key: `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}`,
+      selection_key: `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}:${(specialInstructions || '').toLowerCase()}`,
+      special_instructions: specialInstructions,
       variants: selection.variant ? [{ id: selection.variant.id, name: selection.variant.name, price: Number(selection.variant.price) }] : null,
       addons: selection.addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price) })),
       stock_variant_id: !isRecipe && selection.variant ? Number(selection.variant.id) : null
@@ -6179,6 +6220,7 @@ function renderCart() {
           
           <div class="flex flex-col flex-1 ${compactCart ? 'pr-1' : 'pr-2'}">
             <span class="font-bold ${compactCart ? 'text-[11px]' : 'text-sm'} text-slate-800 dark:text-slate-200 leading-tight">${escapeOrderValue(configuredOrderItemName(item.product ? item.product.name : item.name, item.variants, item.addons))}</span>
+            ${item.special_instructions ? `<span class="mt-0.5 text-[10px] font-bold italic text-orange-600 dark:text-orange-400">Note: ${escapeOrderValue(item.special_instructions)}</span>` : ''}
           </div>
 
           <div class="flex flex-col items-end ${compactCart ? 'gap-1' : 'gap-2'}">
@@ -6239,6 +6281,7 @@ function showCartModal() {
                   </div>
                   <div>
                     <div class="font-bold text-slate-800 dark:text-slate-200 leading-tight">${escapeOrderValue(configuredOrderItemName(item.product ? item.product.name : item.name, item.variants, item.addons))}</div>
+                    ${item.special_instructions ? `<div class="mt-1 text-[10px] font-bold italic text-orange-600 dark:text-orange-400">Kitchen note: ${escapeOrderValue(item.special_instructions)}</div>` : ''}
                 ${item.product && item.product.batches && item.product.batches.length > 1
             ? `
                   <div class="mt-2">
@@ -6907,7 +6950,7 @@ async function printKitchenBill(saleId) {
               <td class="qty text-center">x${i.quantity}</td>
               <td>
                 <div class="item-name">${escapeOrderValue(configuredOrderItemName(i.product_name || i.custom_name, i.variants_json, i.addons_json))}</div>
-                ${i.special_instructions ? `<div class="special-note">NOTE: ${i.special_instructions}</div>` : ''}
+                ${i.special_instructions ? `<div class="special-note">NOTE: ${escapeOrderValue(i.special_instructions)}</div>` : ''}
               </td>
             </tr>
           `).join('')}
@@ -6917,7 +6960,7 @@ async function printKitchenBill(saleId) {
     ${sale.special_instructions ? `
       <div style="margin-top: 10px; padding: 8px; border: 1px solid #000;">
         <div class="bold" style="font-size: 10px; text-transform: uppercase;">Order Note:</div>
-        <div style="font-size: 12px;">${sale.special_instructions}</div>
+        <div style="font-size: 12px;">${escapeOrderValue(sale.special_instructions)}</div>
       </div>
     ` : ''}
 
