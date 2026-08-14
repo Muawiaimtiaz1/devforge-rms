@@ -483,7 +483,7 @@ class SalesService {
     }
 
     const jobs = {};
-    const addItemToRoute = (route, item) => {
+    const addItemToRoute = (route, item, itemKey) => {
       if (!route || route.station === 'NONE') return;
 
       const routeKey = route.station;
@@ -491,7 +491,6 @@ class SalesService {
         jobs[routeKey] = { route, items: [], itemKeys: new Set(), routeLabels: new Set() };
       }
       if (route.label) jobs[routeKey].routeLabels.add(route.label);
-      const itemKey = item.id || item.sale_item_id || `${this.getItemCategory(item)}:${item.product_id || item.product_name || item.name}`;
       if (jobs[routeKey].itemKeys.has(itemKey)) return;
       jobs[routeKey].itemKeys.add(itemKey);
       jobs[routeKey].items.push(this.buildPrintJobItem(item));
@@ -502,9 +501,16 @@ class SalesService {
       this.resolveKitchenRoute(dbInstance, sale, shopId, resolvePrinterRoute)
     ]);
 
-    for (const item of items) {
+    for (const [itemIndex, item] of items.entries()) {
+      // Saved sale items have unique row IDs. During checkout, however, the
+      // resolved cart lines have not been reloaded from sale_items and have no
+      // ID. Include their array position so separate lines for the same product
+      // (for example different variants or add-ons) are not collapsed. The key
+      // remains stable while routing one line to multiple targets, preventing a
+      // duplicate when those targets resolve to the same physical printer.
+      const itemKey = item.id || item.sale_item_id || `checkout-line:${itemIndex}`;
       const routes = this.getItemPrintRoutes(item, categoryRouteMap, kitchenRoute);
-      for (const route of routes) addItemToRoute(route, item);
+      for (const route of routes) addItemToRoute(route, item, itemKey);
     }
 
     let queuedCount = 0;
