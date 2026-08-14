@@ -117,30 +117,24 @@ router.patch('/:id', requireAuth, async (req, res) => {
 router.delete('/:id', requireAuth, async (req, res) => {
     const catId = parseInt(req.params.id);
     const shopId = req.session.user.shop_id;
-    const isPostgres = usePostgres();
     try {
-        let cat;
-        if (isPostgres) cat = (await getPostgres().query('SELECT id, name FROM product_categories WHERE id = $1 AND shop_id = $2', [catId, shopId])).rows[0];
-        else cat = getSqlite().prepare('SELECT id, name FROM product_categories WHERE id = ? AND shop_id = ?').get(catId, shopId);
-        
-        if (!cat) return res.status(404).json({ error: 'Category not found' });
-
-        const countQ = isPostgres 
-            ? 'SELECT COUNT(*)::int as count FROM products WHERE category = $1 AND shop_id = $2'
-            : 'SELECT COUNT(*) as count FROM products WHERE category = ? AND shop_id = ?';
-        let count;
-        if (isPostgres) count = (await getPostgres().query(countQ, [cat.name, shopId])).rows[0].count;
-        else count = getSqlite().prepare(countQ).get(cat.name, shopId).count;
-
-        if (count > 0) return res.status(400).json({ error: 'Category is in use by products and cannot be deleted.' });
-
-        const delQ = isPostgres ? 'DELETE FROM product_categories WHERE id = $1 AND shop_id = $2' : 'DELETE FROM product_categories WHERE id = ? AND shop_id = ?';
-        if (isPostgres) await getPostgres().query(delQ, [catId, shopId]);
-        else getSqlite().prepare(delQ).run(catId, shopId);
-        res.json({ ok: true });
+        const unlinkedProducts = await db.transaction(async trx => {
+            const category = await trx('product_categories').where({ id: catId, shop_id: shopId }).first();
+            if (!category) {
+                const error = new Error('Category not found');
+                error.status = 404;
+                throw error;
+            }
+            const count = await trx('products')
+                .where({ shop_id: shopId, category: category.name })
+                .update({ category: '' });
+            await trx('product_categories').where({ id: catId, shop_id: shopId }).delete();
+            return Number(count || 0);
+        });
+        res.json({ ok: true, unlinked_products: unlinkedProducts });
     } catch (err) {
         console.error("Delete category error:", err);
-        res.status(500).json({ error: err.message });
+        res.status(err.status || 500).json({ error: err.message });
     }
 });
 

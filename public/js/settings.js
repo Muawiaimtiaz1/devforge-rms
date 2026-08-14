@@ -1349,14 +1349,18 @@ function openRoleManager() {
 
 function openRoleEditor(id) {
   const role = _rbacRoles.find(item => Number(item.id) === Number(id)) || { permissions: [] };
-  openModal(id ? 'Edit Role' : 'Create Role', `<div class="space-y-4"><input id="rf-name" value="${role.name || ''}" placeholder="Role name" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900"><textarea id="rf-description" placeholder="Description" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900">${role.description || ''}</textarea><div class="grid md:grid-cols-2 gap-3 max-h-[55vh] overflow-y-auto">${rolePermissionGroups(role.permissions)}</div><button onclick="saveRole(${id || 'null'})" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Save role</button></div>`, 'max-w-5xl');
+  const targetShopId = currentUser?.role === 'superadmin'
+    ? Number(typeof _managedShopId !== 'undefined' ? _managedShopId : 0)
+    : Number(currentUser?.shop_id || 0);
+  openModal(id ? 'Edit Role' : 'Create Role', `<div class="space-y-4"><input id="rf-shop-id" type="hidden" value="${targetShopId}"><input id="rf-name" value="${role.name || ''}" placeholder="Role name" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900"><textarea id="rf-description" placeholder="Description" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900">${role.description || ''}</textarea><div class="grid md:grid-cols-2 gap-3 max-h-[55vh] overflow-y-auto">${rolePermissionGroups(role.permissions)}</div><button onclick="saveRole(${id || 'null'})" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Save role</button></div>`, 'max-w-5xl');
 }
 
 async function saveRole(id) {
   const payload = { name: $c('rf-name').value.trim(), description: $c('rf-description').value.trim(), permissions: Array.from(document.querySelectorAll('.role-permission:checked')).map(el => el.value) };
   if (!payload.name) return toast('Role name is required', 'error');
-  const shopScope = currentUser?.role === 'superadmin' && typeof _managedShopId !== 'undefined' && _managedShopId
-    ? `?shop_id=${Number(_managedShopId)}` : '';
+  const targetShopId = Number($c('rf-shop-id')?.value || 0);
+  if (!targetShopId) return toast('Restaurant context is missing. Reopen the role editor.', 'error');
+  const shopScope = currentUser?.role === 'superadmin' ? `?shop_id=${targetShopId}` : '';
   await api(id ? `/api/roles/${id}${shopScope}` : `/api/roles${shopScope}`, id ? 'PUT' : 'POST', payload);
   closeModal(); toast('Role saved');
   if (typeof _managedShopId !== 'undefined' && _managedShopId) renderShopManagement(_managedShopId);

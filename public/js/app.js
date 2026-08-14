@@ -1423,7 +1423,7 @@ function renderProductCategoryRows(categories) {
   if (!body) return;
   body.innerHTML = categories.map(category => {
     const routes = getCategoryRouteTargetsForPage(category);
-    return `<tr class="category-page-row border-b border-slate-100 last:border-0 dark:border-slate-800" data-name="${escapeOrderValue(String(category.name || '').toLowerCase())}"><td class="px-5 py-4"><input type="checkbox" class="category-row-check h-4 w-4 rounded" value="${category.id}" onchange="updateCategorySelectionState()"></td><td class="px-5 py-4"><p class="font-black text-slate-900 dark:text-white">${escapeOrderValue(category.name)}</p></td><td class="px-5 py-4"><span class="inline-flex min-w-10 justify-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">${Number(category.product_count || 0)}</span></td><td class="px-5 py-4 text-xs font-bold text-slate-500">${routes.length ? routes.map(getPrinterRouteLabel).map(escapeOrderValue).join(', ') : 'No route assigned'}</td><td class="px-5 py-4"><div class="flex justify-end gap-2"><button onclick="editCategoryName('product', ${category.id})" class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-600 dark:bg-indigo-950/30">Edit</button><button onclick="deleteCategoryFromPopup('product', ${category.id}, '${String(category.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" ${Number(category.product_count || 0) > 0 ? 'title="Remove or reassign linked products before deleting"' : ''} class="rounded-xl bg-rose-50 px-3 py-2 text-xs font-black text-rose-600 dark:bg-rose-950/30">Delete</button></div></td></tr>`;
+    return `<tr class="category-page-row border-b border-slate-100 last:border-0 dark:border-slate-800" data-name="${escapeOrderValue(String(category.name || '').toLowerCase())}"><td class="px-5 py-4"><input type="checkbox" class="category-row-check h-4 w-4 rounded" value="${category.id}" onchange="updateCategorySelectionState()"></td><td class="px-5 py-4"><p class="font-black text-slate-900 dark:text-white">${escapeOrderValue(category.name)}</p></td><td class="px-5 py-4"><span class="inline-flex min-w-10 justify-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">${Number(category.product_count || 0)}</span></td><td class="px-5 py-4 text-xs font-bold text-slate-500">${routes.length ? routes.map(getPrinterRouteLabel).map(escapeOrderValue).join(', ') : 'No route assigned'}</td><td class="px-5 py-4"><div class="flex justify-end gap-2"><button onclick="editCategoryName('product', ${category.id})" class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-600 dark:bg-indigo-950/30">Edit</button><button onclick="deleteCategoryFromPopup('product', ${category.id}, '${String(category.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="Delete category and unlink its products" class="rounded-xl bg-rose-50 px-3 py-2 text-xs font-black text-rose-600 dark:bg-rose-950/30">Delete</button></div></td></tr>`;
   }).join('');
   $c('category-page-empty')?.classList.toggle('hidden', categories.length > 0);
 }
@@ -1460,14 +1460,14 @@ async function createProductCategoryFromPage() {
 
 async function deleteSelectedProductCategories() {
   const ids = [...document.querySelectorAll('.category-row-check:checked')].map(input => Number(input.value));
-  if (!ids.length || !confirm(`Delete ${ids.length} selected categories? Categories linked to products cannot be deleted.`)) return;
+  if (!ids.length || !confirm(`Delete ${ids.length} selected categories? Linked products will be left uncategorized.`)) return;
   let deleted = 0;
   let failed = 0;
   for (const id of ids) {
     try { await api(`/api/product-categories/${id}`, 'DELETE'); deleted += 1; } catch (_) { failed += 1; }
   }
   if (deleted) toast(`${deleted} categories deleted`, 'success');
-  if (failed) toast(`${failed} categories could not be deleted because they are in use`, 'error');
+  if (failed) toast(`${failed} categories could not be deleted`, 'error');
   await fetchCategories();
   await renderProductCategoriesPage();
 }
@@ -1614,7 +1614,8 @@ async function updateCategoryPrinter(id, current) {
 }
 
 async function deleteCategoryFromPopup(type, id, name) {
-  if (!confirm(`Are you sure you want to delete the "${name}" category?`)) return;
+  const unlinkNotice = type === 'product' ? ' Linked products will be left uncategorized.' : '';
+  if (!confirm(`Are you sure you want to delete the "${name}" category?${unlinkNotice}`)) return;
 
   const url = type === 'product' ? `/api/product-categories/${id}` : `/api/expense-categories/${id}`;
 
@@ -1622,7 +1623,8 @@ async function deleteCategoryFromPopup(type, id, name) {
     const r = await api(url, 'DELETE');
     if (r.error) return toast(r.error, 'error');
 
-    toast('Category deleted successfully!');
+    const unlinked = Number(r.unlinked_products || 0);
+    toast(unlinked ? `Category deleted and ${unlinked} product${unlinked === 1 ? '' : 's'} unlinked.` : 'Category deleted successfully!');
     await fetchCategories();
     if (type === 'product' && _currentPage === 'product-categories') await renderProductCategoriesPage();
     else updateCategoryListInPopup(type);
