@@ -5340,9 +5340,18 @@ function renderEditOrderModal(id) {
           ${item.special_instructions ? `<div class="text-[10px] italic text-amber-500 font-medium mt-0.5">"${item.special_instructions}"</div>` : ''}
         </div>
       </div>
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl" aria-label="Change quantity for ${escapeOrderValue(item.name)}">
+          <button type="button" onclick="updateTempOrderItemQty(${index}, ${item.quantity - 1}, ${id})"
+            class="w-8 h-8 flex items-center justify-center rounded-lg bg-white dark:bg-slate-700 text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 font-black shadow-sm transition-all"
+            title="${item.quantity > 1 ? 'Decrease quantity' : 'Remove product'}" aria-label="${item.quantity > 1 ? 'Decrease quantity' : 'Remove product'}">−</button>
+          <span class="w-8 text-center text-sm font-black text-slate-800 dark:text-slate-100">${item.quantity}</span>
+          <button type="button" onclick="updateTempOrderItemQty(${index}, ${item.quantity + 1}, ${id})"
+            class="w-8 h-8 flex items-center justify-center rounded-lg bg-white dark:bg-slate-700 text-slate-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 font-black shadow-sm transition-all"
+            title="Increase quantity" aria-label="Increase quantity">+</button>
+        </div>
         <div class="text-sm font-black text-slate-900 dark:text-white">PKR ${(item.quantity * item.selling_price).toLocaleString()}</div>
-        ${currentUserHasPermission('orders.remove_items') ? `<button onclick="removeTempOrderItem(${index}, ${id})" class="p-2 rounded-xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all opacity-0 group-hover:opacity-100" title="Delete Item">
+        ${currentUserHasPermission('orders.remove_items') ? `<button type="button" onclick="removeTempOrderItem(${index}, ${id})" class="p-2 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all" title="Remove product" aria-label="Remove ${escapeOrderValue(item.name)} from order">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
         </button>` : ''}
       </div>
@@ -5382,6 +5391,21 @@ function renderEditOrderModal(id) {
 function removeTempOrderItem(index, id) {
   if (!currentUserHasPermission('orders.remove_items')) return toast('You may add items, but cannot remove existing order items.', 'error');
   _tempEditCart.splice(index, 1);
+  renderEditOrderModal(id);
+}
+
+function updateTempOrderItemQty(index, qty, id) {
+  const item = _tempEditCart[index];
+  if (!item) return;
+
+  const nextQty = Number(qty);
+  if (!Number.isFinite(nextQty)) return;
+  if (nextQty < Number(item.original_quantity) && !currentUserHasPermission('orders.remove_items')) {
+    return toast('Reducing or removing an existing product requires Remove Order Items access.', 'error');
+  }
+  if (nextQty < 1) return removeTempOrderItem(index, id);
+
+  item.quantity = nextQty;
   renderEditOrderModal(id);
 }
 
@@ -5456,7 +5480,12 @@ async function showOrderCompleteModal(id) {
 
   const name = s.customer_name || '';
   const phone = s.customer_phone || '';
-  const total = s.total;
+  const total = Number(s.total || 0);
+  const discount = Number(s.discount || 0);
+  const taxPercentage = Number(s.tax_percentage || 0);
+  const taxableSubtotal = taxPercentage === -100 ? total : total / (1 + (taxPercentage / 100));
+  const subtotal = taxableSubtotal + discount;
+  const taxAmount = total - taxableSubtotal;
   const received = Number(s.amount_received || 0) > 0.01 ? Number(s.amount_received) : Number(s.total);
   window._completeOrderSelectedCustomer = s.customer_id ? { id: s.customer_id, name, phone } : null;
 
@@ -5497,7 +5526,15 @@ async function showOrderCompleteModal(id) {
 
       <div class="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-2">
         <div class="flex justify-between text-xs">
-          <span class="text-slate-500 font-bold uppercase tracking-wider">Order Total</span>
+          <span class="text-slate-500 font-bold uppercase tracking-wider">Subtotal</span>
+          <span class="text-slate-900 dark:text-white font-black">PKR ${subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-500 font-bold uppercase tracking-wider">Tax Amount</span>
+          <span class="text-slate-900 dark:text-white font-black">PKR ${taxAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+        </div>
+        <div class="flex justify-between text-xs pt-2 border-t border-slate-200 dark:border-slate-700">
+          <span class="text-slate-500 font-bold uppercase tracking-wider">Grand Total</span>
           <span class="text-slate-900 dark:text-white font-black">PKR ${total.toLocaleString()}</span>
         </div>
         <div id="oc-due-row" class="flex justify-between text-xs hidden">
