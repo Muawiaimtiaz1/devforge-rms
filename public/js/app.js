@@ -8700,6 +8700,9 @@ function handleCustomerSearchInput(value) {
 async function renderCustomers(options = {}) {
   const focusState = captureCustomersFocusState(options);
   try {
+    const canCreateCustomers = currentUserHasPermission('customers.create');
+    const canUpdateCustomers = currentUserHasPermission('customers.update');
+    const canManageCustomerLedger = currentUserHasPermission('customers.manage_ledger');
     const params = new URLSearchParams();
     params.set("status", _customersStatus);
     if (_customersSearch) params.set("search", _customersSearch);
@@ -8735,11 +8738,11 @@ async function renderCustomers(options = {}) {
               Total outstanding: <span class="font-bold text-rose-600 dark:text-rose-400">Rs. ${totalDue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
             </p>
           </div>
-          <button onclick="openAddCustomerModal()"
+          ${canCreateCustomers ? `<button onclick="openAddCustomerModal()"
             class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow transition-all">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             New Customer
-          </button>
+          </button>` : ''}
         </div>
 
         <!-- Filters -->
@@ -8814,7 +8817,7 @@ async function renderCustomers(options = {}) {
                             class="p-1.5 rounded bg-indigo-100 dark:bg-indigo-500/10 hover:bg-indigo-200 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
                           </button>
-                          ${hasDue
+                          ${hasDue && canManageCustomerLedger
                 ? `
                           <button onclick="openPaymentModal(${c.id}, '${c.name.replace(/'/g, "\\'")}', ${c.current_balance})" title="Record Payment"
                             class="p-1.5 rounded bg-emerald-100 dark:bg-emerald-500/10 hover:bg-emerald-200 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 transition-colors">
@@ -8822,10 +8825,10 @@ async function renderCustomers(options = {}) {
                           </button>`
                 : ""
               }
-                          <button onclick="openEditCustomerModal(${c.id})" title="Edit Customer"
+                          ${canUpdateCustomers ? `<button onclick="openEditCustomerModal(${c.id})" title="Edit Customer"
                             class="p-1.5 rounded bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                          </button>
+                          </button>` : ''}
                         </div>
                       </td>
                     </tr>`;
@@ -8845,6 +8848,7 @@ async function renderCustomers(options = {}) {
 }
 
 function openAddCustomerModal() {
+  if (!currentUserHasPermission('customers.create')) return toast('You do not have permission to create customers.', 'error');
   const html = `
     <div class="space-y-4">
       <div class="grid grid-cols-2 gap-4">
@@ -8898,6 +8902,7 @@ async function saveNewCustomer() {
 
 
 async function openEditCustomerModal(customerId) {
+  if (!currentUserHasPermission('customers.update')) return toast('You do not have permission to update customers.', 'error');
   try {
     const data = await api(`/api/customers/${customerId}`);
     const c = data.customer;
@@ -8958,6 +8963,7 @@ async function saveEditCustomer(customerId) {
 }
 
 function openPaymentModal(customerId, customerName, currentBalance) {
+  if (!currentUserHasPermission('customers.manage_ledger')) return toast('You do not have permission to manage the customer ledger.', 'error');
   const html = `
     <div class="space-y-4">
       <div class="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/30">
@@ -9149,12 +9155,12 @@ async function viewCustomerLedger(customerId) {
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Sales Report PDF
           </button>
-          <button onclick="openAdjustmentModal(${customer.id}, '${customer.name.replace(/'/g, "\\'")}')"
+          ${currentUserHasPermission('customers.manage_ledger') ? `<button onclick="openAdjustmentModal(${customer.id}, '${customer.name.replace(/'/g, "\\'")}')"
             class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-600 hover:bg-slate-500 text-white text-sm font-semibold transition-all shadow">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
             Adjust Balance
-          </button>
-          ${customer.current_balance > 0.01
+          </button>` : ''}
+          ${customer.current_balance > 0.01 && currentUserHasPermission('customers.manage_ledger')
         ? `
           <button onclick="closeModal(); openPaymentModal(${customer.id}, '${customer.name.replace(/'/g, "\\'")}', ${customer.current_balance})"
             class="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-sm font-semibold transition-all shadow">
@@ -9272,6 +9278,7 @@ function downloadSalesReportPDF(customerId) {
 }
 
 function openAdjustmentModal(customerId, customerName) {
+  if (!currentUserHasPermission('customers.manage_ledger')) return toast('You do not have permission to manage the customer ledger.', 'error');
   const html = `
     <div class="space-y-4">
       <div>

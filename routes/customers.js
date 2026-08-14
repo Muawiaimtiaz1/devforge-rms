@@ -1,6 +1,6 @@
 const express = require("express");
 const { getSqlite, getPostgres, usePostgres } = require("../db/runtime");
-const { requireAuth } = require("../middleware/auth");
+const { requirePermission } = require("../authorization/middleware");
 const PDFDocument = require("pdfkit");
 const db = require("../db/knex");
 const fs = require("fs");
@@ -69,7 +69,7 @@ function safeFilename(name) {
 }
 
 // ─── GET /api/customers ───────────────────────────────────────────────────────
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", requirePermission("customers.view"), async (req, res) => {
   const { search = "", status = "active", sort = "name_asc" } = req.query;
   const { from, to } = parseDateFilters(req.query);
   const shopId = req.session.user.shop_id;
@@ -184,7 +184,7 @@ router.get("/", requireAuth, async (req, res) => {
 });
 
 // ─── GET /api/customers/:id ───────────────────────────────────────────────────
-router.get("/:id", requireAuth, async (req, res) => {
+router.get("/:id", requirePermission("customers.view"), async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
   const { from, to } = parseDateFilters(req.query);
@@ -289,7 +289,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 });
 
 // ─── POST /api/customers ──────────────────────────────────────────────────────
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requirePermission("customers.create"), async (req, res) => {
   const {
     name, phone, email, address, notes, credit_limit = 0, opening_balance = 0,
   } = req.body;
@@ -353,7 +353,7 @@ router.post("/", requireAuth, async (req, res) => {
 });
 
 // ─── PUT /api/customers/:id ───────────────────────────────────────────────────
-router.put("/:id", requireAuth, async (req, res) => {
+router.put("/:id", requirePermission("customers.update"), async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
   const { name, phone, email, address, notes, credit_limit, status } = req.body;
@@ -399,7 +399,7 @@ router.put("/:id", requireAuth, async (req, res) => {
 });
 
 // ─── DELETE /api/customers/:id ────────────────────────────────────────────────
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", requirePermission("customers.delete"), async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
   try {
@@ -426,7 +426,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 });
 
 // ─── POST /api/customers/:id/payment ─────────────────────────────────────────
-router.post("/:id/payment", requireAuth, async (req, res) => {
+router.post("/:id/payment", requirePermission("customers.manage_ledger"), async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
   const { amount, payment_method = "cash", note = "" } = req.body;
@@ -479,7 +479,7 @@ router.post("/:id/payment", requireAuth, async (req, res) => {
 });
 
 // ─── POST /api/customers/:id/adjustment ──────────────────────────────────────
-router.post("/:id/adjustment", requireAuth, async (req, res) => {
+router.post("/:id/adjustment", requirePermission("customers.manage_ledger"), async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
   const { amount, type, note = "" } = req.body;
@@ -538,7 +538,7 @@ router.post("/:id/adjustment", requireAuth, async (req, res) => {
 });
 
 // ─── GET /api/customers/:id/ledger.pdf ───────────────────────────────────────
-router.get("/:id/ledger.pdf", requireAuth, async (req, res) => {
+router.get("/:id/ledger.pdf", requirePermission("customers.view"), async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
   const { from, to } = parseDateFilters(req.query);
@@ -721,7 +721,7 @@ router.get("/:id/ledger.pdf", requireAuth, async (req, res) => {
 });
 
 // ─── GET /api/customers/:id/report.pdf ───────────────────────────────────────
-router.get("/:id/report.pdf", requireAuth, async (req, res) => {
+router.get("/:id/report.pdf", requirePermission("customers.view"), async (req, res) => {
   const customerId = parseInt(req.params.id, 10);
   const shopId = req.session.user.shop_id;
   const { from, to } = parseDateFilters(req.query);
