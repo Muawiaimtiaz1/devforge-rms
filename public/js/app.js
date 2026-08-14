@@ -7134,9 +7134,9 @@ async function printBill(saleId, isUnpaid = false) {
     'online': 'Online Transfer'
   };
   const method = methodMap[sale.payment_method] || sale.payment_method?.toUpperCase() || "Cash";
-  const received = isUnpaid ? 0 : Number(sale.amount_received || 0);
-  const remaining = isUnpaid ? grandTotal : grandTotal - received;
-  const balanceDue = isUnpaid ? grandTotal : Math.max(remaining, 0);
+  const received = Math.max(0, Number(sale.amount_received || 0));
+  const remaining = grandTotal - received;
+  const balanceDue = Math.max(remaining, 0);
   const receiptTitle = isUnpaid ? "Unpaid Bill" : "Customer Bill";
 
   const subtotal = items.reduce((s, i) => s + i.quantity * i.price_at_sale, 0);

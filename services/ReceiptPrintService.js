@@ -137,8 +137,8 @@ function renderCustomerReceipt(details, options) {
   const discount = Number(sale.discount || 0);
   const taxPct = Number(sale.tax_percentage || 0);
   const taxAmt = (subtotal - discount) * (taxPct / 100);
-  const received = isUnpaid ? 0 : Number(sale.amount_received || 0);
-  const remaining = isUnpaid ? grandTotal : grandTotal - received;
+  const received = Math.max(0, Number(sale.amount_received || 0));
+  const remaining = grandTotal - received;
   const methodMap = { cash: "Cash", card: "Card", online: "Online Transfer" };
   const method = methodMap[sale.payment_method] || String(sale.payment_method || "Cash").toUpperCase();
 
@@ -200,7 +200,8 @@ function renderCustomerReceipt(details, options) {
           <div style="text-align: center; border: 1px dashed #111827; padding: 5px; margin-top: 5px; font-weight: bold;">
             *** UNPAID BILL ***<br>
             Total: Rs. ${formatMoney(grandTotal)}<br>
-            Balance Due: Rs. ${formatMoney(remaining)}
+            Amount Paid: Rs. ${formatMoney(Math.min(received, grandTotal))}<br>
+            Balance Due: Rs. ${formatMoney(Math.max(remaining, 0))}
           </div>
         ` : `
           <div><strong>Method:</strong> ${escapeHtml(method)}</div>
