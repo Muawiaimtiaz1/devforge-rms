@@ -6237,8 +6237,8 @@ function addToCart(productId) {
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-          <div class="space-y-1.5">
+        <div class="flex justify-center pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div class="w-full max-w-xs space-y-1.5 text-center">
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Sell Quantity</label>
             <input id="add-cart-qty" type="number" value="1" min="1" ${isRecipe ? '' : `max="${product.stock}"`} class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-black text-center text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
           </div>
@@ -6260,7 +6260,6 @@ function addToCart(productId) {
       </div>
     `;
     openModal("Composite Product breakdown", content, "max-w-md");
-    setTimeout(() => $c("add-cart-qty").focus(), 100);
     return;
   }
 
@@ -6299,8 +6298,8 @@ function addToCart(productId) {
         </div>
       </div>` : ''}
 
-      <div class="grid grid-cols-2 gap-6">
-        <div class="space-y-2">
+      <div class="flex justify-center">
+        <div class="w-full max-w-sm space-y-2 text-center">
           <label class="block text-sm font-bold text-slate-700 dark:text-slate-300">Quantity</label>
           <div class="flex items-center gap-2">
             <button type="button" onclick="$c('add-cart-qty').stepDown()" class="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 text-slate-600 dark:text-slate-400 font-black">-</button>
@@ -6323,7 +6322,6 @@ function addToCart(productId) {
     </div>
   `;
   openModal("Add to Cart", content, "max-w-xl");
-  setTimeout(() => $c("add-cart-qty").focus(), 100);
 }
 
 function getConfiguredProductSelection(product) {
