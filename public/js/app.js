@@ -4259,16 +4259,6 @@ async function renderPOS() {
       #pos-split-scroll-body #pos-takeaway-fields,
     </style>` : ''}
     <div class="flex flex-col gap-4">
-      <div id="pos-current-order-type" class="flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 shadow-sm ${activePOSOrderMeta.style}" role="status" aria-label="Current order type: ${activePOSOrderMeta.label}">
-        <div class="flex min-w-0 items-center gap-3">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/70 text-xl shadow-sm dark:bg-slate-900/60">${activePOSOrderMeta.icon}</span>
-          <div class="min-w-0">
-            <span class="block text-[10px] font-black uppercase tracking-[0.18em] opacity-65">Current Order Type</span>
-            <span class="block truncate text-base font-black">${activePOSOrderMeta.label}</span>
-          </div>
-        </div>
-        <span class="shrink-0 rounded-lg bg-white/70 px-3 py-1.5 text-xs font-black shadow-sm dark:bg-slate-900/60">${activePOSOrderMeta.detail}</span>
-      </div>
       <div id="pos-content-grid" class="h-full transition-all ${splitLayout ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] gap-4 items-start' : ''}">
         <!-- Products Panel -->
         <div class="space-y-4 ${splitLayout ? 'min-w-0' : ''}">
@@ -4755,7 +4745,6 @@ function switchOrderType(type) {
   const takeawayEl = $c('pos-takeaway-fields');
   const customerIdentityEl = $c('pos-customer-identity-fields');
   const contentGrid = $c('pos-content-grid');
-  const currentOrderTypeBanner = $c('pos-current-order-type');
   const ordersContainer = $c('pos-orders-container');
   const ordersBtn = $c('pos-orders-toolbar-btn');
   if (ordersBtn) {
@@ -4772,12 +4761,10 @@ function switchOrderType(type) {
 
   if (type === 'orders') {
     closePOSCheckout(true);
-    if (currentOrderTypeBanner) currentOrderTypeBanner.classList.add('hidden');
     if (contentGrid) contentGrid.classList.add('hidden');
     if (ordersContainer) ordersContainer.classList.remove('hidden');
     return renderPOSOrders();
   } else {
-    if (currentOrderTypeBanner) currentOrderTypeBanner.classList.remove('hidden');
     if (contentGrid) contentGrid.classList.remove('hidden');
     if (ordersContainer) ordersContainer.classList.add('hidden');
     if (dineEl) dineEl.classList.toggle('hidden', type !== 'dine_in' || isRetail);
