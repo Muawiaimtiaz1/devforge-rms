@@ -938,6 +938,7 @@ function navigate(page, options = {}) {
 
   const container = document.querySelector('main > div');
   const pageHeader = document.getElementById('page-header-wrap');
+  setPOSTerminalTopNavHidden(false);
   if (page === 'settings' || page === 'pos' || page === 'delivery' || page === 'register' || page === 'kds') {
     container.classList.remove('container', 'mx-auto', 'px-6');
     container.classList.add('w-full', 'px-4', 'md:px-12');
@@ -3879,7 +3880,18 @@ async function setPOSLayout(layout) {
   await renderPOS();
 }
 
+function setPOSTerminalTopNavHidden(hidden) {
+  const topNav = document.getElementById('top-nav');
+  const mainContent = document.querySelector('main');
+  if (topNav) topNav.classList.toggle('hidden', hidden);
+  if (mainContent) {
+    mainContent.classList.toggle('pt-20', !hidden);
+    mainContent.classList.toggle('pt-4', hidden);
+  }
+}
+
 function renderPOSLanding() {
+  setPOSTerminalTopNavHidden(false);
   const canCreateOrders = currentUserHasPermission('orders.create');
   const canViewOrders = currentUserHasPermission('orders.view');
   $c("page-content").innerHTML = `
@@ -3950,6 +3962,7 @@ async function withAppLoader(title, detail, action) {
 }
 
 function showPOSOrderTypeChooser() {
+  setPOSTerminalTopNavHidden(false);
   if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
   // Warm the shared POS data while the user is choosing an order type.
   loadPOSBootstrapData().catch(() => {});
@@ -4005,6 +4018,7 @@ async function startPOSOrder(orderType) {
 }
 
 async function renderPOSTableSelection() {
+  setPOSTerminalTopNavHidden(false);
   if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
   let tables = [];
   let floors = [];
@@ -4147,10 +4161,12 @@ function restorePOSLayoutState(restore) {
 
 async function renderPOS() {
   const deliveryOnly = _currentPage === 'delivery';
+  const posTerminalPage = _currentPage === 'pos';
   if (!deliveryOnly && !_editingOrderId && !window._posEntryOrderType && !window._posLayoutRestore) {
     renderPOSLanding();
     return;
   }
+  if (posTerminalPage) setPOSTerminalTopNavHidden(true);
   const splitLayout = !deliveryOnly && getPOSLayout() === "split";
   const layoutRestore = window._posLayoutRestore || null;
   window._posLayoutRestore = null;
@@ -4256,7 +4272,7 @@ async function renderPOS() {
       @media (min-width: 1024px) {
         #pos-checkout-backdrop {
           position: fixed;
-          top: 5rem;
+          top: ${posTerminalPage ? '1rem' : '5rem'};
           right: 3rem;
           bottom: 0;
           width: calc(40vw - 2.8rem);
@@ -4322,7 +4338,7 @@ async function renderPOS() {
         </div>
 
         <!-- Checkout Drawer -->
-        <div id="pos-checkout-backdrop" class="${splitLayout ? 'relative block min-h-0 lg:sticky lg:top-20 lg:h-[calc(100vh-5rem)]' : 'hidden fixed inset-x-0 top-20 bottom-0 z-40'}" aria-hidden="${splitLayout ? 'false' : 'true'}">
+        <div id="pos-checkout-backdrop" class="${splitLayout ? `relative block min-h-0 lg:sticky ${posTerminalPage ? 'lg:top-4 lg:h-[calc(100vh-1rem)]' : 'lg:top-20 lg:h-[calc(100vh-5rem)]'}` : `hidden fixed inset-x-0 ${posTerminalPage ? 'top-0' : 'top-20'} bottom-0 z-40`}" aria-hidden="${splitLayout ? 'false' : 'true'}">
           <div id="pos-checkout-shade"
             class="${splitLayout ? 'hidden' : 'absolute'} inset-y-0 left-0 right-0 lg:right-[33.333333%] bg-slate-200/90 dark:bg-slate-950/80 backdrop-blur-sm opacity-0 transition-opacity duration-300 flex items-center justify-center p-6 text-center">
             <div class="absolute inset-0 cursor-pointer" onclick="closePOSCheckout()"></div>
