@@ -4134,6 +4134,23 @@ async function openPOSOrdersView() {
   });
 }
 
+function returnToPOSOrderTypeSelection() {
+  closePOSCheckout(true);
+  closePOSMobileCategories();
+  cart = [];
+  _editingOrderId = null;
+  _tempEditSaleDetails = null;
+  _posSelectedCustomer = null;
+  _posCustomerResults = [];
+  _posProductCategory = "";
+  _posProductSearch = "";
+  window._posEntryOrderType = null;
+  window._posOrderType = null;
+  window._posSelectedTableId = null;
+  window._posLayoutRestore = null;
+  showPOSOrderTypeChooser();
+}
+
 function startFreshPOSOrder() {
   window._posEntryOrderType = null;
   cart = [];
@@ -4287,6 +4304,11 @@ async function renderPOS() {
           <div class="${splitLayout ? 'flex flex-col sm:flex-row gap-3' : 'flex flex-row flex-wrap items-center gap-2'}">
             <input id="pos-search" oninput="filterPOSProducts()" placeholder="Search products…"
               class="${splitLayout ? '' : 'order-1 min-w-0'} flex-1 h-12 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all shadow-sm" />
+            <button type="button" onclick="returnToPOSOrderTypeSelection()"
+              class="${splitLayout ? '' : 'order-2'} flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 shadow-sm transition-all hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-indigo-400" title="Back to order types">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M15 19l-7-7 7-7"/></svg>
+              <span class="hidden sm:inline">Back</span>
+            </button>
             <button type="button" id="pos-orders-toolbar-btn" onclick="switchOrderType('orders')"
               class="${isRetail ? 'hidden' : 'flex'} ${splitLayout ? '' : 'order-5'} h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-black transition-all items-center justify-center gap-2 shrink-0">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M9 5h6M9 9h6M9 13h4m-7 8h12a2 2 0 002-2V5a2 2 0 00-2-2H8l-4 4v12a2 2 0 002 2z"/></svg>
@@ -4577,6 +4599,10 @@ async function renderPOS() {
               Active Orders
             </h3>
             <div class="flex flex-wrap items-center justify-end gap-3">
+              <button type="button" onclick="returnToPOSOrderTypeSelection()" class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 transition-all hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-indigo-400">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M15 19l-7-7 7-7"/></svg>
+                Back
+              </button>
               ${currentUserHasPermission('orders.create') ? `<button onclick="showPOSOrderTypeChooser()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M12 5v14m7-7H5"/></svg>
                 New Order
