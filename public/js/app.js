@@ -4291,10 +4291,32 @@ async function renderPOS() {
             ${splitLayout ? '' : '<span class="order-3 basis-full h-0" aria-hidden="true"></span>'}
           </div>
           <!-- Category pills -->
-          <div id="pos-category-pills" class="flex flex-wrap gap-2">
+          ${splitLayout ? '' : `
+          <button type="button" onclick="openPOSMobileCategories()" class="sm:hidden flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-black text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" aria-controls="pos-mobile-categories" aria-haspopup="dialog">
+            <span class="flex items-center gap-2">
+              <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+              Categories
+            </span>
+            <span id="pos-mobile-category-label" class="max-w-[55%] truncate text-xs font-bold text-indigo-600 dark:text-indigo-400">All</span>
+          </button>`}
+          <div id="pos-category-pills" class="${splitLayout ? 'flex' : 'hidden sm:flex'} flex-wrap gap-2">
             <button onclick="filterPOSByCategory(null)" class="cat-pill active px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-bold border border-transparent transition-all" data-cat="">All</button>
             ${(_productCategories || []).map(c => `<button onclick="filterPOSByCategory('${c.name}')" class="cat-pill px-4 py-1.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-all" data-cat="${c.name}">${c.name}</button>`).join('')}
           </div>
+          ${splitLayout ? '' : `
+          <div id="pos-mobile-categories" class="hidden fixed inset-0 z-[60] sm:hidden" role="dialog" aria-modal="true" aria-label="Select product category" aria-hidden="true">
+            <button type="button" class="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]" onclick="closePOSMobileCategories()" aria-label="Close categories"></button>
+            <aside class="relative flex h-full w-1/2 flex-col border-r border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              <div class="flex items-center justify-between border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+                <h3 class="text-sm font-black text-slate-900 dark:text-white">Categories</h3>
+                <button type="button" onclick="closePOSMobileCategories()" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-lg text-slate-500 dark:bg-slate-800 dark:text-slate-300" aria-label="Close categories">&times;</button>
+              </div>
+              <div class="flex-1 space-y-2 overflow-y-auto p-3">
+                <button type="button" onclick="selectPOSMobileCategory(this)" data-cat="" data-label="All" class="pos-mobile-category-option w-full rounded-xl bg-indigo-600 px-3 py-3 text-left text-xs font-black text-white">All</button>
+                ${(_productCategories || []).map(c => `<button type="button" onclick="selectPOSMobileCategory(this)" data-cat="${escapeOrderValue(c.name)}" data-label="${escapeOrderValue(c.name)}" class="pos-mobile-category-option w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">${escapeOrderValue(c.name)}</button>`).join('')}
+              </div>
+            </aside>
+          </div>`}
           <div id="pos-products-pagination" class="hidden"></div>
           <div id="pos-products" class="${splitLayout ? 'h-[calc(100vh-16rem)] min-h-0 overflow-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900' : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 items-start min-h-[50vh] max-h-[calc(100vh-21rem)] overflow-y-auto pr-1 pb-4'}"></div>
         </div>
@@ -5811,6 +5833,25 @@ async function updateAndCompleteOrder(id) {
   }
 }
 
+function openPOSMobileCategories() {
+  const drawer = $c('pos-mobile-categories');
+  if (!drawer) return;
+  drawer.classList.remove('hidden');
+  drawer.setAttribute('aria-hidden', 'false');
+}
+
+function closePOSMobileCategories() {
+  const drawer = $c('pos-mobile-categories');
+  if (!drawer) return;
+  drawer.classList.add('hidden');
+  drawer.setAttribute('aria-hidden', 'true');
+}
+
+function selectPOSMobileCategory(button) {
+  filterPOSByCategory(button?.dataset.cat || null);
+  closePOSMobileCategories();
+}
+
 function filterPOSByCategory(cat) {
   document.querySelectorAll('.cat-pill').forEach(pill => {
     const isActive = (!cat && !pill.dataset.cat) || pill.dataset.cat === cat;
@@ -5818,6 +5859,14 @@ function filterPOSByCategory(cat) {
       ? 'cat-pill active px-4 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-bold border border-transparent transition-all'
       : 'cat-pill px-4 py-1.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-all';
   });
+  document.querySelectorAll('.pos-mobile-category-option').forEach(option => {
+    const isActive = (!cat && !option.dataset.cat) || option.dataset.cat === cat;
+    option.className = isActive
+      ? 'pos-mobile-category-option w-full rounded-xl bg-indigo-600 px-3 py-3 text-left text-xs font-black text-white'
+      : 'pos-mobile-category-option w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300';
+  });
+  const mobileLabel = $c('pos-mobile-category-label');
+  if (mobileLabel) mobileLabel.textContent = cat || 'All';
   _posProductCategory = cat || "";
   loadPOSProductsPage(1);
 }
