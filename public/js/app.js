@@ -1281,7 +1281,7 @@ async function renderActiveSettingsContent() {
 
 function renderPosCategoryOrderSettings() {
   return `
-    <section class="mx-auto max-w-3xl animate-in fade-in slide-in-from-right-4 duration-500">
+    <section class="mx-3 animate-in fade-in slide-in-from-right-4 duration-500">
       <header class="mb-6">
         <h3 class="text-3xl font-black tracking-tight text-slate-950 dark:text-white">POS Category Order</h3>
         <p class="mt-2 text-sm font-medium text-slate-500">Drag categories into the order staff should see while making an order. Changes save automatically.</p>
