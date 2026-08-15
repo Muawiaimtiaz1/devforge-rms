@@ -4253,10 +4253,16 @@ async function renderPOS() {
       #pos-split-scroll-body #pos-dine-fields:not(.hidden) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem; }
       #pos-split-scroll-body #pos-dine-fields:not(.hidden) > div { margin: 0 !important; }
       #pos-split-scroll-body #pos-dine-fields:not(.hidden) > div:last-child { grid-column: 1 / -1; }
-      #pos-split-scroll-body #pos-restaurant-fields,
-      #pos-split-scroll-body #pos-dine-fields,
-      #pos-split-scroll-body #pos-delivery-fields,
-      #pos-split-scroll-body #pos-takeaway-fields,
+      @media (min-width: 1024px) {
+        #pos-checkout-backdrop {
+          position: fixed;
+          top: 5rem;
+          right: 3rem;
+          bottom: 0;
+          width: calc(40vw - 2.8rem);
+          height: auto;
+        }
+      }
     </style>` : ''}
     <div class="flex flex-col gap-4">
       <div id="pos-content-grid" class="h-full transition-all ${splitLayout ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] gap-4 items-start' : ''}">
@@ -4598,7 +4604,7 @@ async function renderPOS() {
     if (drawer && splitHost) {
       const scrollBody = document.createElement("div");
       scrollBody.id = "pos-split-scroll-body";
-      scrollBody.className = "min-h-0 flex flex-1 flex-col overflow-hidden pr-1 pb-1";
+      scrollBody.className = "min-h-0 flex flex-1 flex-col overflow-y-auto overflow-x-hidden pr-1 pb-1";
       splitHost.remove();
       if (cartControls) cartControls.remove();
       while (drawer.firstChild) scrollBody.appendChild(drawer.firstChild);
