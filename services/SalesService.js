@@ -1290,8 +1290,14 @@ class SalesService {
       .where('s.shop_id', shopId);
 
     const role = currentUser?.role;
-    const isPrivileged = ['admin', 'superadmin', 'manager'].includes(role);
-    if (currentUser && !isPrivileged) {
+    const isWaiter = ['waiter', 'order_taker'].includes(role);
+    const canViewAllShopOrders = ['admin', 'superadmin', 'manager', 'pos_user'].includes(role);
+    if (currentUser && isWaiter) {
+      query.andWhere(function() {
+        this.where('s.user_id', currentUser.id)
+          .orWhere('s.waiter_id', currentUser.id);
+      });
+    } else if (currentUser && !canViewAllShopOrders) {
       const activeShift = await db('shifts')
         .where({ shop_id: shopId, user_id: currentUser.id, status: 'open' })
         .first();
