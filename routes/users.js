@@ -36,7 +36,7 @@ router.post('/', requirePermission('users.create'), async (req, res) => {
 
 // PUT /api/users/:id
 router.put('/:id', requirePermission('users.update', 'users.assign_roles'), async (req, res) => {
-    await userService.updateUser(req.params.id, req.body, req.session.user);
+    await userService.updateUser(req.params.id, req.body, req.session.user, req.permissions);
     res.json({ ok: true });
 });
 

@@ -922,9 +922,7 @@ let _rbacPermissionCatalog = [];
 let _rbacUsers = [];
 function hasPermission(key) {
   if (currentUser?.role === 'superadmin') return true;
-  if ((currentUser?.permissions || []).includes(key)) return true;
-  // Compatibility for sessions created before RBAC migration; refreshed sessions use permissions.
-  return ['admin', 'manager'].includes(currentUser?.role) && ['users.', 'roles.'].some(prefix => key.startsWith(prefix));
+  return (currentUser?.permissions || []).includes(key);
 }
 
 async function renderUsers() {
@@ -968,6 +966,7 @@ async function renderUsers() {
           .toUpperCase();
         const { bg, badge } = getColor(u.role);
         const isActive = !u.status || u.status === "active";
+        const canManageUser = hasPermission('users.update') || hasPermission('users.assign_roles');
         return `
         <div onclick='openUserAccess(${JSON.stringify(u).replace(/'/g, "&apos;")})' class="group relative bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 flex flex-col items-center text-center gap-6 hover:shadow-[0_40px_80px_-30px_rgba(0,0,0,0.12)] hover:-translate-y-2 transition-all duration-700 cursor-pointer overflow-hidden">
           
@@ -996,7 +995,7 @@ async function renderUsers() {
 
           <div class="mt-2 w-full pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center">
             <span class="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform flex items-center gap-2">
-              Manage Access
+              ${canManageUser ? 'Manage Access' : 'View Details'}
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
             </span>
           </div>
@@ -1095,23 +1094,25 @@ async function renderUsers() {
 
 function userFormHtml(u = {}) {
   const isMaster = currentUser.role === "superadmin";
+  const canUpdateDetails = !u.id || isMaster || hasPermission('users.update');
+  const canAssignRole = !u.id || isMaster || hasPermission('users.assign_roles');
   const assignedRoleId = Number((u.roles || [])[0]?.id || 0);
 
   return `
     <div class="space-y-4">
-      ${u.role !== 'superadmin' ? `<div><label class="block text-xs text-slate-500 mb-2 font-bold">Role *</label><select id="uf-role-id" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"><option value="">Select a role</option>${_rbacRoles.map((role, index) => `<option value="${role.id}" ${assignedRoleId === Number(role.id) || (!assignedRoleId && index === 0) ? 'selected' : ''}>${role.name}</option>`).join('')}</select><p class="mt-1 text-xs text-slate-500">Permissions are inherited automatically from this role. Change them in Roles & Permissions.</p></div>` : ''}
+      ${u.role !== 'superadmin' && canAssignRole ? `<div><label class="block text-xs text-slate-500 mb-2 font-bold">Role *</label><select id="uf-role-id" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"><option value="">Select a role</option>${_rbacRoles.map((role, index) => `<option value="${role.id}" ${assignedRoleId === Number(role.id) || (!assignedRoleId && index === 0) ? 'selected' : ''}>${role.name}</option>`).join('')}</select><p class="mt-1 text-xs text-slate-500">Permissions are inherited automatically from this role. Change them in Roles & Permissions.</p></div>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="sm:col-span-2 lg:col-span-1">
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Full Name *</label>
-          <input id="uf-name" value="${u.name || ""}" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm" placeholder="Full name" />
+          <input id="uf-name" value="${u.name || ""}" ${canUpdateDetails ? '' : 'disabled'} class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm ${canUpdateDetails ? '' : 'opacity-50 cursor-not-allowed'}" placeholder="Full name" />
         </div>
         <div>
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Username *</label>
-          <input id="uf-username" value="${u.username || ""}" ${u.id && !isMaster ? "readonly" : ""} class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm ${u.id && !isMaster ? "opacity-50 cursor-not-allowed" : ""}" placeholder="username" />
+          <input id="uf-username" value="${u.username || ""}" ${canUpdateDetails ? '' : 'disabled'} class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm ${canUpdateDetails ? '' : 'opacity-50 cursor-not-allowed'}" placeholder="username" />
         </div>
         <div>
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">New Password ${u.id ? "(Optional)" : "*"}</label>
-          <input id="uf-password" type="password" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/50 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm font-bold" placeholder="••••••••" />
+          <input id="uf-password" type="password" ${canUpdateDetails ? '' : 'disabled'} class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/50 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all shadow-sm font-bold ${canUpdateDetails ? '' : 'opacity-50 cursor-not-allowed'}" placeholder="••••••••" />
         </div>
         <div class="${!isMaster ? "hidden" : ""}">
           <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Phone</label>
@@ -1174,7 +1175,7 @@ function userFormHtml(u = {}) {
               </div>
             </div>
             <div class="relative">
-              <input type="checkbox" id="uf-can-manage-register" ${u.can_manage_register ? "checked" : ""} class="peer sr-only">
+              <input type="checkbox" id="uf-can-manage-register" ${u.can_manage_register ? "checked" : ""} ${canUpdateDetails ? '' : 'disabled'} class="peer sr-only">
               <div class="w-11 h-6 bg-slate-200 dark:bg-slate-700 rounded-full peer peer-checked:bg-indigo-600 transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full shadow-inner"></div>
             </div>
           </label>
@@ -1254,6 +1255,7 @@ function togglePanel(el) {
 }
 
 function openCreateUser(shopId = null, defaultRole = 'user') {
+  if (!hasPermission('users.create')) return toast('You do not have permission to create users.', 'error');
   openModal(
     "Create User",
     userFormHtml({ shop_id: shopId, role: defaultRole }) +
@@ -1275,6 +1277,9 @@ function openEditUser(
   can_manage_register,
   roles
 ) {
+  if (!hasPermission('users.update') && !hasPermission('users.assign_roles')) {
+    return toast('You do not have permission to edit users.', 'error');
+  }
   const detailedUser = _rbacUsers.find(user => Number(user.id) === Number(id)) || {};
   const assignedRoles = roles || detailedUser.roles || [];
   openModal(
@@ -1300,7 +1305,11 @@ function openEditUser(
 }
 
 async function saveUser(id) {
-  const payload = {
+  const canUpdateDetails = !id || hasPermission('users.update');
+  const canAssignRole = !id || hasPermission('users.assign_roles');
+  if (id && !canUpdateDetails && !canAssignRole) return toast('You do not have permission to edit users.', 'error');
+  const payload = {};
+  if (canUpdateDetails) Object.assign(payload, {
     name: $c("uf-name").value.trim(),
     username: $c("uf-username").value.trim(),
     password: $c("uf-password").value,
@@ -1310,7 +1319,6 @@ async function saveUser(id) {
     status: $c("uf-status").value,
     shop_id: $c("uf-shop").value,
     can_manage_register: document.getElementById("uf-can-manage-register")?.checked || false,
-    role_ids: $c('uf-role-id') ? ($c('uf-role-id').value ? [Number($c('uf-role-id').value)] : []) : undefined,
     use_custom_permissions: false,
     permission_keys: [],
     allowed_panels:
@@ -1319,9 +1327,10 @@ async function saveUser(id) {
         : Array.from(
             document.querySelectorAll('.user-panel-tile[data-selected="true"]'),
           ).map((el) => el.dataset.id),
-  };
-  if (!payload.name) return toast("Name required", "error");
-  if ($c('uf-role-id') && !payload.role_ids.length) return toast("Role required", "error");
+  });
+  if (canAssignRole && $c('uf-role-id')) payload.role_ids = $c('uf-role-id').value ? [Number($c('uf-role-id').value)] : [];
+  if (canUpdateDetails && !payload.name) return toast("Name required", "error");
+  if (canAssignRole && $c('uf-role-id') && !payload.role_ids.length) return toast("Role required", "error");
   if (!id && !payload.password)
     return toast("Password required for new user", "error");
   const r = id
@@ -1337,27 +1346,37 @@ async function saveUser(id) {
   }
 }
 
-function rolePermissionGroups(selected = []) {
+function rolePermissionGroups(selected = [], disabled = false) {
   const groups = {};
   _rbacPermissionCatalog.forEach(permission => (groups[permission.module] ||= []).push(permission));
-  return Object.entries(groups).map(([module, permissions]) => `<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div class="font-black capitalize mb-3">${module.replace(/_/g, ' ')}</div><div class="grid sm:grid-cols-2 gap-2">${permissions.map(permission => `<label class="text-xs"><input class="role-permission mr-2" type="checkbox" value="${permission.key}" ${selected.includes(permission.key) ? 'checked' : ''}>${permission.action.replace(/_/g, ' ')}</label>`).join('')}</div></div>`).join('');
+  return Object.entries(groups).map(([module, permissions]) => `<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div class="font-black capitalize mb-3">${module.replace(/_/g, ' ')}</div><div class="grid sm:grid-cols-2 gap-2">${permissions.map(permission => `<label class="text-xs"><input class="role-permission mr-2" type="checkbox" value="${permission.key}" ${selected.includes(permission.key) ? 'checked' : ''} ${disabled ? 'disabled' : ''}>${permission.action.replace(/_/g, ' ')}</label>`).join('')}</div></div>`).join('');
 }
 
 function openRoleManager() {
-  openModal('Roles & Permissions', `<div class="space-y-3">${_rbacRoles.map(role => `<button onclick="openRoleEditor(${role.id})" class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between"><span class="font-black">${role.name}</span><span class="text-xs text-slate-400">${role.user_count} users · ${role.permissions.length} permissions</span></button>`).join('') || '<p>No roles yet.</p>'}${hasPermission('roles.create') ? '<button onclick="openRoleEditor()" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Create role</button>' : ''}</div>`, 'max-w-2xl');
+  if (!hasPermission('roles.view')) return toast('You do not have permission to view roles.', 'error');
+  const canOpenRole = hasPermission('roles.update') || hasPermission('roles.assign_permissions');
+  openModal('Roles & Permissions', `<div class="space-y-3">${_rbacRoles.map(role => canOpenRole ? `<button onclick="openRoleEditor(${role.id})" class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between"><span class="font-black">${role.name}</span><span class="text-xs text-slate-400">${role.user_count} users · ${role.permissions.length} permissions</span></button>` : `<div class="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between"><span class="font-black">${role.name}</span><span class="text-xs text-slate-400">${role.user_count} users · ${role.permissions.length} permissions</span></div>`).join('') || '<p>No roles yet.</p>'}${hasPermission('roles.create') ? '<button onclick="openRoleEditor()" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Create role</button>' : ''}</div>`, 'max-w-2xl');
 }
 
 function openRoleEditor(id) {
+  const canEditDetails = id ? hasPermission('roles.update') : hasPermission('roles.create');
+  const canAssignPermissions = hasPermission('roles.assign_permissions');
+  if (!canEditDetails && !canAssignPermissions) return toast('You do not have permission to edit roles.', 'error');
   const role = _rbacRoles.find(item => Number(item.id) === Number(id)) || { permissions: [] };
   const targetShopId = currentUser?.role === 'superadmin'
     ? Number(typeof _managedShopId !== 'undefined' ? _managedShopId : 0)
     : Number(currentUser?.shop_id || 0);
-  openModal(id ? 'Edit Role' : 'Create Role', `<div class="space-y-4"><input id="rf-shop-id" type="hidden" value="${targetShopId}"><input id="rf-name" value="${role.name || ''}" placeholder="Role name" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900"><textarea id="rf-description" placeholder="Description" class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900">${role.description || ''}</textarea><div class="grid md:grid-cols-2 gap-3 max-h-[55vh] overflow-y-auto">${rolePermissionGroups(role.permissions)}</div><button onclick="saveRole(${id || 'null'})" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Save role</button></div>`, 'max-w-5xl');
+  openModal(id ? 'Edit Role' : 'Create Role', `<div class="space-y-4"><input id="rf-shop-id" type="hidden" value="${targetShopId}"><input id="rf-name" value="${role.name || ''}" placeholder="Role name" ${canEditDetails ? '' : 'disabled'} class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900 ${canEditDetails ? '' : 'opacity-50'}"><textarea id="rf-description" placeholder="Description" ${canEditDetails ? '' : 'disabled'} class="w-full px-4 py-3 rounded-xl border dark:bg-slate-900 ${canEditDetails ? '' : 'opacity-50'}">${role.description || ''}</textarea><div class="grid md:grid-cols-2 gap-3 max-h-[55vh] overflow-y-auto">${rolePermissionGroups(role.permissions, !canAssignPermissions)}</div><button onclick="saveRole(${id || 'null'})" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold">Save role</button></div>`, 'max-w-5xl');
 }
 
 async function saveRole(id) {
-  const payload = { name: $c('rf-name').value.trim(), description: $c('rf-description').value.trim(), permissions: Array.from(document.querySelectorAll('.role-permission:checked')).map(el => el.value) };
-  if (!payload.name) return toast('Role name is required', 'error');
+  const canEditDetails = id ? hasPermission('roles.update') : hasPermission('roles.create');
+  const canAssignPermissions = hasPermission('roles.assign_permissions');
+  if (!canEditDetails && !canAssignPermissions) return toast('You do not have permission to edit roles.', 'error');
+  const payload = {};
+  if (canEditDetails) Object.assign(payload, { name: $c('rf-name').value.trim(), description: $c('rf-description').value.trim() });
+  if (canAssignPermissions) payload.permissions = Array.from(document.querySelectorAll('.role-permission:checked')).map(el => el.value);
+  if (canEditDetails && !payload.name) return toast('Role name is required', 'error');
   const targetShopId = Number($c('rf-shop-id')?.value || 0);
   if (!targetShopId) return toast('Restaurant context is missing. Reopen the role editor.', 'error');
   const shopScope = currentUser?.role === 'superadmin' ? `?shop_id=${targetShopId}` : '';
@@ -1368,6 +1387,7 @@ async function saveRole(id) {
 }
 
 async function deleteUser(id) {
+  if (!hasPermission('users.delete')) return toast('You do not have permission to delete users.', 'error');
   if (!confirm("Delete this user? All their data will be removed.")) return;
   const r = await api(`/api/users/${id}`, "DELETE");
   if (r.error) return toast(r.error, "error");
@@ -2029,6 +2049,13 @@ function openUserAccess(user) {
   }
 
   if (editBtn) {
+    const canManageUser = hasPermission('users.update') || hasPermission('users.assign_roles');
+    editBtn.classList.toggle('hidden', !canManageUser);
+    if (!canManageUser) {
+      editBtn.onclick = null;
+      toggleUserAccessMenu();
+      return;
+    }
     const isMaster = currentUser.role === "superadmin";
     editBtn.innerHTML = isMaster ? `
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>

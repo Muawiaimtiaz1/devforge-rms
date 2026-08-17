@@ -20,6 +20,12 @@ const userSchema = z.object({
 });
 
 class UserService {
+  permissionError(message) {
+    const error = new Error(message);
+    error.status = 403;
+    return error;
+  }
+
   legacyRoleForAssignedRole(roleName, fallback = 'user') {
     const normalized = String(roleName || '').trim().toLowerCase();
     const mapping = {
@@ -62,13 +68,14 @@ class UserService {
 
   async createUser(payload, currentUser) {
     const data = userSchema.parse(payload);
+    if (!data.password) throw new Error('Password is required for new users');
     
     if (data.role === 'superadmin') throw new Error('Cannot create Super Admins');
 
     const existing = await db('users').where({ username: data.username }).first();
     if (existing) throw new Error('Username already taken');
 
-    const hash = bcrypt.hashSync(payload.password, 10);
+    const hash = bcrypt.hashSync(data.password, 10);
     const targetShopId = currentUser.role === 'superadmin' ? (data.shop_id || null) : currentUser.shop_id;
 
     const [idObj] = await db.transaction(async (trx) => {
@@ -101,12 +108,39 @@ class UserService {
     return idObj;
   }
 
-  async updateUser(userId, payload, currentUser) {
-    const userToEdit = await db('users').where({ id: userId }).first();
-    if (!userToEdit) throw new Error('User not found');
+  async updateUser(userId, payload, currentUser, permissions = []) {
+    const isSuper = currentUser.role === 'superadmin';
+    const target = { id: userId };
+    if (!isSuper) target.shop_id = currentUser.shop_id;
+    const userToEdit = await db('users').where(target).first();
+    if (!userToEdit) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
 
-    if (currentUser.role !== 'superadmin') {
-      if (userToEdit.shop_id !== currentUser.shop_id) throw new Error('Access denied');
+    if (!isSuper) {
+      const canUpdate = permissions.includes('users.update');
+      const canAssignRoles = permissions.includes('users.assign_roles');
+      const profileFields = ['name', 'username', 'email', 'phone', 'status', 'password', 'can_manage_register'];
+      const requestsProfileUpdate = profileFields.some((field) => Object.prototype.hasOwnProperty.call(payload, field));
+      const requestsRoleUpdate = Object.prototype.hasOwnProperty.call(payload, 'role_ids');
+      if (requestsProfileUpdate && !canUpdate) {
+        throw this.permissionError('You do not have permission to update user details.');
+      }
+      if (requestsRoleUpdate && !canAssignRoles) {
+        throw this.permissionError('You do not have permission to assign user roles.');
+      }
+      if (!requestsProfileUpdate && !requestsRoleUpdate) throw new Error('No valid fields provided for update.');
+
+      if (payload.username && payload.username !== userToEdit.username) {
+        const existing = await db('users').where({ username: payload.username }).whereNot({ id: userId }).first();
+        if (existing) {
+          const error = new Error('Username already taken');
+          error.status = 409;
+          throw error;
+        }
+      }
       
       // Shop administrators may maintain same-shop staff but never elevate platform access.
       const updatable = {};
@@ -121,7 +155,7 @@ class UserService {
       
       if (Object.keys(updatable).length > 0) {
         updatable.updated_at = db.fn.now();
-        await db('users').where({ id: userId }).update(updatable);
+        await db('users').where({ id: userId, shop_id: currentUser.shop_id }).update(updatable);
       } else if (!Array.isArray(payload.role_ids)) {
         throw new Error('No valid fields provided for update.');
       }
@@ -131,7 +165,7 @@ class UserService {
           await trx('user_roles').where({ user_id: userId }).del();
           await trx('user_roles').insert({ user_id: Number(userId), role_id: assignedRole.id });
           await trx('user_permissions').where({ user_id: userId }).del();
-          await trx('users').where({ id: userId }).update({ role: this.legacyRoleForAssignedRole(assignedRole.name, userToEdit.role), use_custom_permissions: false });
+          await trx('users').where({ id: userId, shop_id: currentUser.shop_id }).update({ role: this.legacyRoleForAssignedRole(assignedRole.name, userToEdit.role), use_custom_permissions: false });
         });
       }
       return;
@@ -146,7 +180,7 @@ class UserService {
       if (existing) throw new Error('Username already taken');
     }
 
-    const isSuper = userToEdit.role === 'superadmin';
+    const isTargetSuper = userToEdit.role === 'superadmin';
     const updateData = {
       name: data.name || userToEdit.name,
       username: data.username || userToEdit.username,
@@ -155,7 +189,7 @@ class UserService {
       role: !isSuper ? (data.role || userToEdit.role) : userToEdit.role,
       printer_station: data.hasOwnProperty('printer_station') ? data.printer_station : userToEdit.printer_station,
       shop_id: data.hasOwnProperty('shop_id') ? data.shop_id : userToEdit.shop_id,
-      status: isSuper ? 'active' : (data.status || userToEdit.status),
+      status: isTargetSuper ? 'active' : (data.status || userToEdit.status),
       allowed_panels: JSON.stringify(data.allowed_panels || JSON.parse(userToEdit.allowed_panels || '[]')),
       can_manage_register: data.hasOwnProperty('can_manage_register') ? data.can_manage_register : userToEdit.can_manage_register,
       use_custom_permissions: false,
@@ -177,7 +211,7 @@ class UserService {
         await trx('user_roles').where({ user_id: userId }).del();
         await trx('user_permissions').where({ user_id: userId }).del();
         await trx('user_roles').insert({ user_id: Number(userId), role_id: assignedRole.id });
-        if (!isSuper) await trx('users').where({ id: userId }).update({ role: this.legacyRoleForAssignedRole(assignedRole.name, updateData.role), use_custom_permissions: false });
+        if (!isTargetSuper) await trx('users').where({ id: userId }).update({ role: this.legacyRoleForAssignedRole(assignedRole.name, updateData.role), use_custom_permissions: false });
       }
 
       if (oldShopId !== newShopId) {
@@ -198,13 +232,18 @@ class UserService {
   async deleteUser(userId, currentUser) {
     if (Number(userId) === Number(currentUser.id)) throw new Error('Cannot delete yourself');
 
-    const userToDelete = await db('users').where({ id: userId }).first();
-    if (!userToDelete) throw new Error('User not found');
+    const target = { id: userId };
+    if (currentUser.role !== 'superadmin') target.shop_id = currentUser.shop_id;
+    const userToDelete = await db('users').where(target).first();
+    if (!userToDelete) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
     if (userToDelete.role === 'superadmin') throw new Error('The Master Owner account cannot be deleted');
-    if (currentUser.role !== 'superadmin' && Number(userToDelete.shop_id) !== Number(currentUser.shop_id)) throw new Error('Access denied');
 
     await db.transaction(async (trx) => {
-      await trx('users').where({ id: userId }).delete();
+      await trx('users').where(target).delete();
       if (userToDelete.shop_id) {
         await trx('shops').where({ id: userToDelete.shop_id }).decrement('user_count', 1);
       }
