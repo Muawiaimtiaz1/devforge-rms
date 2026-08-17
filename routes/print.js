@@ -48,13 +48,20 @@ async function filterKitchenItemsByStation(details, shopId, requestedStationPara
     salesService.resolveKitchenRoute(db, details.sale, shopId, resolvePrinterRoute)
   ]);
 
+  const routeLabels = new Set();
+  const items = details.items.filter((item) => {
+      const itemRoutes = salesService.getItemPrintRoutes(item, categoryRouteMap, kitchenRoute);
+      return itemRoutes.some(itemRoute => {
+        const matches = itemRoute.station !== "NONE"
+          && (itemRoute.key === requestedStation || itemRoute.station === requestedStation);
+        if (matches && itemRoute.label) routeLabels.add(itemRoute.label);
+        return matches;
+      });
+    });
   return {
     ...details,
-    items: details.items.filter((item) => {
-      const itemRoutes = salesService.getItemPrintRoutes(item, categoryRouteMap, kitchenRoute);
-      return itemRoutes.some(itemRoute => itemRoute.station !== "NONE"
-        && (itemRoute.key === requestedStation || itemRoute.station === requestedStation));
-    }),
+    items,
+    kitchen_route_label: [...routeLabels].join(' + '),
   };
 }
 
@@ -81,6 +88,8 @@ router.get("/jobs/:id", async (req, res) => {
 
   if (format === "kitchen" && Array.isArray(content.items)) {
     details.items = content.items;
+    details.kitchen_route_label = content.route_label || content.printer_label || content.station_name;
+    details.is_update = !!content.is_update;
   }
 
   const html = renderSaleReceiptPage(details, {

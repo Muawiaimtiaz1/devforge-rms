@@ -223,11 +223,14 @@ function renderItemDetails(item) {
 
 function renderKitchenReceipt(details) {
   const { sale, items } = details;
+  const kitchenName = String(details.kitchen_route_label || sale.kitchen_name || "Kitchen").replace(/^Kitchen:\s*/i, "");
+  const isUpdate = !!details.is_update;
   return `
     <div class="receipt kitchen-receipt">
       <div class="text-center">
-        <h1 class="bold">KITCHEN ORDER</h1>
-        <h2 class="bold" style="font-size: 24px; margin: 8px 0;">#${escapeHtml(sale.id)}</h2>
+        <h1 class="bold">${escapeHtml(kitchenName)}</h1>
+        <div class="bold" style="font-size: 14px; margin-top: 5px;">KITCHEN ORDER</div>
+        <h2 class="bold" style="font-size: 24px; margin: 8px 0;">#${escapeHtml(sale.id)}${isUpdate ? " — UPDATED" : ""}</h2>
       </div>
 
       <div class="order-info">
@@ -251,6 +254,7 @@ function renderKitchenReceipt(details) {
               <tr>
                 <td class="qty text-center">x${escapeHtml(item.quantity)}</td>
                 <td>
+                  ${item.change_action ? `<div class="bold" style="font-size: 13px;">${item.change_action === "remove" ? "REMOVE" : "ADD"}</div>` : ""}
                   <div class="item-name">${escapeHtml(itemName(item))}</div>
                   ${detailsText ? `<div class="item-details">${escapeHtml(detailsText)}</div>` : ""}
                   ${item.special_instructions ? `<div class="special-note">NOTE: ${escapeHtml(item.special_instructions)}</div>` : ""}

@@ -437,6 +437,83 @@ class SalesService {
     };
   }
 
+  async notifyUpdatedOrder({ saleId, shopId, editorId, recipientIds = [], kitchenIds = [], changes = [] }) {
+    try {
+      const editor = await db('users').where({ id: editorId, shop_id: shopId }).first();
+      if (!editor) return;
+
+      const activeReceptionists = await db('users')
+        .where({ shop_id: shopId, role: 'receptionist' })
+        .where(builder => builder.whereNull('status').orWhere('status', 'active'))
+        .pluck('id');
+      const userRecipients = new Set([...recipientIds, ...activeReceptionists].map(Number).filter(Boolean));
+      const changeSummary = (changes.length
+        ? changes.map(item => `${item.change_action === 'remove' ? 'Remove' : 'Add'} ${item.quantity} x ${item.name}`).join(', ')
+        : 'Order details were updated.').slice(0, 3500);
+      const editorName = editor.name || editor.username || 'Staff member';
+      const title = `Order #${saleId} updated`;
+      const message = `${editorName} updated order #${saleId}. ${changeSummary}`;
+
+      for (const kitchenId of [...new Set(kitchenIds.map(Number).filter(Boolean))]) {
+        const kitchen = await db('users')
+          .where({ id: kitchenId, shop_id: shopId, role: 'kitchen' })
+          .where(builder => builder.whereNull('status').orWhere('status', 'active'))
+          .first();
+        if (!kitchen) continue;
+        await notificationService.create({
+          shop_id: shopId,
+          target_user_id: kitchen.id,
+          type: 'assignment',
+          priority: 'urgent',
+          title,
+          message,
+          action_label: 'Open kitchen order',
+          action_url: '/dashboard',
+          status: 'active',
+        }, { id: editorId });
+        try {
+          await pushNotificationService.sendToUser(kitchen.id, {
+            title,
+            body: message,
+            tag: `updated-kitchen-order-${saleId}-${kitchen.id}`,
+            orderId: saleId,
+            url: '/dashboard',
+            requireInteraction: true,
+          });
+        } catch (error) {
+          console.error(`Updated order #${saleId} kitchen push failed:`, error.message);
+        }
+      }
+
+      await Promise.all([...userRecipients].map(async targetUserId => {
+        await notificationService.create({
+          shop_id: shopId,
+          target_user_id: targetUserId,
+          type: 'system',
+          priority: 'high',
+          title,
+          message,
+          action_label: 'View order',
+          action_url: '/dashboard',
+          status: 'active',
+        }, { id: editorId });
+        try {
+          await pushNotificationService.sendToUser(targetUserId, {
+            title,
+            body: message,
+            tag: `updated-order-${saleId}-${targetUserId}`,
+            orderId: saleId,
+            url: '/dashboard',
+          });
+        } catch (error) {
+          console.error(`Updated order #${saleId} user push failed:`, error.message);
+        }
+      }));
+    } catch (error) {
+      console.error(`Updated order #${saleId} notification failed:`, error.message);
+    }
+  }
+
   getItemPrintRoutes(item, categoryRouteMap, fallbackRoute) {
     const category = this.getItemCategory(item);
     const categoryRoute = category ? categoryRouteMap[category] : null;
@@ -468,6 +545,7 @@ class SalesService {
     return {
       name: item.product ? item.product.name : (item.product_name || item.name || item.custom_name),
       quantity: item.quantity,
+      change_action: item.change_action || null,
       special_instructions: item.special_instructions,
       variants: parseList(item.variants_json, item.variants || []),
       addons: parseList(item.addons_json, item.addons || [])
@@ -478,7 +556,7 @@ class SalesService {
    * Generates automatic print jobs based on item categories and stations
    * Creates one print job per physical printer, with all routed items included.
    */
-  async generatePrintJobs(saleId, items, shopId, trx) {
+  async generatePrintJobs(saleId, items, shopId, trx, options = {}) {
     const dbInstance = trx || db;
 
     const { printers, resolvePrinterRoute } = await this.getPrinterRouting(dbInstance, shopId);
@@ -536,6 +614,7 @@ class SalesService {
         station_name: station,
         route_key: station,
         route_label: routeLabel,
+        is_update: !!options.isUpdate,
         printer_label: route.printerLabel || route.label,
         print_url: `/print/sales/${saleId}?format=kitchen&station=${encodeURIComponent(station)}&shop_id=${shopId}&autoprint=0`,
         order_type: sale.order_type,
@@ -984,10 +1063,78 @@ class SalesService {
     }
   }
 
+  orderChangeIdentity(item, stored = false) {
+    const parse = value => {
+      if (Array.isArray(value)) return value;
+      try { return JSON.parse(value || '[]'); } catch (_) { return []; }
+    };
+    const compact = value => parse(value)
+      .map(entry => String(entry?.id ?? entry?.name ?? entry?.label ?? entry))
+      .sort()
+      .join(',');
+    const productId = stored ? item.product_id : item.product?.id;
+    const name = stored ? (item.product_name || item.custom_name) : (item.product?.name || item.name);
+    return [
+      productId ? `p:${productId}` : `c:${String(name || '').trim().toLowerCase()}`,
+      item.stock_variant_id || '',
+      compact(stored ? item.variants_json : item.variants_json || item.variants),
+      compact(stored ? item.addons_json : item.addons_json || item.addons),
+      String(item.special_instructions || '').trim(),
+    ].join('|');
+  }
+
+  calculateOrderItemChanges(oldItems, newItems) {
+    const summarize = (items, stored) => items.reduce((map, item) => {
+      const key = this.orderChangeIdentity(item, stored);
+      const current = map.get(key) || { quantity: 0, item };
+      current.quantity += Number(item.quantity || 0);
+      map.set(key, current);
+      return map;
+    }, new Map());
+    const before = summarize(oldItems, true);
+    const after = summarize(newItems, false);
+    const changes = [];
+    for (const key of new Set([...before.keys(), ...after.keys()])) {
+      const oldEntry = before.get(key);
+      const newEntry = after.get(key);
+      const delta = Number(newEntry?.quantity || 0) - Number(oldEntry?.quantity || 0);
+      if (Math.abs(delta) < 0.000001) continue;
+      const source = delta > 0 ? newEntry.item : oldEntry.item;
+      changes.push({
+        ...source,
+        quantity: Math.abs(delta),
+        change_action: delta > 0 ? 'add' : 'remove',
+        name: source.product?.name || source.product_name || source.name || source.custom_name || 'Item',
+      });
+    }
+    return changes;
+  }
+
+  async getKitchenIdsForItems(dbInstance, sale, items, shopId) {
+    const { resolvePrinterRoute } = await this.getPrinterRouting(dbInstance, shopId);
+    const [categoryRouteMap, kitchenRoute] = await Promise.all([
+      this.getCategoryPrintRouteMap(dbInstance, shopId, resolvePrinterRoute),
+      this.resolveKitchenRoute(dbInstance, sale, shopId, resolvePrinterRoute),
+    ]);
+    const kitchenIds = new Set();
+    if (sale?.kitchen_id) kitchenIds.add(Number(sale.kitchen_id));
+    for (const item of items) {
+      const category = this.getItemCategory(item);
+      for (const target of categoryRouteMap[category]?.targets || []) {
+        const match = String(target).match(/^KITCHEN:(\d+)$/);
+        if (match) kitchenIds.add(Number(match[1]));
+      }
+      for (const route of this.getItemPrintRoutes(item, categoryRouteMap, kitchenRoute)) {
+        if (route.kitchenId) kitchenIds.add(Number(route.kitchenId));
+      }
+    }
+    return [...kitchenIds];
+  }
+
   async updateSaleItems(saleId, payload, shopId, userId, options = {}) {
     const data = checkoutSchema.parse(payload);
     
-    return await db.transaction(async (trx) => {
+    const result = await db.transaction(async (trx) => {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
       if (!sale) throw new Error("Sale not found");
       if (sale.order_status === 'completed') throw new Error("Cannot edit a completed order");
@@ -1006,7 +1153,10 @@ class SalesService {
       }
 
       // 1. Fetch previous items to restore stock
-      const oldItems = await trx('sale_items').where({ sale_id: saleId });
+      const oldItems = await trx('sale_items as si')
+        .select('si.*', trx.raw('COALESCE(p.name, si.custom_name) as product_name'), 'p.category as product_category')
+        .leftJoin('products as p', 'si.product_id', 'p.id')
+        .where('si.sale_id', saleId);
       if (!options.canRemoveItems) this.assertOrderItemsNotReduced(oldItems, data.items);
 
       // 2. Restore Stock for Old Items
@@ -1264,16 +1414,39 @@ class SalesService {
         });
       }
 
-      // 8. Automatic Kitchen/Station Printing
-      const printResult = await this.generatePrintJobs(saleId, resolvedItems, shopId, trx);
+      // 8. Print only the item quantity changes to affected kitchen routes.
+      const itemChanges = this.calculateOrderItemChanges(oldItems, resolvedItems);
+      const printResult = itemChanges.length
+        ? await this.generatePrintJobs(saleId, itemChanges, shopId, trx, { isUpdate: true })
+        : { queued: 0, printer_configured: true };
+      const updatedSaleForRouting = { ...sale, kitchen_id: data.kitchen_id || sale.kitchen_id };
+      const [oldKitchenIds, newKitchenIds] = await Promise.all([
+        this.getKitchenIdsForItems(trx, sale, oldItems, shopId),
+        this.getKitchenIdsForItems(trx, updatedSaleForRouting, resolvedItems, shopId),
+      ]);
 
       return {
         saleId,
         total: grandTotal,
         print_jobs_queued: printResult.queued,
-        printer_configured: printResult.printer_configured
+        printer_configured: printResult.printer_configured,
+        _notification: {
+          recipientIds: [sale.user_id, sale.waiter_id, data.waiter_id],
+          kitchenIds: [...new Set([...oldKitchenIds, ...newKitchenIds])],
+          changes: itemChanges.map(item => ({ name: item.name, quantity: item.quantity, change_action: item.change_action })),
+        },
       };
     });
+    await this.notifyUpdatedOrder({
+      saleId,
+      shopId,
+      editorId: userId,
+      recipientIds: result._notification.recipientIds,
+      kitchenIds: result._notification.kitchenIds,
+      changes: result._notification.changes,
+    });
+    delete result._notification;
+    return result;
   }
 
 
