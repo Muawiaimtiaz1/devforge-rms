@@ -217,18 +217,35 @@ function changeInventoryStockProductPage(page) {
   renderRawStock(_inventoryIngredientPage, _inventoryStockProductPage);
 }
 
-async function renderRawStock(ingredientPage = 1, stockProductPage = 1) {
+async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search = '') {
   const content = document.getElementById("page-content");
+  const normalizedSearch = String(search || '').trim();
+  const existingSearchInput = document.getElementById('inventory-catalog-search');
+  const searchWasFocused = document.activeElement === existingSearchInput;
+  const searchCaret = searchWasFocused ? existingSearchInput.selectionStart : null;
   content.innerHTML = '<div class="flex items-center justify-center h-40 text-slate-600">Loading Ingredients…</div>';
 
   try {
+    const rawStockUrl = normalizedSearch
+      ? '/api/raw-stock'
+      : `/api/raw-stock?paginate=1&page=${encodeURIComponent(ingredientPage)}&page_size=${INVENTORY_CATALOG_PAGE_SIZE}`;
+    const productParams = new URLSearchParams({ product_type: 'stock_based', exclude_components: '1' });
+    if (normalizedSearch) productParams.set('search', normalizedSearch);
+    else {
+      productParams.set('paginate', '1');
+      productParams.set('page', String(stockProductPage));
+      productParams.set('page_size', String(INVENTORY_CATALOG_PAGE_SIZE));
+    }
     const [rawStockResponse, productResponse] = await Promise.all([
-      api(`/api/raw-stock?paginate=1&page=${encodeURIComponent(ingredientPage)}&page_size=${INVENTORY_CATALOG_PAGE_SIZE}`),
-      api(`/api/products?paginate=1&page=${encodeURIComponent(stockProductPage)}&page_size=${INVENTORY_CATALOG_PAGE_SIZE}&product_type=stock_based&exclude_components=1`)
+      api(rawStockUrl),
+      api(`/api/products?${productParams.toString()}`)
     ]);
-    const rawStocks = Array.isArray(rawStockResponse?.items) ? rawStockResponse.items : [];
+    const loadedRawStocks = Array.isArray(rawStockResponse) ? rawStockResponse : (Array.isArray(rawStockResponse?.items) ? rawStockResponse.items : []);
+    const rawStocks = normalizedSearch
+      ? loadedRawStocks.filter(rs => `${rs.ingredient_code || ''} ${rs.name || ''} ${rs.unit || ''} ${rs.usage_unit || ''}`.toLowerCase().includes(normalizedSearch.toLowerCase()))
+      : loadedRawStocks;
     const rawStockPagination = rawStockResponse?.pagination;
-    const products = Array.isArray(productResponse?.items) ? productResponse.items : [];
+    const products = Array.isArray(productResponse) ? productResponse : (Array.isArray(productResponse?.items) ? productResponse.items : []);
     const productPagination = productResponse?.pagination;
     _inventoryIngredientPage = Number(rawStockPagination?.page || 1);
     _inventoryStockProductPage = Number(productPagination?.page || 1);
@@ -315,6 +332,13 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1) {
     `;
     content.innerHTML = html;
     setInventoryCatalogFilter(window._inventoryCatalogFilter || 'all');
+    const renderedSearchInput = document.getElementById('inventory-catalog-search');
+    renderedSearchInput?.addEventListener('input', searchInventoryCatalog);
+    if (searchWasFocused && renderedSearchInput) {
+      renderedSearchInput.focus({ preventScroll: true });
+      const caret = Math.min(searchCaret ?? renderedSearchInput.value.length, renderedSearchInput.value.length);
+      renderedSearchInput.setSelectionRange(caret, caret);
+    }
   } catch (e) {
     content.innerHTML = `<div class="p-10 text-center text-rose-500">${e.message}</div>`;
   }
@@ -790,6 +814,12 @@ function filterInventoryCatalog() {
     item.classList.toggle('hidden', !!query && !(item.dataset.inventorySearch || '').includes(query));
   });
 }
+
+const searchInventoryCatalog = debounce(() => {
+  const query = (document.getElementById('inventory-catalog-search')?.value || '').trim();
+  window._inventoryCatalogSearch = query;
+  renderRawStock(1, 1, query);
+}, 300);
 
 function toggleInventoryVariantDetails(variantId) {
   document.getElementById(`inventory-variant-${variantId}`)?.classList.toggle('hidden');

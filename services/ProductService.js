@@ -109,7 +109,17 @@ class ProductService {
         .whereRaw('LOWER(p.name) LIKE ?', [`%${search}%`])
         .orWhereRaw('LOWER(p.category) LIKE ?', [`%${search}%`])
         .orWhereRaw('LOWER(COALESCE(p.barcode, ?)) LIKE ?', ['', `%${search}%`])
-        .orWhereRaw('LOWER(p.sku) LIKE ?', [`%${search}%`]));
+        .orWhereRaw('LOWER(p.sku) LIKE ?', [`%${search}%`])
+        .orWhereExists(function () {
+          this.select(db.raw('1'))
+            .from('product_stock_variants as search_variant')
+            .whereRaw('search_variant.product_id = p.id')
+            .andWhere(function () {
+              this.whereRaw('LOWER(search_variant.name) LIKE ?', [`%${search}%`])
+                .orWhereRaw('LOWER(search_variant.sku) LIKE ?', [`%${search}%`])
+                .orWhereRaw('LOWER(COALESCE(search_variant.barcode, ?)) LIKE ?', ['', `%${search}%`]);
+            });
+        }));
     }
     if (options.category) baseQuery.andWhere('p.category', options.category);
     if (options.productType) baseQuery.andWhere('p.product_type', options.productType);
