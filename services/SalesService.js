@@ -1448,16 +1448,16 @@ class SalesService {
       ]);
 
       // Keep the sale and its original order number, but send every edited
-      // kitchen order back through preparation with its latest item delta.
+      // kitchen order back to the new-order queue with its latest item delta.
       await trx('sales').where({ id: saleId, shop_id: shopId }).update({
-        order_status: 'preparing',
-        preparing_at: trx.fn.now(),
+        order_status: 'pending',
+        preparing_at: null,
         kitchen_completed_at: null,
         served_at: null,
       });
       await trx('kitchen_order_statuses')
         .where({ sale_id: saleId, shop_id: shopId })
-        .update({ status: 'preparing', updated_at: trx.fn.now() });
+        .update({ status: 'pending', updated_at: trx.fn.now() });
       await trx('kitchen_order_updates').insert({
         sale_id: saleId,
         shop_id: shopId,
