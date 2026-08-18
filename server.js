@@ -170,8 +170,37 @@ app.get("/admin/store-monitoring", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "store-monitoring.html"));
 });
 
-app.get("/api/download-print-agent", (req, res) => {
-  res.download(path.join(__dirname, "print-agent.js"), "print-agent.js");
+app.get("/api/download-print-agent", async (req, res) => {
+  const shopId = Number(req.session?.user?.shop_id);
+  if (!Number.isInteger(shopId) || shopId <= 0) {
+    return res.status(401).json({ error: "Sign in to a shop before downloading its print agent." });
+  }
+
+  const [shop, printers] = await Promise.all([
+    db("shops").where({ id: shopId }).first("id", "name"),
+    db("printers").where({ shop_id: shopId }).orderBy("display_name", "asc").select("system_name"),
+  ]);
+  if (!shop) return res.status(404).json({ error: "Shop not found." });
+
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol;
+  const serverUrl = `${protocol}://${req.get("host")}`;
+  const profile = {
+    websiteName: req.get("host"),
+    shopName: shop.name,
+    shopId: shop.id,
+    serverUrl,
+    printers: printers.map(printer => printer.system_name).filter(Boolean),
+  };
+  const source = await fs.promises.readFile(path.join(__dirname, "print-agent.js"), "utf8");
+  const configuredSource = source.replace(
+    /const AGENT_PROFILE = Object\.freeze\(\{[^\r\n]*\}\);/,
+    `const AGENT_PROFILE = Object.freeze(${JSON.stringify(profile)});`,
+  );
+  const safeShopName = String(shop.name || `shop-${shop.id}`).replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || `shop-${shop.id}`;
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="print-agent-${safeShopName}.js"`);
+  res.send(configuredSource);
 });
 
 // Static assets (js, css, etc.) served after named routes

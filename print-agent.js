@@ -14,18 +14,22 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
-// Add every system printer handled by this agent. Names must exactly match
-// Settings > Printers & Routing. One agent can handle multiple printers.
-const ASSIGNED_PRINTERS = [
-    'BIXOLON SRP-QE302',
-];
+// This profile is replaced automatically when the agent is downloaded from
+// Settings > Printers & Routing. Environment variables remain available for
+// manual deployments and temporary overrides.
+const AGENT_PROFILE = Object.freeze({ websiteName: 'DEVFORGE RMS', shopName: 'Shop 1', shopId: 1, serverUrl: 'http://localhost:4000', printers: ['BIXOLON SRP-QE302'] });
+const WEBSITE_NAME = process.env.WEBSITE_NAME || AGENT_PROFILE.websiteName;
+const SHOP_NAME = process.env.SHOP_NAME || AGENT_PROFILE.shopName;
+const ASSIGNED_PRINTERS = process.env.ASSIGNED_PRINTERS
+    ? process.env.ASSIGNED_PRINTERS.split(',').map(name => name.trim()).filter(Boolean)
+    : AGENT_PROFILE.printers;
 const MAX_JOB_AGE_MS = 10 * 60 * 60 * 1000;
 
 // --- CONFIGURATION ---
 const CONFIG = {
-    SHOP_ID: Number(process.env.SHOP_ID || 1),                         // Change to your Shop ID if different
-    SERVER_URL: process.env.SERVER_URL || 'http://localhost:4000',      // Change to your hosted URL (e.g. https://your-server.com)
-    POLL_INTERVAL_MS: Number(process.env.POLL_INTERVAL_MS || 3000),     // Check for new orders every 3 seconds
+    SHOP_ID: Number(process.env.SHOP_ID || AGENT_PROFILE.shopId),
+    SERVER_URL: process.env.SERVER_URL || AGENT_PROFILE.serverUrl,
+    POLL_INTERVAL_MS: Number(process.env.POLL_INTERVAL_MS || 500),      // Fast polling keeps drawer pulses responsive
     BROWSER_PATH: process.env.PRINT_BROWSER_PATH || '',                // Optional explicit Chrome/Edge/Chromium path
     SUMATRA_PATH: process.env.SUMATRA_PATH || '',                      // Optional explicit SumatraPDF.exe path (Windows only)
     PRINT_TIMEOUT_MS: Number(process.env.PRINT_TIMEOUT_MS || 30000),
@@ -356,7 +360,10 @@ function failJob(id, reason) {
 console.log("==========================================");
 console.log("   RMS SMART PRINT AGENT IS RUNNING      ");
 console.log("==========================================");
+console.log(`Website: ${WEBSITE_NAME}`);
+console.log(`Shop: ${SHOP_NAME}`);
 console.log(`Shop ID: ${CONFIG.SHOP_ID}`);
+console.log(`Server: ${CONFIG.SERVER_URL}`);
 console.log(`Monitoring: ${CONFIG.SERVER_URL}`);
 console.log(`Assigned printers: ${ASSIGNED_PRINTERS.join(', ')}`);
 console.log('Maximum accepted job age: 10 hours');

@@ -4,7 +4,9 @@ const db = require('../db/knex');
 const salesService = require('../services/SalesService');
 const { requireAuth } = require('../middleware/auth');
 
-const POLL_BATCH_SIZE = 10;
+// Claim one job at a time so a newly queued cash-drawer pulse cannot sit behind
+// an already-claimed batch of slow PDF print jobs.
+const POLL_BATCH_SIZE = 1;
 const STALE_PRINTING_JOB_MINUTES = Math.max(1, Number(process.env.PRINT_JOB_STALE_MINUTES || 10));
 
 function isPostgresClient() {
@@ -20,6 +22,9 @@ function rowsFromRaw(result) {
 
 function sortPrintJobs(jobs) {
   return [...jobs].sort((a, b) => {
+    const aDrawer = String(a.content_json || '').includes('"type":"CASH_DRAWER"') ? 0 : 1;
+    const bDrawer = String(b.content_json || '').includes('"type":"CASH_DRAWER"') ? 0 : 1;
+    if (aDrawer !== bDrawer) return aDrawer - bDrawer;
     const aDate = new Date(a.created_at || 0).getTime();
     const bDate = new Date(b.created_at || 0).getTime();
     if (aDate !== bDate) return aDate - bDate;
@@ -75,7 +80,7 @@ async function claimPendingPrintJobs(shopId, printerNames, limit = POLL_BATCH_SI
           SELECT id
           FROM print_queue
           WHERE shop_id = ? AND status = 'pending' AND station_name = ANY(?::text[])
-          ORDER BY created_at ASC, id ASC
+          ORDER BY CASE WHEN content_json LIKE '%"type":"CASH_DRAWER"%' THEN 0 ELSE 1 END, created_at ASC, id ASC
           LIMIT ?
           FOR UPDATE SKIP LOCKED
         )
@@ -103,7 +108,7 @@ async function claimPendingPrintJobs(shopId, printerNames, limit = POLL_BATCH_SI
           FROM print_queue
           WHERE shop_id = ? AND status = 'pending'
             AND station_name IN (${printers.map(() => '?').join(', ')})
-          ORDER BY created_at ASC, id ASC
+          ORDER BY CASE WHEN content_json LIKE '%"type":"CASH_DRAWER"%' THEN 0 ELSE 1 END, created_at ASC, id ASC
           LIMIT ?
         )
         RETURNING *
