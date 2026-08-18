@@ -438,7 +438,7 @@ class SalesService {
     };
   }
 
-  async notifyUpdatedOrder({ saleId, shopId, editorId, recipientIds = [], kitchenIds = [], changes = [] }) {
+  async notifyUpdatedOrder({ saleId, orderNumber, shopId, editorId, recipientIds = [], kitchenIds = [], changes = [] }) {
     try {
       const editor = await db('users').where({ id: editorId, shop_id: shopId }).first();
       if (!editor) return;
@@ -452,8 +452,9 @@ class SalesService {
         ? changes.map(item => `${item.change_action === 'remove' ? 'Remove' : 'Add'} ${item.quantity} x ${item.name}`).join(', ')
         : 'Order details were updated.').slice(0, 3500);
       const editorName = editor.name || editor.username || 'Staff member';
-      const title = `Order #${saleId} updated`;
-      const message = `${editorName} updated order #${saleId}. ${changeSummary}`;
+      const displayOrderNumber = orderNumber || saleId;
+      const title = `Order #${displayOrderNumber} updated`;
+      const message = `${editorName} updated order #${displayOrderNumber}. ${changeSummary}`;
 
       for (const kitchenId of [...new Set(kitchenIds.map(Number).filter(Boolean))]) {
         const kitchen = await db('users')
@@ -1484,6 +1485,7 @@ class SalesService {
     });
     await this.notifyUpdatedOrder({
       saleId,
+      orderNumber: result.orderNumber,
       shopId,
       editorId: userId,
       recipientIds: result._notification.recipientIds,
