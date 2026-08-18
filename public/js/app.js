@@ -5160,7 +5160,7 @@ async function renderPOSOrdersNow() {
     }
 
     if (searchQuery) {
-      filteredOrders = filteredOrders.filter(o => String(o.id).includes(searchQuery));
+      filteredOrders = filteredOrders.filter(o => String(o.order_number || o.id).includes(searchQuery));
     }
 
     filteredOrders = filteredOrders.slice(0, 50);
@@ -5535,7 +5535,7 @@ async function saveDeliveryOrderInfo(id, nextStatus = null) {
 
 async function editOrder(id) {
   if (!currentUserHasPermission('orders.update')) return toast('You do not have permission to edit orders.', 'error');
-  showAppLoader('Opening order editor', `Loading order #${id} and menu items...`);
+  showAppLoader('Opening order editor', 'Loading order and menu items...');
   try {
     if (!allProducts || allProducts.length === 0) {
       const products = await api("/api/products");
@@ -5574,6 +5574,7 @@ async function editOrder(id) {
 }
 
 function renderEditOrderModal(id) {
+  const displayOrderNumber = _tempEditSaleDetails?.order_number || id;
   const itemsHtml = _tempEditCart.map((item, index) => `
     <div class="flex items-center justify-between py-4 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 px-2 rounded-xl transition-all group">
       <div class="flex items-center gap-4">
@@ -5604,7 +5605,7 @@ function renderEditOrderModal(id) {
     </div>
   `).join('');
 
-  openModal(`Edit Order #${id}`, `
+  openModal(`Edit Order #${displayOrderNumber}`, `
     <div class="space-y-6">
       <div class="p-1 px-1 bg-slate-50 dark:bg-slate-900/50 rounded-2xl">
         <button onclick="proceedToPOSUpdate(${id})" class="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-[0.2em] shadow-xl shadow-indigo-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3">
@@ -5690,7 +5691,7 @@ function proceedToPOSUpdate(id) {
     
     renderCart();
     calculateCartTotal();
-    toast(`Editing Order #${id} in POS`, "info");
+    toast(`Editing Order #${_tempEditSaleDetails?.order_number || id} in POS`, "info");
   }, 100);
 }
 
@@ -6916,7 +6917,7 @@ function calculateCartTotal() {
 
   if (checkoutBtn && !_posCheckoutSubmitting) {
     if (_editingOrderId) {
-      checkoutBtn.innerHTML = `<span>Update Order #${_editingOrderId}</span>`;
+      checkoutBtn.innerHTML = `<span>Update Order #${_tempEditSaleDetails?.order_number || _editingOrderId}</span>`;
       checkoutBtn.className = `${compactAction ? "py-1 text-xs h-9 rounded-xl gap-2" : "py-4 text-xl h-20 rounded-2xl gap-3"} bg-amber-500 hover:bg-amber-400 text-white font-black shadow-2xl transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center w-full`;
     } else {
       checkoutBtn.innerHTML = `<span>Place Order</span>`;
@@ -6926,7 +6927,7 @@ function calculateCartTotal() {
 
   if (kitchenBtn && !_posCheckoutSubmitting) {
     kitchenBtn.innerHTML = _editingOrderId
-      ? `<span>Update Kitchen #${_editingOrderId}</span>`
+      ? `<span>Update Kitchen #${_tempEditSaleDetails?.order_number || _editingOrderId}</span>`
       : `<span>Kitchen</span>`;
   }
 
@@ -7697,7 +7698,7 @@ async function printBill(saleId, isUnpaid = false) {
     <hr class="divider" />
 
     <div style="font-size: 10px;">
-      <strong>Bill #:</strong> ${sale.id}<br>
+      <strong>Bill #:</strong> ${sale.order_number || sale.id}<br>
       <strong>Date:</strong> ${new Date(sale.created_at).toLocaleString()}<br>
       <strong>Staff:</strong> ${seller ? seller.name : "Staff"}<br>
       <strong>Customer:</strong> ${sale.customer_name || "Walk-in"}<br>
@@ -8215,13 +8216,13 @@ function _renderSalesTable() {
     // Filter by Search Query
     if (query) {
       displayList = displayList.filter((s) => {
-        const id = (s.id || "").toString().toLowerCase();
+        const orderNumber = (s.order_number || s.id || "").toString().toLowerCase();
         const name = (s.customer_name || "").toLowerCase();
         const phone = (s.customer_phone || "").toLowerCase();
         const sellerName = (s.served_by_name || "").toLowerCase();
         const sellerUser = (s.served_by_username || "").toLowerCase();
         return (
-          id.includes(query) ||
+          orderNumber.includes(query) ||
           name.includes(query) ||
           phone.includes(query) ||
           sellerName.includes(query) ||
