@@ -3,6 +3,7 @@ const customerService = require('./CustomerService');
 const notificationService = require('./NotificationService');
 const pushNotificationService = require('./PushNotificationService');
 const infrastructureService = require('./InfrastructureService');
+const cashDrawerService = require('./CashDrawerService');
 const { z } = require('zod');
 
 // Validation Schemas
@@ -1013,6 +1014,7 @@ class SalesService {
 
       // 7. Automatic Kitchen/Station Printing
       const printResult = await this.generatePrintJobs(saleId, resolvedItems, shopId, trx);
+      await cashDrawerService.queueForPaidCompletedSale(saleId, shopId, trx);
 
       return {
         saleId,
@@ -1555,6 +1557,11 @@ class SalesService {
       if (!activeShift) throw new Error('You must open a register shift to collect payments.');
 
       await trx('sales').where({ id: saleId }).update(updateData);
+
+      if (finalAmount >= saleTotal - 0.01 && sale.order_status === 'completed' && paymentMethod === 'cash') {
+        await trx('sales').where({ id: saleId }).update({ payment_method: paymentMethod });
+        await cashDrawerService.queueForPaidCompletedSale(saleId, shopId, trx);
+      }
 
       if (sale.customer_id) {
         const prevDue = Number(sale.total || 0) - Number(sale.amount_received || 0);

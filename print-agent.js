@@ -29,6 +29,7 @@ const CONFIG = {
     BROWSER_PATH: process.env.PRINT_BROWSER_PATH || '',                // Optional explicit Chrome/Edge/Chromium path
     SUMATRA_PATH: process.env.SUMATRA_PATH || '',                      // Optional explicit SumatraPDF.exe path (Windows only)
     PRINT_TIMEOUT_MS: Number(process.env.PRINT_TIMEOUT_MS || 30000),
+    CASH_DRAWER_PIN: Number(process.env.CASH_DRAWER_PIN || 0),          // 0 = drawer pin 2, 1 = drawer pin 5
 };
 
 let isPolling = false;
@@ -105,6 +106,18 @@ async function processJob(job) {
         : printerName;
     console.log(`Printing Job #${job.id} to printer: ${targetLabel}${itemCount ? ` (${itemCount} item lines)` : ''}`);
 
+    if (content.type === 'CASH_DRAWER') {
+        try {
+            await openCashDrawer(printerName);
+            console.log(`Cash drawer pulse sent through ${printerName}.`);
+            await confirmJob(job.id);
+        } catch (error) {
+            console.error(`Cash Drawer Failed: ${error.message}`);
+            await failJob(job.id, error.message);
+        }
+        return;
+    }
+
     if (content.print_url || content.type === 'PRINT_URL') {
         try {
             await printUrlJob(job, content, printerName);
@@ -163,6 +176,29 @@ async function processJob(job) {
         await failJob(job.id, error.message);
     } finally {
         setTimeout(() => { if(fs.existsSync(tempFile)) fs.unlinkSync(tempFile); }, 1000);
+    }
+}
+
+async function openCashDrawer(printerName) {
+    const pin = CONFIG.CASH_DRAWER_PIN === 1 ? 1 : 0;
+    const pulse = Buffer.from([0x1b, 0x70, pin, 0x19, 0xfa]);
+
+    if (process.platform === 'win32') {
+        const printerBase64 = Buffer.from(printerName, 'utf8').toString('base64');
+        const dataBase64 = pulse.toString('base64');
+        const script = `$src='using System;using System.Runtime.InteropServices;public class RawPrinter{[StructLayout(LayoutKind.Sequential,CharSet=CharSet.Ansi)]public class DOCINFO{[MarshalAs(UnmanagedType.LPStr)]public string pDocName;[MarshalAs(UnmanagedType.LPStr)]public string pOutputFile;[MarshalAs(UnmanagedType.LPStr)]public string pDataType;}[DllImport("winspool.Drv",EntryPoint="OpenPrinterA",SetLastError=true,CharSet=CharSet.Ansi)]public static extern bool OpenPrinter(string n,out IntPtr h,IntPtr d);[DllImport("winspool.Drv",SetLastError=true)]public static extern bool ClosePrinter(IntPtr h);[DllImport("winspool.Drv",SetLastError=true,CharSet=CharSet.Ansi)]public static extern bool StartDocPrinter(IntPtr h,int l,[In]DOCINFO d);[DllImport("winspool.Drv",SetLastError=true)]public static extern bool EndDocPrinter(IntPtr h);[DllImport("winspool.Drv",SetLastError=true)]public static extern bool StartPagePrinter(IntPtr h);[DllImport("winspool.Drv",SetLastError=true)]public static extern bool EndPagePrinter(IntPtr h);[DllImport("winspool.Drv",SetLastError=true)]public static extern bool WritePrinter(IntPtr h,IntPtr b,int c,out int w);}';Add-Type -TypeDefinition $src;$n=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${printerBase64}'));$b=[Convert]::FromBase64String('${dataBase64}');$h=[IntPtr]::Zero;if(-not [RawPrinter]::OpenPrinter($n,[ref]$h,[IntPtr]::Zero)){throw 'Cannot open printer'};try{$d=New-Object RawPrinter+DOCINFO;$d.pDocName='RMS Cash Drawer';$d.pDataType='RAW';if(-not [RawPrinter]::StartDocPrinter($h,1,$d)){throw 'Cannot start raw print job'};try{[RawPrinter]::StartPagePrinter($h)|Out-Null;$p=[Runtime.InteropServices.Marshal]::AllocHGlobal($b.Length);try{[Runtime.InteropServices.Marshal]::Copy($b,0,$p,$b.Length);$w=0;if(-not [RawPrinter]::WritePrinter($h,$p,$b.Length,[ref]$w)-or $w-ne $b.Length){throw 'Drawer pulse was not fully written'}}finally{[Runtime.InteropServices.Marshal]::FreeHGlobal($p)};[RawPrinter]::EndPagePrinter($h)|Out-Null}finally{[RawPrinter]::EndDocPrinter($h)|Out-Null}}finally{[RawPrinter]::ClosePrinter($h)|Out-Null}`;
+        await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: CONFIG.PRINT_TIMEOUT_MS });
+        return;
+    }
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rms-drawer-'));
+    const pulseFile = path.join(tempDir, 'drawer.bin');
+    try {
+        fs.writeFileSync(pulseFile, pulse);
+        await execFileAsync('lp', ['-d', printerName, '-o', 'raw', pulseFile], { timeout: CONFIG.PRINT_TIMEOUT_MS });
+    } finally {
+        try { if (fs.existsSync(pulseFile)) fs.unlinkSync(pulseFile); } catch (_) {}
+        try { if (fs.existsSync(tempDir)) fs.rmdirSync(tempDir); } catch (_) {}
     }
 }
 

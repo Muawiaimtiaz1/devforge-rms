@@ -1,6 +1,7 @@
 const db = require('../db/knex');
 const notificationService = require('./NotificationService');
 const pushNotificationService = require('./PushNotificationService');
+const cashDrawerService = require('./CashDrawerService');
 let kitchenSchemaReady;
 let tableAccessSchemaReady;
 
@@ -460,6 +461,7 @@ class InfrastructureService {
       await db('sales')
         .where({ id: saleId, shop_id: shopId })
         .update(updateData);
+      await cashDrawerService.queueForPaidCompletedSale(saleId, shopId);
 
       if (sale && sale.table_id) {
         const otherActiveOrder = await db('sales')
