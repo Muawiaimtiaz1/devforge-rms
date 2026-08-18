@@ -225,13 +225,25 @@ class InfrastructureService {
       .leftJoin('tables as t', 's.table_id', 't.id')
       .leftJoin('users as u', 's.waiter_id', 'u.id')
       .leftJoin('users as cb', 's.user_id', 'cb.id')
-      .leftJoin('kitchen_order_updates as kou', 's.id', 'kou.sale_id')
       .where('s.shop_id', shopId)
       .select(
         's.id', 's.order_number', 's.user_id as punched_by_user_id', 's.kitchen_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
         's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',
         't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username',
-        'kou.changes_json as kitchen_changes', 'kou.updated_at as kitchen_updated_at'
+        db.raw(`(
+          SELECT kou.changes_json
+          FROM kitchen_order_updates kou
+          WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id
+          ORDER BY kou.updated_at DESC
+          LIMIT 1
+        ) as kitchen_changes`),
+        db.raw(`(
+          SELECT kou.updated_at
+          FROM kitchen_order_updates kou
+          WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id
+          ORDER BY kou.updated_at DESC
+          LIMIT 1
+        ) as kitchen_updated_at`)
       );
 
     let effectiveStatusSql = 's.order_status';

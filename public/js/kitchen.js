@@ -738,7 +738,7 @@ function kdsCompletedDateRange(period) {
 }
 
 function paintKDSWorkflow() {
-  const matchesSearch = order => !_kdsOrderSearch || String(order.id).includes(_kdsOrderSearch);
+  const matchesSearch = order => !_kdsOrderSearch || String(order.order_number || order.id).includes(_kdsOrderSearch);
   const matchesType = order => !_kdsOrderType || order.order_type === _kdsOrderType;
   const pending = _kdsOrdersCache.filter(order => order.order_status === 'pending' && matchesSearch(order) && matchesType(order));
   const preparing = _kdsOrdersCache.filter(order => order.order_status === 'preparing' && matchesSearch(order) && matchesType(order));
@@ -825,7 +825,7 @@ function renderKDSQueueCard(order, position) {
   const canStart = currentUserHasPermission('kitchen_orders.update_status');
   const displayOrderNumber = order.order_number || order.id;
   return `<article class="snap-start shrink-0 w-[86vw] sm:w-[340px] rounded-2xl border-2 border-amber-200 dark:border-amber-900/50 bg-white dark:bg-slate-900 p-4 shadow-sm">
-    <div class="flex justify-between items-start gap-3"><div class="flex items-center gap-3"><span class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-lg font-black">${position}</span><div><div class="font-black text-slate-900 dark:text-white">Order #${displayOrderNumber}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div></div></div>${kdsOrderTimer(order)}</div>
+    <div class="flex justify-between items-start gap-3"><div class="flex items-center gap-3"><span class="min-w-10 h-10 px-2 rounded-xl bg-amber-500 text-white flex items-center justify-center text-base font-black">#${displayOrderNumber}</span><div><div class="font-black text-slate-900 dark:text-white">Queue position ${position}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div></div></div>${kdsOrderTimer(order)}</div>
     <div class="mt-4 space-y-2 border-y border-slate-100 dark:border-slate-800 py-3">${kdsItemsPreview(order)}</div>
     <div class="mt-3 grid grid-cols-2 gap-2"><button onclick="showKDSOrderModal(${order.id})" class="py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-black">Details</button>${canStart ? `<button onclick="updateKDSStatus(${order.id}, 'preparing')" class="py-2.5 rounded-xl bg-orange-500 text-white text-xs font-black">Start Preparing</button>` : ''}</div>
   </article>`;
