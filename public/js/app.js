@@ -7456,6 +7456,8 @@ function getReceiptPrintUrl(saleId, format = RECEIPT_FORMATS.CUSTOMER, autoPrint
   });
   const shopId = managedShopId || currentUser?.shop_id;
   if (shopId) params.set("shop_id", shopId);
+  const systemTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (systemTimeZone) params.set("timezone", systemTimeZone);
   return `/print/sales/${encodeURIComponent(saleId)}?${params.toString()}`;
 }
 

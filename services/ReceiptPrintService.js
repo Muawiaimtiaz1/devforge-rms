@@ -30,6 +30,39 @@ function formatMoney(value) {
   return Number(value || 0).toFixed(0);
 }
 
+function receiptTimeZone(value) {
+  const candidate = String(value || process.env.APP_TIME_ZONE || "").trim();
+  if (!candidate) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function receiptDate(value) {
+  if (value instanceof Date) return value;
+  const text = String(value || "").trim();
+  // SQLite datetime('now') is UTC but omits the timezone suffix.
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text)
+    ? `${text.replace(" ", "T")}Z`
+    : text;
+  return new Date(normalized);
+}
+
+function formatReceiptDateTime(value, timeZone) {
+  return receiptDate(value).toLocaleString(undefined, { timeZone: receiptTimeZone(timeZone) });
+}
+
+function formatReceiptTime(value, timeZone) {
+  return receiptDate(value).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: receiptTimeZone(timeZone),
+  });
+}
+
 function formatOrderType(type) {
   if (type === "dine_in") return "Dine-in";
   if (type === "takeaway") return "Takeaway";
@@ -153,7 +186,7 @@ function renderCustomerReceipt(details, options) {
 
       <div style="font-size: 10px;">
         <strong>Bill #:</strong> ${escapeHtml(sale.order_number || sale.id)}<br>
-        <strong>Date:</strong> ${escapeHtml(new Date(sale.created_at).toLocaleString())}<br>
+        <strong>Date:</strong> ${escapeHtml(formatReceiptDateTime(sale.created_at, options.timeZone))}<br>
         <strong>Staff:</strong> ${escapeHtml(seller ? seller.name : "Staff")}<br>
         <strong>Customer:</strong> ${escapeHtml(sale.customer_name || "Walk-in")}<br>
         ${sale.customer_phone ? `<strong>Phone:</strong> ${escapeHtml(sale.customer_phone)}<br>` : ""}
@@ -221,7 +254,7 @@ function renderItemDetails(item) {
   return "";
 }
 
-function renderKitchenReceipt(details) {
+function renderKitchenReceipt(details, options = {}) {
   const { sale, items } = details;
   const kitchenName = String(details.kitchen_route_label || sale.kitchen_name || "Kitchen").replace(/^Kitchen:\s*/i, "");
   const isUpdate = !!details.is_update;
@@ -237,7 +270,7 @@ function renderKitchenReceipt(details) {
         <div class="bold" style="font-size: 14px;">${escapeHtml(formatOrderType(sale.order_type).toUpperCase())}</div>
         ${sale.table_id ? `<div class="bold" style="font-size: 16px;">TABLE: ${escapeHtml(sale.table_number || "N/A")}</div>` : ""}
         ${sale.token_number ? `<div class="bold" style="font-size: 16px;">TOKEN: ${escapeHtml(sale.token_number)}</div>` : ""}
-        <div style="margin-top: 3px;">Time: ${escapeHtml(new Date(sale.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</div>
+        <div style="margin-top: 3px;">Time: ${escapeHtml(formatReceiptTime(sale.created_at, options.timeZone))}</div>
       </div>
 
       <table>
@@ -273,7 +306,7 @@ function renderKitchenReceipt(details) {
       ` : ""}
 
       <div class="footer">
-        Generated at ${escapeHtml(new Date().toLocaleTimeString())}
+        Generated at ${escapeHtml(formatReceiptTime(new Date(), options.timeZone))}
       </div>
     </div>
   `;

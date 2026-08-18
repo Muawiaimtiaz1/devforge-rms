@@ -96,6 +96,7 @@ router.get("/jobs/:id", async (req, res) => {
     format,
     baseUrl: getRequestBaseUrl(req),
     autoPrint: req.query.autoprint !== "0",
+    timeZone: req.query.timezone,
   });
 
   res.type("html").send(html);
@@ -123,6 +124,7 @@ router.get("/sales/:id", async (req, res) => {
     format,
     baseUrl: getRequestBaseUrl(req),
     autoPrint: req.query.autoprint !== "0",
+    timeZone: req.query.timezone,
   });
 
   res.type("html").send(html);

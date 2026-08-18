@@ -208,8 +208,10 @@ async function openCashDrawer(printerName) {
 
 function resolvePrintUrl(printUrl) {
     if (!printUrl) throw new Error("Missing print_url in job content.");
-    if (/^https?:\/\//i.test(printUrl)) return printUrl;
-    return new URL(printUrl, CONFIG.SERVER_URL).toString();
+    const url = new URL(printUrl, CONFIG.SERVER_URL);
+    const systemTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (systemTimeZone && !url.searchParams.has('timezone')) url.searchParams.set('timezone', systemTimeZone);
+    return url.toString();
 }
 
 function commandExists(command) {
