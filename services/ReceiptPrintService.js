@@ -31,7 +31,7 @@ function formatMoney(value) {
 }
 
 function receiptTimeZone(value) {
-  const candidate = String(value || process.env.APP_TIME_ZONE || "").trim();
+  const candidate = String(value || process.env.APP_TIME_ZONE || "Asia/Karachi").trim();
   if (!candidate) return undefined;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date());
