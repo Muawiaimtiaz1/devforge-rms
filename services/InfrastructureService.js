@@ -218,19 +218,61 @@ class InfrastructureService {
   }
 
   // --- Kitchen Display System (KDS) ---
-  async listActiveKitchenOrders(shopId, kitchenUserId = null) {
+  async listActiveKitchenOrders(shopId, kitchenUserId = null, options = {}) {
     await ensureKitchenWorkflowSchema();
+    const view = ['new', 'preparing', 'completed'].includes(options.view) ? options.view : 'all';
     const query = db('sales as s')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .leftJoin('users as u', 's.waiter_id', 'u.id')
       .leftJoin('users as cb', 's.user_id', 'cb.id')
+      .leftJoin('kitchen_order_updates as kou', 's.id', 'kou.sale_id')
       .where('s.shop_id', shopId)
-      .whereIn('s.order_status', ['pending', 'preparing', 'ready', 'served', 'completed'])
       .select(
         's.id', 's.order_number', 's.user_id as punched_by_user_id', 's.kitchen_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
         's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',
-        't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username'
+        't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username',
+        'kou.changes_json as kitchen_changes', 'kou.updated_at as kitchen_updated_at'
       );
+
+    let effectiveStatusSql = 's.order_status';
+    if (kitchenUserId) {
+      query.leftJoin('kitchen_order_statuses as selected_kos', function () {
+        this.on('selected_kos.sale_id', '=', 's.id')
+          .andOn('selected_kos.kitchen_id', '=', db.raw('?', [kitchenUserId]));
+      });
+      effectiveStatusSql = `CASE
+        WHEN s.order_status IN ('ready', 'served', 'completed') THEN s.order_status
+        WHEN selected_kos.status = 'completed' THEN 'ready'
+        ELSE COALESCE(selected_kos.status, s.order_status)
+      END`;
+    }
+
+    if (view === 'new') query.whereRaw(`${effectiveStatusSql} = ?`, ['pending']);
+    else if (view === 'preparing') query.whereRaw(`${effectiveStatusSql} = ?`, ['preparing']);
+    else if (view === 'completed') {
+      query.whereRaw(`${effectiveStatusSql} IN (?, ?, ?)`, ['ready', 'served', 'completed']);
+      const period = ['today', 'yesterday', '7days', '30days', 'all'].includes(options.completedPeriod)
+        ? options.completedPeriod
+        : 'today';
+      if (period !== 'all') {
+        const requestedStart = new Date(options.completedFrom || '');
+        const requestedEnd = new Date(options.completedTo || '');
+        const hasValidRange = Number.isFinite(requestedStart.getTime()) && Number.isFinite(requestedEnd.getTime()) && requestedStart < requestedEnd;
+        const now = new Date();
+        const start = hasValidRange ? requestedStart : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end = hasValidRange ? requestedEnd : new Date(start.getTime() + 86400000);
+        if (!hasValidRange) {
+          if (period === 'yesterday') {
+            start.setDate(start.getDate() - 1);
+            end.setDate(end.getDate() - 1);
+          } else if (period === '7days') start.setDate(start.getDate() - 6);
+          else if (period === '30days') start.setDate(start.getDate() - 29);
+        }
+        query.whereRaw('COALESCE(s.kitchen_completed_at, s.updated_at, s.created_at) >= ?', [start])
+          .andWhereRaw('COALESCE(s.kitchen_completed_at, s.updated_at, s.created_at) < ?', [end]);
+      }
+    }
+    else query.whereIn('s.order_status', ['pending', 'preparing', 'ready', 'served', 'completed']);
 
     const orders = await query.orderBy('s.created_at', 'asc');
     const hasRouteTargets = await db.schema.hasColumn('product_categories', 'route_targets');
@@ -325,6 +367,18 @@ class InfrastructureService {
         variants: typeof item.variants_json === 'string' ? JSON.parse(item.variants_json) : (item.variants_json || null),
         addons: typeof item.addons_json === 'string' ? JSON.parse(item.addons_json) : (item.addons_json || null)
       }));
+      try {
+        const changes = Array.isArray(order.kitchen_changes)
+          ? order.kitchen_changes
+          : JSON.parse(order.kitchen_changes || '[]');
+        order.kitchen_changes = changes.filter(change => {
+          if (!kitchenUserId) return true;
+          const targets = categoryRouteMap.get(String(change.product_category || '').trim()) || [];
+          return !targets.some(route => route.startsWith('KITCHEN:')) || targets.includes(kitchenRouteKey);
+        });
+      } catch (_) {
+        order.kitchen_changes = [];
+      }
       visibleOrders.push(order);
     }
 

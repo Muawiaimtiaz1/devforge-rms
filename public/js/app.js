@@ -238,6 +238,9 @@ let _posAllTables = [];
 let _posTableSelectionView = "map";
 let _posActiveOrders = [];
 let _posOrdersLoadPromise = null;
+let _posOrdersRenderPromise = null;
+let _posOrdersPollingTimer = null;
+const POS_ORDERS_POLL_INTERVAL_MS = 60 * 1000;
 let _expenseCategories = [];
 let _productCategories = [];
 let _kdsOrdersCache = [];
@@ -879,6 +882,8 @@ function navigate(page, options = {}) {
     )
       return false;
   }
+
+  if (page !== "pos") stopPOSOrdersPolling();
 
   if (page === "pos" && !_editingOrderId) {
     window._posEntryOrderType = null;
@@ -4135,6 +4140,7 @@ async function openPOSOrdersView() {
 }
 
 function returnToPOSOrderTypeSelection() {
+  stopPOSOrdersPolling();
   closePOSCheckout(true);
   closePOSMobileCategories();
   cart = [];
@@ -4152,6 +4158,7 @@ function returnToPOSOrderTypeSelection() {
 }
 
 function startFreshPOSOrder() {
+  stopPOSOrdersPolling();
   window._posEntryOrderType = null;
   cart = [];
   _posSelectedCustomer = null;
@@ -4833,8 +4840,11 @@ function switchOrderType(type) {
     closePOSCheckout(true);
     if (contentGrid) contentGrid.classList.add('hidden');
     if (ordersContainer) ordersContainer.classList.remove('hidden');
-    return renderPOSOrders();
+    const refresh = renderPOSOrders();
+    startPOSOrdersPolling();
+    return refresh;
   } else {
+    stopPOSOrdersPolling();
     if (contentGrid) contentGrid.classList.remove('hidden');
     if (ordersContainer) ordersContainer.classList.add('hidden');
     if (dineEl) dineEl.classList.toggle('hidden', type !== 'dine_in' || isRetail);
@@ -5094,7 +5104,38 @@ function configuredOrderItemName(baseName, variants, addons) {
   return `${baseName || "Item"}${variantNames.length ? ` ${variantNames.join(" ")}` : ""}${addonNames.length ? ` — ${addonNames.join(", ")} (Add-ons)` : ""}`;
 }
 
+function isPOSOrdersViewActive() {
+  const ordersContainer = $c('pos-orders-container');
+  return _currentPage === 'pos' && ordersContainer && !ordersContainer.classList.contains('hidden');
+}
+
+function stopPOSOrdersPolling() {
+  if (_posOrdersPollingTimer) clearTimeout(_posOrdersPollingTimer);
+  _posOrdersPollingTimer = null;
+}
+
+function startPOSOrdersPolling() {
+  stopPOSOrdersPolling();
+  if (!isPOSOrdersViewActive() || document.hidden) return;
+  _posOrdersPollingTimer = setTimeout(async () => {
+    _posOrdersPollingTimer = null;
+    if (!isPOSOrdersViewActive() || document.hidden) return;
+    await renderPOSOrders();
+    startPOSOrdersPolling();
+  }, POS_ORDERS_POLL_INTERVAL_MS);
+}
+
 async function renderPOSOrders() {
+  if (_posOrdersRenderPromise) return _posOrdersRenderPromise;
+  _posOrdersRenderPromise = renderPOSOrdersNow();
+  try {
+    return await _posOrdersRenderPromise;
+  } finally {
+    _posOrdersRenderPromise = null;
+  }
+}
+
+async function renderPOSOrdersNow() {
   const tbody = $c('pos-orders-table-body');
   const cards = $c('pos-orders-cards');
   if (!tbody) return;
@@ -5202,6 +5243,17 @@ async function renderPOSOrders() {
     tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-20 text-center text-rose-500">Failed to load orders: ${e.message}</td></tr>`;
   }
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopPOSOrdersPolling();
+    return;
+  }
+  if (!isPOSOrdersViewActive()) return;
+  void renderPOSOrders().finally(startPOSOrdersPolling);
+});
+
+window.addEventListener('beforeunload', stopPOSOrdersPolling);
 
 function ordersViewPreference() {
   return localStorage.getItem('orders_view') === 'table' ? 'table' : 'cards';

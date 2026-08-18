@@ -1428,6 +1428,16 @@ class SalesService {
 
       // 8. Print only the item quantity changes to affected kitchen routes.
       const itemChanges = this.calculateOrderItemChanges(oldItems, resolvedItems);
+      const kitchenChanges = itemChanges.map(item => ({
+        name: item.name,
+        product_id: item.product?.id || item.product_id || null,
+        product_category: item.product?.category || item.product_category || null,
+        quantity: Number(item.quantity || 0),
+        change_action: item.change_action,
+        variants: (() => { try { return typeof item.variants_json === 'string' ? JSON.parse(item.variants_json) : (item.variants_json || item.variants || []); } catch (_) { return []; } })(),
+        addons: (() => { try { return typeof item.addons_json === 'string' ? JSON.parse(item.addons_json) : (item.addons_json || item.addons || []); } catch (_) { return []; } })(),
+        special_instructions: item.special_instructions || null,
+      }));
       const printResult = itemChanges.length
         ? await this.generatePrintJobs(saleId, itemChanges, shopId, trx, { isUpdate: true })
         : { queued: 0, printer_configured: true };
@@ -1436,6 +1446,28 @@ class SalesService {
         this.getKitchenIdsForItems(trx, sale, oldItems, shopId),
         this.getKitchenIdsForItems(trx, updatedSaleForRouting, resolvedItems, shopId),
       ]);
+
+      // Keep the sale and its original order number, but send every edited
+      // kitchen order back through preparation with its latest item delta.
+      await trx('sales').where({ id: saleId, shop_id: shopId }).update({
+        order_status: 'preparing',
+        preparing_at: trx.fn.now(),
+        kitchen_completed_at: null,
+        served_at: null,
+      });
+      await trx('kitchen_order_statuses')
+        .where({ sale_id: saleId, shop_id: shopId })
+        .update({ status: 'preparing', updated_at: trx.fn.now() });
+      await trx('kitchen_order_updates').insert({
+        sale_id: saleId,
+        shop_id: shopId,
+        changes_json: JSON.stringify(kitchenChanges),
+        updated_at: trx.fn.now(),
+      }).onConflict('sale_id').merge({
+        shop_id: shopId,
+        changes_json: JSON.stringify(kitchenChanges),
+        updated_at: trx.fn.now(),
+      });
 
       return {
         saleId,

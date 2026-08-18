@@ -632,6 +632,27 @@ CREATE INDEX IF NOT EXISTS idx_print_queue_shop_id ON print_queue(shop_id);
 CREATE INDEX IF NOT EXISTS idx_print_queue_status ON print_queue(status);
 CREATE INDEX IF NOT EXISTS idx_print_queue_claimed_at ON print_queue(claimed_at);
 
+CREATE TABLE IF NOT EXISTS kitchen_order_updates (
+  sale_id INTEGER PRIMARY KEY REFERENCES sales(id) ON DELETE CASCADE,
+  shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  changes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kitchen_order_updates_shop_id ON kitchen_order_updates(shop_id);
+
+CREATE TABLE IF NOT EXISTS kitchen_order_statuses (
+  id SERIAL PRIMARY KEY,
+  shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  kitchen_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (sale_id, kitchen_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_kitchen_order_statuses_shop_id ON kitchen_order_statuses(shop_id);
+
 CREATE TABLE IF NOT EXISTS printers (
   id SERIAL PRIMARY KEY,
   shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,

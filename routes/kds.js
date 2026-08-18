@@ -7,7 +7,12 @@ const router = express.Router();
 router.get("/", requireAuth, async (req, res) => {
   const shopId = req.session.user.shop_id;
   const kitchenId = req.session.user.role === 'kitchen' ? req.session.user.id : null;
-  const orders = await infraService.listActiveKitchenOrders(shopId, kitchenId);
+  const orders = await infraService.listActiveKitchenOrders(shopId, kitchenId, {
+    view: req.query.view,
+    completedPeriod: req.query.period,
+    completedFrom: req.query.from,
+    completedTo: req.query.to,
+  });
   res.json(orders);
 });
 
