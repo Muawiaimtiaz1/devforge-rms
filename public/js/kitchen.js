@@ -815,11 +815,14 @@ function filterInventoryCatalog() {
   });
 }
 
-const searchInventoryCatalog = debounce(() => {
-  const query = (document.getElementById('inventory-catalog-search')?.value || '').trim();
-  window._inventoryCatalogSearch = query;
-  renderRawStock(1, 1, query);
-}, 300);
+function searchInventoryCatalog() {
+  clearTimeout(window._inventoryCatalogSearchTimer);
+  window._inventoryCatalogSearchTimer = setTimeout(() => {
+    const query = (document.getElementById('inventory-catalog-search')?.value || '').trim();
+    window._inventoryCatalogSearch = query;
+    renderRawStock(1, 1, query);
+  }, 300);
+}
 
 function toggleInventoryVariantDetails(variantId) {
   document.getElementById(`inventory-variant-${variantId}`)?.classList.toggle('hidden');
