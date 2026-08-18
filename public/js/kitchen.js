@@ -188,6 +188,7 @@ async function updateKDSStatus(id, status) {
 const INVENTORY_CATALOG_PAGE_SIZE = 12;
 let _inventoryIngredientPage = 1;
 let _inventoryStockProductPage = 1;
+let _inventoryCatalogRenderRequest = 0;
 
 function inventoryCatalogPaginationHtml(kind, pagination) {
   if (!pagination || !Number(pagination.total)) return '';
@@ -209,43 +210,46 @@ function inventoryCatalogPaginationHtml(kind, pagination) {
 
 function changeInventoryIngredientPage(page) {
   _inventoryIngredientPage = Math.max(1, Number(page) || 1);
-  renderRawStock(_inventoryIngredientPage, _inventoryStockProductPage);
+  renderRawStock(_inventoryIngredientPage, _inventoryStockProductPage, window._inventoryCatalogSearch || '');
 }
 
 function changeInventoryStockProductPage(page) {
   _inventoryStockProductPage = Math.max(1, Number(page) || 1);
-  renderRawStock(_inventoryIngredientPage, _inventoryStockProductPage);
+  renderRawStock(_inventoryIngredientPage, _inventoryStockProductPage, window._inventoryCatalogSearch || '');
 }
 
 async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search = '') {
+  const renderRequest = ++_inventoryCatalogRenderRequest;
   const content = document.getElementById("page-content");
   const normalizedSearch = String(search || '').trim();
   const existingSearchInput = document.getElementById('inventory-catalog-search');
+  const updateResultsOnly = Boolean(existingSearchInput);
   const searchWasFocused = document.activeElement === existingSearchInput;
   const searchCaret = searchWasFocused ? existingSearchInput.selectionStart : null;
-  content.innerHTML = '<div class="flex items-center justify-center h-40 text-slate-600">Loading Ingredients…</div>';
+  if (!updateResultsOnly) {
+    content.innerHTML = '<div class="flex items-center justify-center h-40 text-slate-600">Loading Ingredients…</div>';
+  }
 
   try {
-    const rawStockUrl = normalizedSearch
-      ? '/api/raw-stock'
-      : `/api/raw-stock?paginate=1&page=${encodeURIComponent(ingredientPage)}&page_size=${INVENTORY_CATALOG_PAGE_SIZE}`;
-    const productParams = new URLSearchParams({ product_type: 'stock_based', exclude_components: '1' });
-    if (normalizedSearch) productParams.set('search', normalizedSearch);
-    else {
-      productParams.set('paginate', '1');
-      productParams.set('page', String(stockProductPage));
-      productParams.set('page_size', String(INVENTORY_CATALOG_PAGE_SIZE));
+    const rawStockParams = new URLSearchParams({
+      paginate: '1', page: String(ingredientPage), page_size: String(INVENTORY_CATALOG_PAGE_SIZE)
+    });
+    const productParams = new URLSearchParams({
+      paginate: '1', page: String(stockProductPage), page_size: String(INVENTORY_CATALOG_PAGE_SIZE),
+      product_type: 'stock_based', exclude_components: '1'
+    });
+    if (normalizedSearch) {
+      rawStockParams.set('search', normalizedSearch);
+      productParams.set('search', normalizedSearch);
     }
     const [rawStockResponse, productResponse] = await Promise.all([
-      api(rawStockUrl),
+      api(`/api/raw-stock?${rawStockParams.toString()}`),
       api(`/api/products?${productParams.toString()}`)
     ]);
-    const loadedRawStocks = Array.isArray(rawStockResponse) ? rawStockResponse : (Array.isArray(rawStockResponse?.items) ? rawStockResponse.items : []);
-    const rawStocks = normalizedSearch
-      ? loadedRawStocks.filter(rs => `${rs.ingredient_code || ''} ${rs.name || ''} ${rs.unit || ''} ${rs.usage_unit || ''}`.toLowerCase().includes(normalizedSearch.toLowerCase()))
-      : loadedRawStocks;
+    if (renderRequest !== _inventoryCatalogRenderRequest) return;
+    const rawStocks = Array.isArray(rawStockResponse?.items) ? rawStockResponse.items : [];
     const rawStockPagination = rawStockResponse?.pagination;
-    const products = Array.isArray(productResponse) ? productResponse : (Array.isArray(productResponse?.items) ? productResponse.items : []);
+    const products = Array.isArray(productResponse?.items) ? productResponse.items : [];
     const productPagination = productResponse?.pagination;
     _inventoryIngredientPage = Number(rawStockPagination?.page || 1);
     _inventoryStockProductPage = Number(productPagination?.page || 1);
@@ -277,7 +281,7 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search =
           </div>
           <div class="relative w-full max-w-sm">
             <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m2.35-5.65a8 8 0 11-16 0 8 8 0 0116 0z"/></svg>
-            <input id="inventory-catalog-search" value="${escapeWasteValue(window._inventoryCatalogSearch || '')}" oninput="filterInventoryCatalog()" placeholder="Search ingredient, product, variant, SKU…" class="w-full pl-11 pr-4 py-3 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm outline-none focus:border-indigo-500" />
+            <input id="inventory-catalog-search" value="${escapeWasteValue(window._inventoryCatalogSearch || '')}" oninput="filterInventoryCatalog(); searchInventoryCatalog()" placeholder="Search ingredient, product, variant, SKU…" class="w-full pl-11 pr-4 py-3 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm outline-none focus:border-indigo-500" />
           </div>
         </div>
 
@@ -330,17 +334,28 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search =
         </section>
       </div>
     `;
-    content.innerHTML = html;
+    if (updateResultsOnly) {
+      const nextPage = document.createElement('div');
+      nextPage.innerHTML = html;
+      const currentIngredients = document.getElementById('inventory-ingredients-section');
+      const currentStockProducts = document.getElementById('inventory-stock-section');
+      const nextIngredients = nextPage.querySelector('#inventory-ingredients-section');
+      const nextStockProducts = nextPage.querySelector('#inventory-stock-section');
+      if (currentIngredients && nextIngredients) currentIngredients.replaceWith(nextIngredients);
+      if (currentStockProducts && nextStockProducts) currentStockProducts.replaceWith(nextStockProducts);
+    } else {
+      content.innerHTML = html;
+    }
     setInventoryCatalogFilter(window._inventoryCatalogFilter || 'all');
     const renderedSearchInput = document.getElementById('inventory-catalog-search');
-    renderedSearchInput?.addEventListener('input', searchInventoryCatalog);
-    if (searchWasFocused && renderedSearchInput) {
+    if (!updateResultsOnly && searchWasFocused && renderedSearchInput) {
       renderedSearchInput.focus({ preventScroll: true });
       const caret = Math.min(searchCaret ?? renderedSearchInput.value.length, renderedSearchInput.value.length);
       renderedSearchInput.setSelectionRange(caret, caret);
     }
   } catch (e) {
-    content.innerHTML = `<div class="p-10 text-center text-rose-500">${e.message}</div>`;
+    if (updateResultsOnly) toast(e.message, 'error');
+    else content.innerHTML = `<div class="p-10 text-center text-rose-500">${e.message}</div>`;
   }
 }
 
@@ -821,7 +836,7 @@ function searchInventoryCatalog() {
     const query = (document.getElementById('inventory-catalog-search')?.value || '').trim();
     window._inventoryCatalogSearch = query;
     renderRawStock(1, 1, query);
-  }, 300);
+  }, 200);
 }
 
 function toggleInventoryVariantDetails(variantId) {

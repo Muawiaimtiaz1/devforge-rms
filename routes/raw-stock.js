@@ -24,6 +24,15 @@ router.get('/', requireAuth, async (req, res) => {
         const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
         const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.page_size, 10) || 20));
         const offset = (page - 1) * pageSize;
+        const search = String(req.query.search || '').trim().toLowerCase();
+        const searchPattern = `%${search}%`;
+        const postgresSearchParameter = paginate ? '$4' : '$2';
+        const postgresSearchClause = search ? ` AND (
+            LOWER(rs.name) LIKE ${postgresSearchParameter}
+            OR LOWER(COALESCE(rs.ingredient_code, '')) LIKE ${postgresSearchParameter}
+            OR LOWER(COALESCE(rs.unit, '')) LIKE ${postgresSearchParameter}
+            OR LOWER(COALESCE(rs.usage_unit, '')) LIKE ${postgresSearchParameter}
+        )` : '';
         const query = isPostgres ? `
             SELECT rs.*,
             (SELECT buying_price FROM raw_stock_batches WHERE raw_stock_id = rs.id ORDER BY id DESC LIMIT 1) as buying_price,
@@ -40,7 +49,7 @@ router.get('/', requireAuth, async (req, res) => {
                 WHERE rsb.raw_stock_id = rs.id AND rsb.quantity > 0
             ) as batches
             FROM raw_stocks rs
-            WHERE rs.shop_id = $1 AND rs.is_deleted = 0
+            WHERE rs.shop_id = $1 AND rs.is_deleted = 0${postgresSearchClause}
             ORDER BY rs.name ASC
             ${paginate ? 'LIMIT $2 OFFSET $3' : ''}
         ` : `
@@ -68,10 +77,20 @@ router.get('/', requireAuth, async (req, res) => {
         let total = null;
         if (isPostgres) {
             if (paginate) {
-                const countResult = await getPostgres().query('SELECT COUNT(*)::int AS total FROM raw_stocks WHERE shop_id = $1 AND is_deleted = 0', [shopId]);
+                const countSql = `SELECT COUNT(*)::int AS total FROM raw_stocks rs
+                    WHERE rs.shop_id = $1 AND rs.is_deleted = 0${search ? ` AND (
+                        LOWER(rs.name) LIKE $2
+                        OR LOWER(COALESCE(rs.ingredient_code, '')) LIKE $2
+                        OR LOWER(COALESCE(rs.unit, '')) LIKE $2
+                        OR LOWER(COALESCE(rs.usage_unit, '')) LIKE $2
+                    )` : ''}`;
+                const countResult = await getPostgres().query(countSql, search ? [shopId, searchPattern] : [shopId]);
                 total = Number(countResult.rows[0]?.total || 0);
             }
-            const { rows } = await getPostgres().query(query, paginate ? [shopId, pageSize, offset] : [shopId]);
+            const queryParams = paginate
+                ? (search ? [shopId, pageSize, offset, searchPattern] : [shopId, pageSize, offset])
+                : (search ? [shopId, searchPattern] : [shopId]);
+            const { rows } = await getPostgres().query(query, queryParams);
             stocks = rows;
         } else {
             if (paginate) total = Number(getSqlite().prepare('SELECT COUNT(*) AS total FROM raw_stocks WHERE shop_id = ? AND is_deleted = 0').get(shopId)?.total || 0);
