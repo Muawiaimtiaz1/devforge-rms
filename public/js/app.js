@@ -5168,7 +5168,7 @@ async function renderPOSOrders() {
 
       return `
         <tr class="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
-          <td class="px-4 py-4 font-bold text-slate-900 dark:text-white text-sm">#${s.id}</td>
+          <td class="px-4 py-4 font-bold text-slate-900 dark:text-white text-sm">#${s.order_number || s.id}</td>
           <td class="px-4 py-4 text-xs font-bold text-slate-500">${typeLabel}</td>
           <td class="px-4 py-4">
             <div class="text-sm font-black text-slate-700 dark:text-slate-200">${detail}</div>
@@ -5248,7 +5248,7 @@ function renderActiveOrderCard(order) {
   const canPayAndComplete = currentUserHasPermission('orders.take_payment') && currentUserHasPermission('orders.complete');
   return `<article class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm active:scale-[0.99] transition-all">
     <div class="flex items-start justify-between gap-3">
-      <div><div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Order #${order.id}</div><div class="mt-1 text-lg font-black text-slate-900 dark:text-white">${context}</div></div>
+      <div><div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Order #${order.order_number || order.id}</div><div class="mt-1 text-lg font-black text-slate-900 dark:text-white">${context}</div></div>
       <span class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${statusTone}">${escapeOrderValue(order.order_status || 'pending')}</span>
     </div>
     <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
@@ -5326,18 +5326,18 @@ async function updateDeliveryStatus(id, status) {
   }
 }
 
-async function viewOrderItems(id) {
+async function viewOrderItems(id, readOnly = false) {
   showAppLoader('Opening order details', `Loading order #${id}...`);
   try {
     const [data, assignableUsers] = await Promise.all([
       api(`/api/sales/${id}/bill`),
-      api('/api/users/assignable').catch(() => [])
+      readOnly ? Promise.resolve([]) : api('/api/users/assignable').catch(() => [])
     ]);
     if (!data || !data.sale) return toast("Order not found", "error");
     const sale = data.sale;
     const isDelivery = sale.order_type === 'delivery';
     const isPaymentPaid = Number(sale.amount_received || 0) >= Number(sale.total || 0) - 0.01;
-    const canEditOrder = currentUserHasPermission('orders.update');
+    const canEditOrder = !readOnly && currentUserHasPermission('orders.update');
     const canEditDelivery = canEditOrder && isDelivery && !['ready', 'completed'].includes(sale.order_status);
     const serviceLabel = sale.order_type === 'dine_in' ? 'Dine-in' : sale.order_type === 'takeaway' ? 'Takeaway' : 'Delivery';
     const currentRiderId = Number(sale.rider_id || 0);
@@ -5427,7 +5427,7 @@ async function viewOrderItems(id) {
       </div>
     `;
 
-    openModal(`Order #${id} - Details`, `
+    openModal(`Order #${sale.order_number || id} - Details`, `
       <div class="space-y-4">
         ${orderInfoHtml}
         ${kitchenStatusesHtml}
@@ -7213,6 +7213,7 @@ async function checkout(status = 'completed') {
     }
     orderPersisted = true;
     const completedSaleId = r.saleId || _editingOrderId;
+    const completedOrderNumber = r.orderNumber || completedSaleId;
     
     if (isEditing) {
       toast("Order updated successfully!");
@@ -7242,7 +7243,7 @@ async function checkout(status = 'completed') {
       `
       <div class="text-center space-y-4">
         <div class="text-5xl">${isEditing ? '📝' : '🎉'}</div>
-        <p class="text-sm font-bold text-slate-500 dark:text-slate-300">Order #${completedSaleId}</p>
+        <p class="text-sm font-bold text-slate-500 dark:text-slate-300">Order #${completedOrderNumber}</p>
         ${orderType === 'takeaway' ? `<p class="text-amber-400 font-bold text-lg">Token: ${token_number}</p>` : ''}
         <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
           <p class="text-[10px] font-black uppercase tracking-widest text-emerald-600">Completed Amount</p>
@@ -8198,7 +8199,7 @@ function _renderSalesTable() {
           return `
         <tr class="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors border-b border-slate-100 dark:border-slate-800 last:border-0">
           <td class="px-5 py-4 font-bold">
-            <div class="text-indigo-600 dark:text-indigo-400">#${s.id}</div>
+            <div class="text-indigo-600 dark:text-indigo-400">#${s.order_number || s.id}</div>
             ${s.items_returned > 0 ? `
               <div class="mt-1 flex items-center gap-1">
                 <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-[9px] font-black text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
@@ -8228,6 +8229,10 @@ function _renderSalesTable() {
           </td>
           <td class="px-5 py-4 text-right">
             <div class="flex items-center justify-end gap-2">
+              <button onclick="viewOrderItems(${s.id}, true)" class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-700 transition-colors hover:bg-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20" title="View products sold in this order">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                View
+              </button>
               ${s.customer_id && !_salesPendingFilter ? `<button onclick="viewCustomerLedger(${s.customer_id})" class="p-1.5 rounded bg-indigo-100 dark:bg-indigo-500/10 hover:bg-indigo-200 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 transition-colors" title="Open Customer Account"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg></button>` : ""}
               ${isPending ? `<button onclick="markSalePaid(${s.id}, ${s.total}, ${s.amount_received})" class="p-1.5 rounded bg-amber-100 dark:bg-amber-500/10 hover:bg-amber-200 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 transition-colors" title="Collect Payment / Update Dues"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>` : ""}
               <button onclick="showSaleDuesDetails(${s.id})" class="p-1.5 rounded bg-blue-100 dark:bg-blue-500/10 hover:bg-blue-200 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-400 transition-colors" title="View Due Details & History">
@@ -9328,7 +9333,7 @@ async function viewCustomerLedger(customerId) {
           const due = s.total - s.amount_received;
           return `
         <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
-          <td class="px-4 py-2.5 text-xs font-bold text-indigo-600 dark:text-indigo-400">#${s.id}</td>
+          <td class="px-4 py-2.5 text-xs font-bold text-indigo-600 dark:text-indigo-400">#${s.order_number || s.id}</td>
           <td class="px-4 py-2.5 text-sm text-slate-500">${new Date(s.created_at).toLocaleDateString("en-GB")}</td>
           <td class="px-4 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100">Rs. ${fmt(s.total)}</td>
           <td class="px-4 py-2.5 text-sm text-emerald-600 dark:text-emerald-400">Rs. ${fmt(s.amount_received)}</td>

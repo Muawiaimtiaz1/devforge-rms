@@ -72,7 +72,7 @@ class SalesService {
     return [...kitchenIds];
   }
 
-  async notifyNewOrder({ saleId, shopId, creatorId, waiterId, kitchenIds = [], orderType, tableId }) {
+  async notifyNewOrder({ saleId, orderNumber, shopId, creatorId, waiterId, kitchenIds = [], orderType, tableId }) {
     try {
       const creator = await db('users').where({ id: creatorId, shop_id: shopId }).first();
       if (!creator) return;
@@ -94,7 +94,8 @@ class SalesService {
       const serviceLabel = orderType === 'dine_in' && table
         ? `Table ${table.table_number}`
         : String(orderType || 'order').replace('_', '-');
-      const title = `New order #${saleId}`;
+      const displayOrderNumber = orderNumber || saleId;
+      const title = `New order #${displayOrderNumber}`;
       const message = `${creatorName} created a ${serviceLabel} order.`;
 
       for (const kitchenId of [...new Set(kitchenIds.map(Number).filter(Boolean))]) {
@@ -103,13 +104,13 @@ class SalesService {
           .where(builder => builder.whereNull('status').orWhere('status', 'active'))
           .first();
         if (kitchen) {
-          const kitchenMessage = `Order #${saleId} for ${serviceLabel} was sent to ${kitchen.name || kitchen.username || 'this kitchen'}.`;
+          const kitchenMessage = `Order #${displayOrderNumber} for ${serviceLabel} was sent to ${kitchen.name || kitchen.username || 'this kitchen'}.`;
           await notificationService.create({
             shop_id: shopId,
             target_user_id: kitchen.id,
             type: 'assignment',
             priority: 'urgent',
-            title: `New kitchen order #${saleId}`,
+            title: `New kitchen order #${displayOrderNumber}`,
             message: kitchenMessage,
             action_label: 'Open kitchen order',
             action_url: '/dashboard',
@@ -117,7 +118,7 @@ class SalesService {
           }, { id: creatorId });
           try {
             await pushNotificationService.sendToUser(kitchen.id, {
-              title: `New kitchen order #${saleId}`,
+              title: `New kitchen order #${displayOrderNumber}`,
               body: kitchenMessage,
               tag: `kitchen-order-${saleId}-${kitchen.id}`,
               orderId: saleId,
@@ -708,7 +709,7 @@ class SalesService {
       const existing = await db('sales')
         .where({ shop_id: shopId, client_request_id: data.client_request_id })
         .first();
-      if (existing) return { saleId: existing.id, total: Number(existing.total || 0), duplicate: true };
+      if (existing) return { saleId: existing.id, orderNumber: existing.order_number || existing.id, total: Number(existing.total || 0), duplicate: true };
     }
     if (data.order_type === 'dine_in' && data.table_id) {
       await infrastructureService.assertTableAccess(shopId, data.table_id, userId);
@@ -717,6 +718,14 @@ class SalesService {
     let result;
     try {
       result = await db.transaction(async (trx) => {
+      // Lock only this shop while allocating its next visible order number.
+      await trx('shops').where({ id: shopId }).forUpdate().first('id');
+      const latestOrder = await trx('sales')
+        .where({ shop_id: shopId })
+        .max({ max_order_number: 'order_number' })
+        .first();
+      const orderNumber = Number(latestOrder?.max_order_number || 0) + 1;
+
       // 0. Shift Resolution
       let shiftId = data.order_status === 'payment_pending' ? null : payload.shift_id;
       if (!shiftId && data.order_status !== 'payment_pending') {
@@ -843,6 +852,7 @@ class SalesService {
       // 4. Insert Sale
       const [saleIdObj] = await trx('sales')
         .insert({
+          order_number: orderNumber,
           shop_id: shopId,
           user_id: userId,
           customer_id: customer ? customer.id : null,
@@ -1005,6 +1015,7 @@ class SalesService {
 
       return {
         saleId,
+        orderNumber,
         total: grandTotal,
         customer_id: customer?.id,
         customer_name: data.customer_name,
@@ -1021,11 +1032,12 @@ class SalesService {
         .where({ shop_id: shopId, client_request_id: data.client_request_id })
         .first();
       if (!existing) throw error;
-      return { saleId: existing.id, total: Number(existing.total || 0), duplicate: true };
+      return { saleId: existing.id, orderNumber: existing.order_number || existing.id, total: Number(existing.total || 0), duplicate: true };
     }
     const routedKitchenIds = await this.getRoutedKitchenIdsForSale(result.saleId, shopId);
     await this.notifyNewOrder({
       saleId: result.saleId,
+      orderNumber: result.orderNumber,
       shopId,
       creatorId: userId,
       waiterId: data.waiter_id,
@@ -1427,6 +1439,7 @@ class SalesService {
 
       return {
         saleId,
+        orderNumber: sale.order_number || sale.id,
         total: grandTotal,
         print_jobs_queued: printResult.queued,
         printer_configured: printResult.printer_configured,

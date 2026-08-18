@@ -54,8 +54,9 @@ class InfrastructureService {
     const recipientIds = [...new Set([sale.user_id, sale.waiter_id].filter(Boolean).map(Number))];
     const table = sale.table_id ? await db('tables').where({ id: sale.table_id, shop_id: shopId }).first() : null;
     const context = table ? ` for Table ${table.table_number}` : '';
-    const title = `Order #${saleId} completed by kitchen`;
-    const message = `Order #${saleId}${context} is ready to serve.`;
+    const displayOrderNumber = sale.order_number || saleId;
+    const title = `Order #${displayOrderNumber} completed by kitchen`;
+    const message = `Order #${displayOrderNumber}${context} is ready to serve.`;
 
     await Promise.all(recipientIds.map(async targetUserId => {
       try {
@@ -226,7 +227,7 @@ class InfrastructureService {
       .where('s.shop_id', shopId)
       .whereIn('s.order_status', ['pending', 'preparing', 'ready', 'served', 'completed'])
       .select(
-        's.id', 's.user_id as punched_by_user_id', 's.kitchen_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
+        's.id', 's.order_number', 's.user_id as punched_by_user_id', 's.kitchen_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
         's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',
         't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username'
       );

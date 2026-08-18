@@ -152,7 +152,7 @@ function renderCustomerReceipt(details, options) {
       <hr class="divider" />
 
       <div style="font-size: 10px;">
-        <strong>Bill #:</strong> ${escapeHtml(sale.id)}<br>
+        <strong>Bill #:</strong> ${escapeHtml(sale.order_number || sale.id)}<br>
         <strong>Date:</strong> ${escapeHtml(new Date(sale.created_at).toLocaleString())}<br>
         <strong>Staff:</strong> ${escapeHtml(seller ? seller.name : "Staff")}<br>
         <strong>Customer:</strong> ${escapeHtml(sale.customer_name || "Walk-in")}<br>
@@ -230,7 +230,7 @@ function renderKitchenReceipt(details) {
       <div class="text-center">
         <h1 class="bold">${escapeHtml(kitchenName)}</h1>
         <div class="bold" style="font-size: 14px; margin-top: 5px;">KITCHEN ORDER</div>
-        <h2 class="bold" style="font-size: 24px; margin: 8px 0;">#${escapeHtml(sale.id)}${isUpdate ? " — UPDATED" : ""}</h2>
+        <h2 class="bold" style="font-size: 24px; margin: 8px 0;">#${escapeHtml(sale.order_number || sale.id)}${isUpdate ? " — UPDATED" : ""}</h2>
       </div>
 
       <div class="order-info">
@@ -287,8 +287,8 @@ function renderSaleReceiptPage(details, options = {}) {
     ? renderKitchenReceipt(details, options)
     : renderCustomerReceipt(details, { ...options, format });
   const title = format === "kitchen"
-    ? `Kitchen Order #${details.sale.id}`
-    : `${format === "unpaid" ? "Unpaid Bill" : "Customer Bill"} #${details.sale.id}`;
+    ? `Kitchen Order #${details.sale.order_number || details.sale.id}`
+    : `${format === "unpaid" ? "Unpaid Bill" : "Customer Bill"} #${details.sale.order_number || details.sale.id}`;
 
   return `<!DOCTYPE html>
 <html>

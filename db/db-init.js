@@ -34,6 +34,9 @@ async function initPostgres() {
     await query("UPDATE expense_categories SET name = 'Restaurant Expense' WHERE name = 'Shop Expense'");
     await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS table_visibility_mode TEXT NOT NULL DEFAULT 'all'");
     await query("ALTER TABLE tables ADD COLUMN IF NOT EXISTS assigned_waiter_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+    await query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS order_number INTEGER");
+    await query("UPDATE sales SET order_number = id WHERE order_number IS NULL");
+    await query("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_shop_order_number ON sales(shop_id, order_number) WHERE order_number IS NOT NULL");
 
     // 2. Check if any user exists (to ensure we have an admin)
     const userCheck = await query("SELECT id FROM users LIMIT 1");
