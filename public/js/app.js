@@ -3276,16 +3276,36 @@ async function openAddProductForm(productType) {
 }
 
 async function openEditProduct(id) {
-  const brands = window._productBrands || (await api("/api/brands"));
-  window._menuAddons = await api('/api/products/menu-addons');
-  const product = allProducts.find((p) => p.id === id) || {};
+  const product = allProducts.find((p) => Number(p.id) === Number(id))
+    || (window._inventoryStockProducts || []).find((p) => Number(p.id) === Number(id));
+  if (!product) return toast('Product details could not be loaded. Please refresh and try again.', 'error');
+  const isRecipeProduct = currentUser.shop_type === 'restaurant'
+    && (product.product_type === 'recipe_based' || (product.variants && product.variants.length));
+  const stockProductBrands = product.brand_id
+    ? [{ id: product.brand_id, name: product.brand_name || 'Product brand', partner_type: 'product_based' }]
+    : [];
+  const usesLocalStockBrand = !window._productBrands && currentUser.shop_type === 'restaurant' && !isRecipeProduct;
+  const [brands, menuAddons, rawStocks] = await Promise.all([
+    window._productBrands
+      ? Promise.resolve(window._productBrands)
+      : (usesLocalStockBrand ? Promise.resolve(stockProductBrands) : api('/api/brands')),
+    isRecipeProduct
+      ? (Array.isArray(window._menuAddons) ? Promise.resolve(window._menuAddons) : api('/api/products/menu-addons'))
+      : Promise.resolve(window._menuAddons || []),
+    isRecipeProduct
+      ? api('/api/raw-stock')
+      : Promise.resolve(window._rawStocksList || [])
+  ]);
+  if (!usesLocalStockBrand) window._productBrands = brands;
+  if (isRecipeProduct) {
+    window._menuAddons = menuAddons;
+    window._rawStocksList = rawStocks;
+  }
   window.ProductImageTools?.resetState?.();
 
   if (currentUser.shop_type === 'restaurant') {
     window._formProductType = product.product_type === 'recipe_based' || (product.variants && product.variants.length) ? 'recipe_based' : 'stock_based';
     if (window._formProductType === 'recipe_based') {
-      const rawStocks = await api('/api/raw-stock');
-      window._rawStocksList = Array.isArray(rawStocks) ? rawStocks : [];
       window._formVariants = (product.variants && product.variants.length)
         ? JSON.parse(JSON.stringify(product.variants))
         : [{ id: newMenuOptionId('variant'), name: 'Regular', price: Number(product.selling_price || 0), is_default: true, ingredients: (product.ingredients || []).map(i => ({ raw_stock_id: i.id, quantity: Number(i.quantity) })) }];
