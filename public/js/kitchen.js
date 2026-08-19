@@ -602,6 +602,7 @@ let _kdsCompletedPeriod = 'today';
 let _kdsToolbarCollapsed = false;
 let _kdsKnownPendingOrderIds = null;
 let _kdsKnownUpdatedOrderIds = null;
+let _kdsWorkflowCounts = { new: 0, updated: 0, preparing: 0, completed: 0 };
 const KDS_PAGE_SIZE = 8;
 
 async function renderKDS() {
@@ -628,10 +629,10 @@ async function renderKDS() {
       </section>
     </div>
     <nav class="fixed z-[80] bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] md:w-[680px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-xl p-1.5 grid grid-cols-4 gap-1.5" aria-label="Kitchen status views">
-      <button id="kds-view-new" onclick="setKDSWorkflowView('new')" class="h-12 rounded-xl text-sm font-black">New Orders</button>
-      <button id="kds-view-updated" onclick="setKDSWorkflowView('updated')" class="h-12 rounded-xl text-sm font-black">Updated</button>
-      <button id="kds-view-preparing" onclick="setKDSWorkflowView('preparing')" class="h-12 rounded-xl text-sm font-black">Preparing</button>
-      <button id="kds-view-completed" onclick="setKDSWorkflowView('completed')" class="h-12 rounded-xl text-sm font-black">Completed</button>
+      <button id="kds-view-new" onclick="setKDSWorkflowView('new')" class="h-12 rounded-xl text-sm font-black">New <span id="kds-count-new" class="ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px]">0</span></button>
+      <button id="kds-view-updated" onclick="setKDSWorkflowView('updated')" class="h-12 rounded-xl text-sm font-black">Updated <span id="kds-count-updated" class="ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px]">0</span></button>
+      <button id="kds-view-preparing" onclick="setKDSWorkflowView('preparing')" class="h-12 rounded-xl text-sm font-black">Preparing <span id="kds-count-preparing" class="ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px]">0</span></button>
+      <button id="kds-view-completed" onclick="setKDSWorkflowView('completed')" class="h-12 rounded-xl text-sm font-black">Completed <span id="kds-count-completed" class="ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px]">0</span></button>
     </nav>`;
   applyKDSWorkflowTabs();
   await loadKDSOrders();
@@ -687,6 +688,11 @@ function applyKDSWorkflowTabs() {
     const button = $c(`kds-view-${view}`);
     if (!button) return;
     button.className = `h-12 rounded-xl text-sm font-black transition-all ${view === _kdsWorkflowView ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'text-slate-500 dark:text-slate-300'}`;
+    const count = $c(`kds-count-${view}`);
+    if (count) {
+      count.textContent = String(_kdsWorkflowCounts[view] || 0);
+      count.className = `ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] ${view === _kdsWorkflowView ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200'}`;
+    }
   });
   const isQueueView = _kdsWorkflowView === 'new' || _kdsWorkflowView === 'updated';
   $c('kds-new-section')?.classList.toggle('hidden', !isQueueView);
@@ -697,39 +703,54 @@ function applyKDSWorkflowTabs() {
 
 async function loadKDSOrders() {
   try {
-    const params = new URLSearchParams({ view: _kdsWorkflowView });
-    if (_kdsWorkflowView === 'completed') {
+    const views = ['new', 'updated', 'preparing', 'completed'];
+    const requests = views.map(view => {
+      const params = new URLSearchParams({ view });
+      if (view === 'completed') {
       params.set('period', _kdsCompletedPeriod);
       const range = kdsCompletedDateRange(_kdsCompletedPeriod);
       if (range) {
         params.set('from', range.from);
         params.set('to', range.to);
       }
-    }
-    const orders = await api(`/api/kds?${params.toString()}`);
-    const pendingIds = new Set(_kdsWorkflowView === 'new' ? (Array.isArray(orders) ? orders : []).map(order => Number(order.id)) : []);
-    if (_kdsWorkflowView === 'new') {
-      if (_kdsKnownPendingOrderIds !== null) {
-        const newOrders = [...pendingIds].filter(id => !_kdsKnownPendingOrderIds.has(id));
-        if (newOrders.length) {
-          if (typeof playOrderReadyBeep === 'function') playOrderReadyBeep();
-          toast(newOrders.length === 1 ? `New kitchen order #${newOrders[0]}` : `${newOrders.length} new kitchen orders`, 'success');
-        }
       }
-      _kdsKnownPendingOrderIds = pendingIds;
-    }
-    if (_kdsWorkflowView === 'updated') {
-      const updatedIds = new Set((Array.isArray(orders) ? orders : []).map(order => Number(order.id)));
-      if (_kdsKnownUpdatedOrderIds !== null) {
-        const updatedOrders = [...updatedIds].filter(id => !_kdsKnownUpdatedOrderIds.has(id));
-        if (updatedOrders.length) {
-          if (typeof playOrderReadyBeep === 'function') playOrderReadyBeep();
-          toast(updatedOrders.length === 1 ? `Updated kitchen order #${updatedOrders[0]}` : `${updatedOrders.length} updated kitchen orders`, 'success');
-        }
+      return api(`/api/kds?${params.toString()}`);
+    });
+    const results = await Promise.allSettled(requests);
+    const selectedResult = results[views.indexOf(_kdsWorkflowView)];
+    if (selectedResult.status === 'rejected') throw selectedResult.reason;
+    const ordersByView = Object.fromEntries(views.map((view, index) => [
+      view,
+      results[index].status === 'fulfilled' && Array.isArray(results[index].value)
+        ? results[index].value
+        : null
+    ]));
+    views.forEach(view => {
+      if (ordersByView[view]) _kdsWorkflowCounts[view] = ordersByView[view].length;
+    });
+
+    const pendingIds = new Set((ordersByView.new || []).map(order => Number(order.id)));
+    if (_kdsWorkflowView === 'new' && _kdsKnownPendingOrderIds !== null) {
+      const newOrders = [...pendingIds].filter(id => !_kdsKnownPendingOrderIds.has(id));
+      if (newOrders.length) {
+        if (typeof playOrderReadyBeep === 'function') playOrderReadyBeep();
+        toast(newOrders.length === 1 ? `New kitchen order #${newOrders[0]}` : `${newOrders.length} new kitchen orders`, 'success');
       }
-      _kdsKnownUpdatedOrderIds = updatedIds;
     }
-    _kdsOrdersCache = Array.isArray(orders) ? orders : [];
+    if (_kdsWorkflowView === 'new') _kdsKnownPendingOrderIds = pendingIds;
+
+    const updatedIds = new Set((ordersByView.updated || []).map(order => Number(order.id)));
+    if (_kdsWorkflowView === 'updated' && _kdsKnownUpdatedOrderIds !== null) {
+      const updatedOrders = [...updatedIds].filter(id => !_kdsKnownUpdatedOrderIds.has(id));
+      if (updatedOrders.length) {
+        if (typeof playOrderReadyBeep === 'function') playOrderReadyBeep();
+        toast(updatedOrders.length === 1 ? `Updated kitchen order #${updatedOrders[0]}` : `${updatedOrders.length} updated kitchen orders`, 'success');
+      }
+    }
+    if (_kdsWorkflowView === 'updated') _kdsKnownUpdatedOrderIds = updatedIds;
+
+    _kdsOrdersCache = ordersByView[_kdsWorkflowView] || [];
+    applyKDSWorkflowTabs();
     paintKDSWorkflow();
   } catch (error) {
     const target = ['new', 'updated'].includes(_kdsWorkflowView) ? $c('kds-live-queue') : $c('kds-work-orders');
