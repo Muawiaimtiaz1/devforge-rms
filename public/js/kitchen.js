@@ -601,6 +601,7 @@ let _kdsOrderType = '';
 let _kdsCompletedPeriod = 'today';
 let _kdsToolbarCollapsed = false;
 let _kdsKnownPendingOrderIds = null;
+let _kdsKnownUpdatedOrderIds = null;
 const KDS_PAGE_SIZE = 8;
 
 async function renderKDS() {
@@ -615,7 +616,7 @@ async function renderKDS() {
       </header>
 
       <section id="kds-new-section">
-        <div class="flex items-center justify-between mb-3 px-1 gap-3"><div><h4 class="text-lg font-black text-slate-900 dark:text-white">New Orders</h4><p class="text-sm text-slate-500">All pending orders in arrival order.</p></div><span id="kds-queue-count" class="px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-sm font-black">0</span></div>
+        <div class="flex items-center justify-between mb-3 px-1 gap-3"><div><h4 id="kds-queue-title" class="text-lg font-black text-slate-900 dark:text-white">New Orders</h4><p id="kds-queue-description" class="text-sm text-slate-500">All pending orders in arrival order.</p></div><span id="kds-queue-count" class="px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-sm font-black">0</span></div>
         <div id="kds-live-queue" class="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-3 min-h-[160px]"></div>
         <div id="kds-pending-pagination" class="mt-2"></div>
       </section>
@@ -626,8 +627,9 @@ async function renderKDS() {
         <div id="kds-completed-pagination" class="mt-4"></div>
       </section>
     </div>
-    <nav class="fixed z-[80] bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] md:w-[540px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-xl p-1.5 grid grid-cols-3 gap-1.5" aria-label="Kitchen status views">
+    <nav class="fixed z-[80] bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] md:w-[680px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-xl p-1.5 grid grid-cols-4 gap-1.5" aria-label="Kitchen status views">
       <button id="kds-view-new" onclick="setKDSWorkflowView('new')" class="h-12 rounded-xl text-sm font-black">New Orders</button>
+      <button id="kds-view-updated" onclick="setKDSWorkflowView('updated')" class="h-12 rounded-xl text-sm font-black">Updated</button>
       <button id="kds-view-preparing" onclick="setKDSWorkflowView('preparing')" class="h-12 rounded-xl text-sm font-black">Preparing</button>
       <button id="kds-view-completed" onclick="setKDSWorkflowView('completed')" class="h-12 rounded-xl text-sm font-black">Completed</button>
     </nav>`;
@@ -648,7 +650,7 @@ function toggleKDSToolbar() {
 }
 
 function setKDSWorkflowView(view) {
-  _kdsWorkflowView = ['new', 'preparing', 'completed'].includes(view) ? view : 'new';
+  _kdsWorkflowView = ['new', 'updated', 'preparing', 'completed'].includes(view) ? view : 'new';
   _kdsPendingPage = 1;
   _kdsCompletedPage = 1;
   applyKDSWorkflowTabs();
@@ -681,13 +683,14 @@ function setKDSPendingPage(page) { _kdsPendingPage = Math.max(1, Number(page) ||
 function setKDSCompletedPage(page) { _kdsCompletedPage = Math.max(1, Number(page) || 1); paintKDSWorkflow(); }
 
 function applyKDSWorkflowTabs() {
-  ['new', 'preparing', 'completed'].forEach(view => {
+  ['new', 'updated', 'preparing', 'completed'].forEach(view => {
     const button = $c(`kds-view-${view}`);
     if (!button) return;
     button.className = `h-12 rounded-xl text-sm font-black transition-all ${view === _kdsWorkflowView ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'text-slate-500 dark:text-slate-300'}`;
   });
-  $c('kds-new-section')?.classList.toggle('hidden', _kdsWorkflowView !== 'new');
-  $c('kds-work-section')?.classList.toggle('hidden', _kdsWorkflowView === 'new');
+  const isQueueView = _kdsWorkflowView === 'new' || _kdsWorkflowView === 'updated';
+  $c('kds-new-section')?.classList.toggle('hidden', !isQueueView);
+  $c('kds-work-section')?.classList.toggle('hidden', isQueueView);
   const completedPeriod = document.querySelector('select[onchange^="setKDSCompletedPeriod"]');
   completedPeriod?.classList.toggle('hidden', _kdsWorkflowView !== 'completed');
 }
@@ -715,10 +718,21 @@ async function loadKDSOrders() {
       }
       _kdsKnownPendingOrderIds = pendingIds;
     }
+    if (_kdsWorkflowView === 'updated') {
+      const updatedIds = new Set((Array.isArray(orders) ? orders : []).map(order => Number(order.id)));
+      if (_kdsKnownUpdatedOrderIds !== null) {
+        const updatedOrders = [...updatedIds].filter(id => !_kdsKnownUpdatedOrderIds.has(id));
+        if (updatedOrders.length) {
+          if (typeof playOrderReadyBeep === 'function') playOrderReadyBeep();
+          toast(updatedOrders.length === 1 ? `Updated kitchen order #${updatedOrders[0]}` : `${updatedOrders.length} updated kitchen orders`, 'success');
+        }
+      }
+      _kdsKnownUpdatedOrderIds = updatedIds;
+    }
     _kdsOrdersCache = Array.isArray(orders) ? orders : [];
     paintKDSWorkflow();
   } catch (error) {
-    const target = _kdsWorkflowView === 'new' ? $c('kds-live-queue') : $c('kds-work-orders');
+    const target = ['new', 'updated'].includes(_kdsWorkflowView) ? $c('kds-live-queue') : $c('kds-work-orders');
     if (target) target.innerHTML = `<div class="p-6 text-rose-500 text-sm font-bold">${error.message}</div>`;
   }
 }
@@ -743,6 +757,9 @@ function paintKDSWorkflow() {
   const pending = _kdsOrdersCache.filter(order => order.order_status === 'pending' && matchesSearch(order) && matchesType(order));
   const preparing = _kdsOrdersCache.filter(order => order.order_status === 'preparing' && matchesSearch(order) && matchesType(order));
   const completed = _kdsOrdersCache.filter(order => ['ready', 'served', 'completed'].includes(order.order_status) && matchesSearch(order) && matchesType(order) && kdsMatchesCompletedPeriod(order)).reverse();
+  const isUpdatedView = _kdsWorkflowView === 'updated';
+  if ($c('kds-queue-title')) $c('kds-queue-title').textContent = isUpdatedView ? 'Updated Orders' : 'New Orders';
+  if ($c('kds-queue-description')) $c('kds-queue-description').textContent = isUpdatedView ? 'Only changed items routed to this kitchen.' : 'All pending orders in arrival order.';
   if ($c('kds-queue-count')) $c('kds-queue-count').textContent = pending.length;
   if ($c('kds-preparing-tab-count')) $c('kds-preparing-tab-count').textContent = `(${preparing.length})`;
   if ($c('kds-completed-tab-count')) $c('kds-completed-tab-count').textContent = `(${completed.length})`;
@@ -752,7 +769,7 @@ function paintKDSWorkflow() {
   const pendingStart = (_kdsPendingPage - 1) * KDS_PAGE_SIZE;
   const pendingPageRows = pending.slice(pendingStart, pendingStart + KDS_PAGE_SIZE);
   const queue = $c('kds-live-queue');
-  if (queue) queue.innerHTML = pendingPageRows.length ? pendingPageRows.map((order, index) => renderKDSQueueCard(order, pendingStart + index + 1)).join('') : kdsEmptyState('No new orders in queue');
+  if (queue) queue.innerHTML = pendingPageRows.length ? pendingPageRows.map((order, index) => renderKDSQueueCard(order, pendingStart + index + 1, isUpdatedView)).join('') : kdsEmptyState(isUpdatedView ? 'No updated orders waiting' : 'No new orders in queue');
   if ($c('kds-pending-pagination')) $c('kds-pending-pagination').innerHTML = kdsPagination('pending', _kdsPendingPage, pendingPages, pending.length);
 
   const completedPages = Math.max(1, Math.ceil(completed.length / KDS_PAGE_SIZE));
@@ -821,11 +838,11 @@ function kdsOrderTimer(order) {
   return `<div class="min-w-[92px] rounded-xl border px-3 py-2 text-center ${tone}"><div class="text-2xl sm:text-3xl font-black tabular-nums leading-none">${elapsedMinutes}m</div><div class="mt-1 text-[8px] font-black uppercase tracking-widest">${isCompleted ? 'Final age' : 'Order age'} · ${new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div></div>`;
 }
 
-function renderKDSQueueCard(order, position) {
+function renderKDSQueueCard(order, position, isUpdated = false) {
   const canStart = currentUserHasPermission('kitchen_orders.update_status');
   const displayOrderNumber = order.order_number || order.id;
-  return `<article class="snap-start shrink-0 w-[86vw] sm:w-[340px] rounded-2xl border-2 border-amber-200 dark:border-amber-900/50 bg-white dark:bg-slate-900 p-4 shadow-sm">
-    <div class="flex justify-between items-start gap-3"><div class="flex items-center gap-3"><span class="min-w-10 h-10 px-2 rounded-xl bg-amber-500 text-white flex items-center justify-center text-base font-black">#${displayOrderNumber}</span><div><div class="font-black text-slate-900 dark:text-white">Queue position ${position}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div></div></div>${kdsOrderTimer(order)}</div>
+  return `<article class="snap-start shrink-0 w-[86vw] sm:w-[340px] rounded-2xl border-2 ${isUpdated ? 'border-violet-300 dark:border-violet-900/60' : 'border-amber-200 dark:border-amber-900/50'} bg-white dark:bg-slate-900 p-4 shadow-sm">
+    <div class="flex justify-between items-start gap-3"><div class="flex items-center gap-3"><span class="min-w-10 h-10 px-2 rounded-xl ${isUpdated ? 'bg-violet-600' : 'bg-amber-500'} text-white flex items-center justify-center text-base font-black">#${displayOrderNumber}</span><div><div class="font-black text-slate-900 dark:text-white">${isUpdated ? 'Updated order' : `Queue position ${position}`}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div></div></div>${kdsOrderTimer(order)}</div>
     <div class="mt-4 space-y-2 border-y border-slate-100 dark:border-slate-800 py-3">${kdsItemsPreview(order)}</div>
     <div class="mt-3 grid grid-cols-2 gap-2"><button onclick="showKDSOrderModal(${order.id})" class="py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-black">Details</button>${canStart ? `<button onclick="updateKDSStatus(${order.id}, 'preparing')" class="py-2.5 rounded-xl bg-orange-500 text-white text-xs font-black">Start Preparing</button>` : ''}</div>
   </article>`;

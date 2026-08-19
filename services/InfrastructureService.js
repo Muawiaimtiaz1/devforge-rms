@@ -221,7 +221,7 @@ class InfrastructureService {
   // --- Kitchen Display System (KDS) ---
   async listActiveKitchenOrders(shopId, kitchenUserId = null, options = {}) {
     await ensureKitchenWorkflowSchema();
-    const view = ['new', 'preparing', 'completed'].includes(options.view) ? options.view : 'all';
+    const view = ['new', 'updated', 'preparing', 'completed'].includes(options.view) ? options.view : 'all';
     const query = db('sales as s')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .leftJoin('users as u', 's.waiter_id', 'u.id')
@@ -260,7 +260,24 @@ class InfrastructureService {
       END`;
     }
 
-    if (view === 'new') query.whereRaw(`${effectiveStatusSql} = ?`, ['pending']);
+    if (view === 'new') {
+      query.whereRaw(`${effectiveStatusSql} = ?`, ['pending'])
+        .whereNotExists(function () {
+          this.select(db.raw('1'))
+            .from('kitchen_order_updates as new_kou')
+            .whereRaw('new_kou.sale_id = s.id')
+            .whereRaw('new_kou.shop_id = s.shop_id');
+        });
+    }
+    else if (view === 'updated') {
+      query.whereRaw(`${effectiveStatusSql} = ?`, ['pending'])
+        .whereExists(function () {
+          this.select(db.raw('1'))
+            .from('kitchen_order_updates as updated_kou')
+            .whereRaw('updated_kou.sale_id = s.id')
+            .whereRaw('updated_kou.shop_id = s.shop_id');
+        });
+    }
     else if (view === 'preparing') query.whereRaw(`${effectiveStatusSql} = ?`, ['preparing']);
     else if (view === 'completed') {
       query.whereRaw(`${effectiveStatusSql} IN (?, ?, ?)`, ['ready', 'served', 'completed']);
@@ -366,8 +383,6 @@ class InfrastructureService {
         }
       }
 
-      if (kitchenUserId && visibleItems.length === 0) continue;
-
       if (kitchenUserId && routedKitchenIds.includes(Number(kitchenUserId))) {
         const kitchenStatus = await db('kitchen_order_statuses').where({ sale_id: order.id, kitchen_id: kitchenUserId }).first();
         if (kitchenStatus && !['served', 'completed'].includes(order.order_status)) {
@@ -387,11 +402,15 @@ class InfrastructureService {
         order.kitchen_changes = changes.filter(change => {
           if (!kitchenUserId) return true;
           const targets = categoryRouteMap.get(String(change.product_category || '').trim()) || [];
-          return !targets.some(route => route.startsWith('KITCHEN:')) || targets.includes(kitchenRouteKey);
+          const kitchenTargets = targets.filter(route => route.startsWith('KITCHEN:'));
+          if (kitchenTargets.length) return kitchenTargets.includes(kitchenRouteKey);
+          return Number(order.kitchen_id) === Number(kitchenUserId);
         });
       } catch (_) {
         order.kitchen_changes = [];
       }
+      if (kitchenUserId && visibleItems.length === 0 && !(view === 'updated' && order.kitchen_changes.length)) continue;
+      if (view === 'updated' && order.kitchen_changes.length === 0) continue;
       visibleOrders.push(order);
     }
 

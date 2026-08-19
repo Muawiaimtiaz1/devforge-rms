@@ -1146,6 +1146,39 @@ class SalesService {
     return [...kitchenIds];
   }
 
+  async getAffectedKitchenIdsForItemChanges(dbInstance, sale, items, shopId) {
+    if (!items.length) return [];
+
+    const { resolvePrinterRoute } = await this.getPrinterRouting(dbInstance, shopId);
+    const [categoryRouteMap, kitchenRoute] = await Promise.all([
+      this.getCategoryPrintRouteMap(dbInstance, shopId, resolvePrinterRoute),
+      this.resolveKitchenRoute(dbInstance, sale, shopId, resolvePrinterRoute),
+    ]);
+    const kitchenIds = new Set();
+
+    for (const item of items) {
+      const category = this.getItemCategory(item);
+      const categoryKitchenIds = (categoryRouteMap[category]?.targets || [])
+        .map(target => String(target).match(/^KITCHEN:(\d+)$/))
+        .filter(Boolean)
+        .map(match => Number(match[1]));
+      const printerRouteKitchenIds = this.getItemPrintRoutes(item, categoryRouteMap, kitchenRoute)
+        .map(route => Number(route.kitchenId))
+        .filter(Number.isInteger);
+      const routedKitchenIds = [...new Set([...categoryKitchenIds, ...printerRouteKitchenIds])];
+
+      if (routedKitchenIds.length) {
+        routedKitchenIds.forEach(kitchenId => kitchenIds.add(kitchenId));
+      } else if (sale?.kitchen_id) {
+        // Orders without category-to-kitchen routing still belong to their
+        // explicitly assigned fallback kitchen.
+        kitchenIds.add(Number(sale.kitchen_id));
+      }
+    }
+
+    return [...kitchenIds].filter(Number.isInteger);
+  }
+
   async updateSaleItems(saleId, payload, shopId, userId, options = {}) {
     const data = checkoutSchema.parse(payload);
     
@@ -1450,17 +1483,35 @@ class SalesService {
         this.getKitchenIdsForItems(trx, updatedSaleForRouting, resolvedItems, shopId),
       ]);
 
-      // Keep the sale and its original order number, but send every edited
-      // kitchen order back to the new-order queue with its latest item delta.
-      await trx('sales').where({ id: saleId, shop_id: shopId }).update({
-        order_status: 'pending',
-        preparing_at: null,
-        kitchen_completed_at: null,
-        served_at: null,
-      });
-      await trx('kitchen_order_statuses')
-        .where({ sale_id: saleId, shop_id: shopId })
-        .update({ status: 'pending', updated_at: trx.fn.now() });
+      const affectedKitchenIds = await this.getAffectedKitchenIdsForItemChanges(
+        trx,
+        updatedSaleForRouting,
+        itemChanges,
+        shopId,
+      );
+
+      // Reopen only the kitchens that received an item change. Other kitchens
+      // keep their completed status and do not see the order as new again.
+      if (affectedKitchenIds.length) {
+        await trx('sales').where({ id: saleId, shop_id: shopId }).update({
+          order_status: 'pending',
+          preparing_at: null,
+          kitchen_completed_at: null,
+          served_at: null,
+        });
+        for (const kitchenId of affectedKitchenIds) {
+          await trx('kitchen_order_statuses').insert({
+            sale_id: saleId,
+            shop_id: shopId,
+            kitchen_id: kitchenId,
+            status: 'pending',
+            updated_at: trx.fn.now(),
+          }).onConflict(['sale_id', 'kitchen_id']).merge({
+            status: 'pending',
+            updated_at: trx.fn.now(),
+          });
+        }
+      }
       await trx('kitchen_order_updates').insert({
         sale_id: saleId,
         shop_id: shopId,
@@ -1480,7 +1531,9 @@ class SalesService {
         printer_configured: printResult.printer_configured,
         _notification: {
           recipientIds: [sale.user_id, sale.waiter_id, data.waiter_id],
-          kitchenIds: [...new Set([...oldKitchenIds, ...newKitchenIds])],
+          kitchenIds: affectedKitchenIds.length
+            ? affectedKitchenIds
+            : [...new Set([...oldKitchenIds, ...newKitchenIds])],
           changes: itemChanges.map(item => ({ name: item.name, quantity: item.quantity, change_action: item.change_action })),
         },
       };
