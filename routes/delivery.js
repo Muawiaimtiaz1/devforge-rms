@@ -6,6 +6,7 @@ const router = express.Router();
 const requireDelivery = requirePanel('delivery');
 const DELIVERY_STATUSES = new Set(['pending', 'preparing', 'ready', 'completed']);
 const PAYMENT_METHODS = new Set(['cash', 'card', 'online']);
+const publishOrderChange = require('../utils/publish-order-change');
 
 async function getAcceptingShift(shopId, userId) {
   const shift = await db('shifts')
@@ -76,6 +77,7 @@ router.patch('/:id/status', requireDelivery, async (req, res) => {
   }
 
   await db('sales').where({ id: sale.id, shop_id: shopId }).update(update);
+  void publishOrderChange('order.status_changed', sale.id, shopId);
   res.json({ success: true, status, money_received: Number(update.amount_received ?? sale.amount_received) > 0.01 });
 });
 
@@ -102,6 +104,7 @@ router.patch('/:id/payment', requireDelivery, async (req, res) => {
     update.payment_received_at = null;
   }
   await db('sales').where({ id: sale.id, shop_id: shopId }).update(update);
+  void publishOrderChange('order.payment_changed', sale.id, shopId);
   res.json({ success: true, money_received: received });
 });
 

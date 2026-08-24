@@ -4,6 +4,7 @@ const notificationService = require('./NotificationService');
 const pushNotificationService = require('./PushNotificationService');
 const infrastructureService = require('./InfrastructureService');
 const cashDrawerService = require('./CashDrawerService');
+const { effectiveKitchenStatuses } = require('../utils/kitchen-status');
 const { z } = require('zod');
 
 // Validation Schemas
@@ -1810,7 +1811,14 @@ class SalesService {
       shop.use_logo_on_receipt = Boolean(shop.use_logo_on_receipt);
     }
 
-    return { sale, items, seller, shop, payments, kitchen_statuses: kitchenStatuses };
+    return {
+      sale,
+      items,
+      seller,
+      shop,
+      payments,
+      kitchen_statuses: effectiveKitchenStatuses(sale.order_status, kitchenStatuses),
+    };
   }
 
   async processReturn(saleId, shopId, userId, { items, reason, payment_method }) {

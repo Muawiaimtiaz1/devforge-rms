@@ -51,7 +51,7 @@ async function renderKDS() {
     </div>
   `;
   await loadKDSOrders();
-  _kdsInterval = setInterval(loadKDSOrders, 10000);
+  _kdsInterval = setInterval(loadKDSOrders, 5 * 60 * 1000);
 }
 
 async function loadKDSOrders() {
@@ -178,7 +178,10 @@ async function updateKDSStatus(id, status) {
     await api(`/api/kds/${id}/status`, 'PATCH', { status });
     toast(`Order #${id} → ${status}`);
     const cachedOrder = _kdsOrdersCache.find(order => Number(order.id) === Number(id));
-    if (cachedOrder) cachedOrder.order_status = status;
+    if (cachedOrder) {
+      moveKDSWorkflowCount(cachedOrder, status);
+      cachedOrder.order_status = status;
+    }
     paintKDSWorkflow();
     hideAppLoader();
     // Refresh from Neon in the background; the confirmed status is already
@@ -603,6 +606,8 @@ let _kdsToolbarCollapsed = false;
 let _kdsKnownPendingOrderIds = null;
 let _kdsKnownUpdatedOrderIds = null;
 let _kdsWorkflowCounts = { new: 0, updated: 0, preparing: 0, completed: 0 };
+let _kdsLoadPromise = null;
+let _kdsLoadQueued = false;
 const KDS_PAGE_SIZE = 8;
 
 async function renderKDS() {
@@ -634,9 +639,18 @@ async function renderKDS() {
       <button id="kds-view-preparing" onclick="setKDSWorkflowView('preparing')" class="h-12 rounded-xl text-sm font-black">Preparing <span id="kds-count-preparing" class="ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px]">0</span></button>
       <button id="kds-view-completed" onclick="setKDSWorkflowView('completed')" class="h-12 rounded-xl text-sm font-black">Completed <span id="kds-count-completed" class="ml-1 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px]">0</span></button>
     </nav>`;
+  document.querySelectorAll('#kds-sticky-toolbar span').forEach(element => {
+    if (element.textContent.trim() !== 'Live') return;
+    const connected = Boolean(window.orderRealtimeSocket?.connected);
+    element.dataset.realtimeStatus = '';
+    element.classList.toggle('text-emerald-600', connected);
+    element.classList.toggle('text-amber-600', !connected);
+    element.innerHTML = `<span class="w-2 h-2 rounded-full bg-current animate-pulse"></span><span data-realtime-label>${connected ? 'Live' : 'Reconnecting'}</span>`;
+  });
   applyKDSWorkflowTabs();
   await loadKDSOrders();
-  _kdsInterval = setInterval(loadKDSOrders, 5000);
+  // WebSockets drive normal refreshes; this slow poll repairs any missed event.
+  _kdsInterval = setInterval(loadKDSOrders, 5 * 60 * 1000);
 }
 
 function toggleKDSToolbar() {
@@ -701,7 +715,22 @@ function applyKDSWorkflowTabs() {
   completedPeriod?.classList.toggle('hidden', _kdsWorkflowView !== 'completed');
 }
 
-async function loadKDSOrders() {
+function loadKDSOrders() {
+  if (_kdsLoadPromise) {
+    _kdsLoadQueued = true;
+    return _kdsLoadPromise;
+  }
+  _kdsLoadPromise = loadKDSOrdersNow().finally(() => {
+    _kdsLoadPromise = null;
+    if (_kdsLoadQueued) {
+      _kdsLoadQueued = false;
+      void loadKDSOrders();
+    }
+  });
+  return _kdsLoadPromise;
+}
+
+async function loadKDSOrdersNow() {
   try {
     const views = ['new', 'updated', 'preparing', 'completed'];
     const requests = views.map(view => {
@@ -716,18 +745,10 @@ async function loadKDSOrders() {
       }
       return api(`/api/kds?${params.toString()}`);
     });
-    const results = await Promise.allSettled(requests);
-    const selectedResult = results[views.indexOf(_kdsWorkflowView)];
-    if (selectedResult.status === 'rejected') throw selectedResult.reason;
-    const ordersByView = Object.fromEntries(views.map((view, index) => [
-      view,
-      results[index].status === 'fulfilled' && Array.isArray(results[index].value)
-        ? results[index].value
-        : null
-    ]));
-    views.forEach(view => {
-      if (ordersByView[view]) _kdsWorkflowCounts[view] = ordersByView[view].length;
-    });
+    const results = await Promise.all(requests);
+    const ordersByView = Object.fromEntries(views.map((view, index) => [view, Array.isArray(results[index]) ? results[index] : []]));
+    // Commit the four badges together so they always describe the same refresh.
+    _kdsWorkflowCounts = Object.fromEntries(views.map(view => [view, ordersByView[view].length]));
 
     const pendingIds = new Set((ordersByView.new || []).map(order => Number(order.id)));
     if (_kdsWorkflowView === 'new' && _kdsKnownPendingOrderIds !== null) {
@@ -756,6 +777,30 @@ async function loadKDSOrders() {
     const target = ['new', 'updated'].includes(_kdsWorkflowView) ? $c('kds-live-queue') : $c('kds-work-orders');
     if (target) target.innerHTML = `<div class="p-6 text-rose-500 text-sm font-bold">${error.message}</div>`;
   }
+}
+
+function kdsWorkflowBucket(order) {
+  if (!order) return null;
+  if (order.order_status === 'pending') {
+    return Array.isArray(order.kitchen_changes) && order.kitchen_changes.length ? 'updated' : 'new';
+  }
+  if (order.order_status === 'preparing') return 'preparing';
+  if (['ready', 'served', 'completed'].includes(order.order_status)) return 'completed';
+  return null;
+}
+
+function moveKDSWorkflowCount(order, nextStatus) {
+  const previousBucket = kdsWorkflowBucket(order);
+  let nextBucket = kdsWorkflowBucket({ ...order, order_status: nextStatus });
+  // A completion happening now must not increase a badge scoped to yesterday.
+  if (nextBucket === 'completed' && _kdsCompletedPeriod === 'yesterday') nextBucket = null;
+  if (previousBucket && previousBucket !== nextBucket) {
+    _kdsWorkflowCounts[previousBucket] = Math.max(0, Number(_kdsWorkflowCounts[previousBucket] || 0) - 1);
+  }
+  if (nextBucket && previousBucket !== nextBucket) {
+    _kdsWorkflowCounts[nextBucket] = Number(_kdsWorkflowCounts[nextBucket] || 0) + 1;
+  }
+  applyKDSWorkflowTabs();
 }
 
 function kdsCompletedDateRange(period) {

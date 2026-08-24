@@ -2,6 +2,7 @@ require("dotenv").config();
 require("express-async-errors");
 const express = require("express");
 const session = require("express-session");
+const http = require("http");
 const path = require("path");
 const fs = require('fs');
 const db = require("./db/knex");
@@ -100,8 +101,7 @@ class KnexSessionStore extends session.Store {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  session({
+const sessionMiddleware = session({
     store: new KnexSessionStore(db),
     secret: process.env.SESSION_SECRET || "pos-super-secret-key-2024",
     resave: false,
@@ -112,8 +112,8 @@ app.use(
       sameSite: "lax",
       maxAge: Number(process.env.SESSION_MAX_AGE_MS || 24 * 60 * 60 * 1000),
     },
-  }),
-);
+  });
+app.use(sessionMiddleware);
 
 const { enforceApiPermissions } = require('./authorization/api-policy');
 app.use(enforceApiPermissions);
@@ -212,7 +212,9 @@ const { usePostgres } = require("./db/runtime");
 const PORT = process.env.PORT || 4000;
 
 function startServer(port = PORT) {
-  return app.listen(port, () => {
+  const server = http.createServer(app);
+  require('./services/OrderRealtimeService').initialize(server, sessionMiddleware);
+  return server.listen(port, () => {
     console.log(`✅ POS System running at http://localhost:${port}`);
     console.log("   Login: admin / admin123");
   });
@@ -244,4 +246,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { app, startServer };
+module.exports = { app, startServer, sessionMiddleware, KnexSessionStore };

@@ -480,6 +480,10 @@ class InfrastructureService {
       await db('sales')
         .where({ id: saleId, shop_id: shopId })
         .update(updateData);
+      await db('kitchen_order_statuses')
+        .where({ sale_id: saleId, shop_id: shopId })
+        .whereNot({ status: 'completed' })
+        .update({ status: 'completed', updated_at: db.fn.now() });
       await cashDrawerService.queueForPaidCompletedSale(saleId, shopId);
 
       if (sale && sale.table_id) {

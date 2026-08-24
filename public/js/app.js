@@ -240,7 +240,8 @@ let _posActiveOrders = [];
 let _posOrdersLoadPromise = null;
 let _posOrdersRenderPromise = null;
 let _posOrdersPollingTimer = null;
-const POS_ORDERS_POLL_INTERVAL_MS = 60 * 1000;
+// WebSockets drive normal refreshes; this slow poll repairs any missed event.
+const POS_ORDERS_POLL_INTERVAL_MS = 5 * 60 * 1000;
 let _expenseCategories = [];
 let _productCategories = [];
 let _kdsOrdersCache = [];
@@ -884,6 +885,10 @@ function navigate(page, options = {}) {
   }
 
   if (page !== "pos") stopPOSOrdersPolling();
+  if (page !== "kds" && typeof _kdsInterval !== 'undefined' && _kdsInterval) {
+    clearInterval(_kdsInterval);
+    _kdsInterval = null;
+  }
 
   if (page === "pos" && !_editingOrderId) {
     window._posEntryOrderType = null;

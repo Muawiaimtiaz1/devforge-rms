@@ -2,6 +2,7 @@ const express = require("express");
 const infraService = require("../services/InfrastructureService");
 const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
+const publishOrderChange = require('../utils/publish-order-change');
 
 // GET /api/kds — Fetches active orders for the Kitchen Display System
 router.get("/", requireAuth, async (req, res) => {
@@ -20,6 +21,7 @@ router.get("/", requireAuth, async (req, res) => {
 router.patch("/:id/status", requireAuth, async (req, res) => {
   const shopId = req.session.user.shop_id;
   await infraService.updateOrderStatus(req.params.id, req.body.status, shopId, req.session.user.id);
+  void publishOrderChange('order.status_changed', req.params.id, shopId);
   res.json({ success: true, status: req.body.status });
 });
 

@@ -1,11 +1,13 @@
 const express = require("express");
 const salesService = require("../services/SalesService");
 const { requireAuth } = require("../middleware/auth");
+const publishOrderChange = require('../utils/publish-order-change');
 const router = express.Router();
 
 // POST /api/sales — create a sale (checkout)
 router.post("/", requireAuth, async (req, res) => {
   const result = await salesService.createSale(req.body, req.session.user.shop_id, req.session.user.id);
+  if (!result.duplicate) void publishOrderChange('order.created', result.saleId, req.session.user.shop_id);
   res.json({ ok: true, ...result });
 });
 
@@ -13,6 +15,7 @@ router.post("/", requireAuth, async (req, res) => {
 router.put("/:id/items", requireAuth, async (req, res) => {
   const canRemoveItems = (req.permissions || []).includes('orders.remove_items');
   const result = await salesService.updateSaleItems(req.params.id, req.body, req.session.user.shop_id, req.session.user.id, { canRemoveItems });
+  void publishOrderChange('order.updated', req.params.id, req.session.user.shop_id);
   res.json({ ok: true, ...result });
 });
 
@@ -26,18 +29,21 @@ router.get("/", requireAuth, async (req, res) => {
 router.patch("/:id/pay", requireAuth, async (req, res) => {
   const { amount, payment_method = 'cash', note } = req.body;
   const finalAmount = await salesService.payDue(req.params.id, req.session.user.shop_id, req.session.user.id, amount, payment_method, note);
+  void publishOrderChange('order.payment_changed', req.params.id, req.session.user.shop_id);
   res.json({ ok: true, amount_received: finalAmount });
 });
 
 // PATCH /api/sales/:id/details — update sale details
 router.patch("/:id/details", requireAuth, async (req, res) => {
   await salesService.updateDetails(req.params.id, req.session.user.shop_id, req.body, req.session.user.id);
+  void publishOrderChange('order.updated', req.params.id, req.session.user.shop_id);
   res.json({ ok: true });
 });
 
 // Updates printable inquiry-bill details without collecting payment or closing the order.
 router.patch("/:id/inquiry-bill", requireAuth, async (req, res) => {
   await salesService.updateInquiryBill(req.params.id, req.session.user.shop_id, req.body);
+  void publishOrderChange('order.updated', req.params.id, req.session.user.shop_id);
   res.json({ ok: true });
 });
 
@@ -51,6 +57,7 @@ router.get("/:id/bill", requireAuth, async (req, res) => {
 // POST /api/sales/:id/return — process a return
 router.post("/:id/return", requireAuth, async (req, res) => {
   const result = await salesService.processReturn(req.params.id, req.session.user.shop_id, req.session.user.id, req.body);
+  void publishOrderChange('order.returned', req.params.id, req.session.user.shop_id);
   res.json({ ok: true, ...result });
 });
 
