@@ -934,7 +934,11 @@ function kdsConfiguredItemName(item) {
   const variants = Array.isArray(item.variants) ? item.variants : Object.values(item.variants || {});
   const addons = Array.isArray(item.addons) ? item.addons : Object.values(item.addons || {});
   const variantNames = variants.map(variant => variant?.name || variant?.label || variant?.value || variant).filter(Boolean);
-  const addonNames = addons.map(addon => addon?.name || addon?.label || addon).filter(Boolean);
+  const addonNames = addons.map(addon => {
+    const name = addon?.name || addon?.label || addon;
+    const quantity = Number(addon?.selection_quantity || 1);
+    return quantity > 1 ? `${name} ×${quantity}` : name;
+  }).filter(Boolean);
   const baseName = item.product_name || item.custom_name || item.name || "Item";
   return `${baseName}${variantNames.length ? ` ${variantNames.join(" ")}` : ""}${addonNames.length ? ` — ${addonNames.join(", ")} (Add-ons)` : ""}`;
 }

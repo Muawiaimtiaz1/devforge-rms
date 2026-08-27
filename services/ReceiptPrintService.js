@@ -157,7 +157,11 @@ function itemName(item) {
   const variantList = Array.isArray(variants) ? variants : Object.values(variants || {});
   const addonList = Array.isArray(addons) ? addons : Object.values(addons || {});
   const variantNames = variantList.map(v => v?.name || v?.label || v?.value || v).filter(Boolean);
-  const addonNames = addonList.map(a => a?.name || a?.label || a).filter(Boolean);
+  const addonNames = addonList.map(addon => {
+    const name = addon?.name || addon?.label || addon;
+    const quantity = Number(addon?.selection_quantity || 1);
+    return quantity > 1 ? `${name} x${quantity}` : name;
+  }).filter(Boolean);
   return `${baseName}${variantNames.length ? ` ${variantNames.join(" ")}` : ""}${addonNames.length ? ` — ${addonNames.join(", ")} (Add-ons)` : ""}`;
 }
 

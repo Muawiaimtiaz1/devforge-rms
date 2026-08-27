@@ -31,6 +31,8 @@ const tableOrder = [
   "brand_expense_payments",
   "raw_stocks",
   "raw_stock_batches",
+  "menu_addons",
+  "menu_addon_ingredients",
   "raw_stock_waste",
   "recipes",
   "recipe_ingredients",

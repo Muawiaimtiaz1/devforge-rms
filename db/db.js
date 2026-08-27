@@ -58,6 +58,19 @@ db.exec(`
     FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE SET NULL
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_addons_shop_name ON menu_addons(shop_id, name COLLATE NOCASE);
+  CREATE TABLE IF NOT EXISTS menu_addon_ingredients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    menu_addon_id INTEGER NOT NULL,
+    raw_stock_id INTEGER NOT NULL,
+    quantity REAL NOT NULL,
+    FOREIGN KEY (menu_addon_id) REFERENCES menu_addons(id) ON DELETE CASCADE,
+    FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE CASCADE,
+    UNIQUE (menu_addon_id, raw_stock_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_menu_addon_ingredients_addon_id ON menu_addon_ingredients(menu_addon_id);
+  INSERT OR IGNORE INTO menu_addon_ingredients (menu_addon_id, raw_stock_id, quantity)
+    SELECT id, raw_stock_id, quantity FROM menu_addons
+    WHERE raw_stock_id IS NOT NULL AND quantity > 0;
 `);
 try {
   db.exec(`

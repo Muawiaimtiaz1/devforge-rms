@@ -3030,7 +3030,14 @@ function toggleProductAddon(catalogId, checked) {
   window._formAddons = (window._formAddons || []).filter(addon => String(addon.id) !== id);
   if (checked) {
     const addon = (window._menuAddons || []).find(item => Number(item.id) === Number(catalogId));
-    if (addon) window._formAddons.push({ id, name: addon.name, price: Number(addon.price || 0), raw_stock_id: addon.raw_stock_id ? Number(addon.raw_stock_id) : null, quantity: Number(addon.quantity || 0) });
+    if (addon) window._formAddons.push({
+      id,
+      name: addon.name,
+      price: Number(addon.price || 0),
+      ingredients: (addon.ingredients || []).map(ingredient => ({ raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity) })),
+      raw_stock_id: addon.raw_stock_id ? Number(addon.raw_stock_id) : null,
+      quantity: Number(addon.quantity || 0)
+    });
   }
   renderProductAddonsForm();
 }
@@ -3041,7 +3048,7 @@ function renderProductAddonsForm() {
   const selected = new Set((window._formAddons || []).map(addon => String(addon.id)));
   host.innerHTML = (window._menuAddons || []).map(addon => `
     <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-3 cursor-pointer">
-      <span class="flex items-center gap-3"><input type="checkbox" ${selected.has(`addon-${addon.id}`) ? 'checked' : ''} onchange="toggleProductAddon(${addon.id}, this.checked)" class="rounded text-amber-600"><span><strong class="block text-xs text-slate-800 dark:text-slate-100">${escapeOrderValue(addon.name)}</strong><small class="text-[10px] text-slate-500">${addon.inventory_name ? `${escapeOrderValue(addon.inventory_name)} · ${Number(addon.quantity)} used` : 'No inventory linked'}</small></span></span>
+      <span class="flex items-center gap-3"><input type="checkbox" ${selected.has(`addon-${addon.id}`) ? 'checked' : ''} onchange="toggleProductAddon(${addon.id}, this.checked)" class="rounded text-amber-600"><span><strong class="block text-xs text-slate-800 dark:text-slate-100">${escapeOrderValue(addon.name)}</strong><small class="text-[10px] text-slate-500">${addon.ingredients?.length ? `${addon.ingredients.length} ingredient${addon.ingredients.length === 1 ? '' : 's'} linked` : 'No inventory linked'}</small></span></span>
       <strong class="text-xs text-emerald-600">+ Rs. ${Number(addon.price || 0).toLocaleString()}</strong>
     </label>`).join('') || '<p class="text-[10px] text-slate-400 italic">No add-ons created. Use Manage Add-ons first.</p>';
   return;
@@ -3056,6 +3063,52 @@ function renderProductAddonsForm() {
 }
 
 let _editingMenuAddonId = null;
+let _menuAddonIngredientsDraft = [];
+
+function menuAddonIngredientRowsHtml() {
+  return _menuAddonIngredientsDraft.map((ingredient, index) => {
+    const stock = (window._rawStocksList || []).find(item => Number(item.id) === Number(ingredient.raw_stock_id));
+    const usageUnit = stock?.usage_unit || stock?.unit || 'unit';
+    return `<div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px_44px] gap-2 items-end rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 p-3">
+      <label class="text-xs font-bold text-emerald-800 dark:text-emerald-300">Ingredient<select onchange="updateMenuAddonIngredient(${index}, 'raw_stock_id', this.value)" class="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-slate-900 dark:text-white">${rawStockOptions(ingredient.raw_stock_id)}</select></label>
+      <label class="text-xs font-bold text-emerald-800 dark:text-emerald-300">Quantity (${escapeOrderValue(usageUnit)})<input type="number" min="0.0001" step="0.01" value="${Number(ingredient.quantity || 0)}" onchange="updateMenuAddonIngredient(${index}, 'quantity', this.value)" class="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-slate-900 dark:text-white"></label>
+      <button type="button" onclick="removeMenuAddonIngredient(${index})" class="h-10 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950" title="Remove ingredient">&times;</button>
+    </div>`;
+  }).join('') || '<p class="rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 p-4 text-center text-xs text-slate-400">No inventory ingredients linked.</p>';
+}
+
+function renderMenuAddonIngredientRows() {
+  const host = $c('menu-addon-ingredient-rows');
+  if (host) host.innerHTML = menuAddonIngredientRowsHtml();
+}
+
+function addMenuAddonIngredient() {
+  const used = new Set(_menuAddonIngredientsDraft.map(ingredient => Number(ingredient.raw_stock_id)));
+  const stock = (window._rawStocksList || []).find(item => !used.has(Number(item.id)));
+  if (!stock) return toast('No additional ingredients are available', 'error');
+  _menuAddonIngredientsDraft.push({ raw_stock_id: Number(stock.id), quantity: 1 });
+  renderMenuAddonIngredientRows();
+}
+
+function updateMenuAddonIngredient(index, field, value) {
+  const ingredient = _menuAddonIngredientsDraft[index];
+  if (!ingredient) return;
+  ingredient[field] = Number(value);
+  renderMenuAddonIngredientRows();
+}
+
+function removeMenuAddonIngredient(index) {
+  _menuAddonIngredientsDraft.splice(index, 1);
+  renderMenuAddonIngredientRows();
+}
+
+function menuAddonCatalogIngredientsHtml(addon) {
+  if (!addon.ingredients?.length) return 'This add-on changes price only.';
+  return addon.ingredients.map(ingredient => {
+    const unit = ingredient.usage_unit || ingredient.unit || 'unit';
+    return `<div><strong class="text-slate-700 dark:text-slate-300">${escapeOrderValue(ingredient.ingredient_name)}</strong> · ${Number(ingredient.quantity)} ${escapeOrderValue(unit)} per sale</div>`;
+  }).join('');
+}
 
 async function renderMenuAddons(editId = null) {
   _editingMenuAddonId = editId === null ? _editingMenuAddonId : editId;
@@ -3064,7 +3117,7 @@ async function renderMenuAddons(editId = null) {
   window._rawStocksList = stocks;
   const editing = addons.find(addon => Number(addon.id) === Number(_editingMenuAddonId));
   if (_editingMenuAddonId && !editing) _editingMenuAddonId = null;
-  const selectedStock = stocks.find(stock => Number(stock.id) === Number(editing?.raw_stock_id));
+  _menuAddonIngredientsDraft = (editing?.ingredients || []).map(ingredient => ({ raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity) }));
   const content = $c('page-content');
   content.innerHTML = `<div class="space-y-6">
     <div class="rounded-3xl bg-gradient-to-br from-amber-500 to-orange-600 p-6 sm:p-8 text-white shadow-xl shadow-amber-500/20">
@@ -3075,31 +3128,17 @@ async function renderMenuAddons(editId = null) {
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label class="text-xs font-bold text-slate-500">Add-on name<input id="menu-addon-name" value="${escapeOrderValue(editing?.name || '')}" placeholder="e.g. Ice Cream Scoop" class="mt-1.5 w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"></label>
         <label class="text-xs font-bold text-slate-500">Extra selling price<input id="menu-addon-price" type="number" min="0" step="0.01" value="${Number(editing?.price || 0)}" class="mt-1.5 w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"></label>
-        <label class="text-xs font-bold text-slate-500 md:col-span-2">Search inventory ingredient (optional)
-          <div class="relative mt-1.5"><input id="menu-addon-stock-search" list="menu-addon-stock-suggestions" value="${escapeOrderValue(selectedStock?.name || '')}" oninput="selectMenuAddonIngredient(this.value)" placeholder="Type ingredient name, e.g. Ice Cream" autocomplete="off" class="w-full px-4 py-3 pr-11 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"><span class="absolute right-4 top-3.5 text-slate-400">⌕</span></div>
-          <datalist id="menu-addon-stock-suggestions">${stocks.map(stock => `<option value="${escapeOrderValue(stock.name)}">${escapeOrderValue(stock.ingredient_code || '')} · ${Number(stock.current_stock || 0)} ${escapeOrderValue(stock.unit || '')}</option>`).join('')}</datalist><input id="menu-addon-stock" type="hidden" value="${editing?.raw_stock_id || ''}">
-        </label>
-        <div id="menu-addon-usage-wrap" class="md:col-span-2 ${selectedStock ? '' : 'hidden'} rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 p-4">
-          <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end"><label class="text-xs font-bold text-emerald-800 dark:text-emerald-300"><span id="menu-addon-qty-label">Quantity used per add-on (${escapeOrderValue(selectedStock?.usage_unit || selectedStock?.unit || 'unit')})</span><input id="menu-addon-qty" type="number" min="0.0001" step="0.01" value="${Number(editing?.quantity || 0)}" class="mt-1.5 w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 text-slate-900 dark:text-white"></label><div id="menu-addon-conversion-note" class="text-xs font-bold text-emerald-700 dark:text-emerald-400 pb-3">${selectedStock ? `1 ${escapeOrderValue(selectedStock.unit)} = ${Number(selectedStock.conversion_factor || 1)} ${escapeOrderValue(selectedStock.usage_unit || selectedStock.unit)}` : ''}</div></div>
+        <div class="md:col-span-2 space-y-3">
+          <div class="flex items-center justify-between gap-3"><div><h4 class="text-xs font-black text-slate-700 dark:text-slate-200">Inventory ingredients (optional)</h4><p class="mt-1 text-[10px] text-slate-500">Quantities are entered in each ingredient's smaller usage unit.</p></div><button type="button" onclick="addMenuAddonIngredient()" class="px-4 py-2 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-black">+ Add Ingredient</button></div>
+          <div id="menu-addon-ingredient-rows" class="space-y-2">${menuAddonIngredientRowsHtml()}</div>
         </div>
         <div class="md:col-span-2 flex justify-end"><button id="save-menu-addon" onclick="saveMenuAddon(${editing?.id || 'null'})" class="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-white font-black shadow-lg shadow-amber-500/20">${editing ? 'Update Add-on' : 'Save Add-on'}</button></div>
       </div>
     </section>` : ''}
     <section class="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm"><div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5"><div><h3 class="text-lg font-black text-slate-900 dark:text-white">Add-on Catalog</h3><p class="text-xs text-slate-500 mt-1">Search and manage add-ons available for products.</p></div><input id="menu-addon-list-search" oninput="filterMenuAddonCards(this.value)" placeholder="Search add-ons or ingredients..." class="w-full sm:w-80 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"></div>
-      <div id="menu-addon-card-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${addons.map(addon => `<article class="menu-addon-card rounded-2xl border border-slate-200 dark:border-slate-700 p-4 hover:border-amber-300 transition-colors" data-search="${escapeOrderValue(`${addon.name} ${addon.inventory_name || ''}`.toLowerCase())}"><div class="flex justify-between gap-3"><div class="min-w-0"><h4 class="font-black text-slate-900 dark:text-white truncate">${escapeOrderValue(addon.name)}</h4><p class="mt-1 text-lg font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()}</p></div><span class="h-fit px-2.5 py-1 rounded-full text-[10px] font-black ${addon.inventory_name ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${addon.inventory_name ? 'Inventory linked' : 'No inventory'}</span></div><div class="mt-4 min-h-10 text-xs text-slate-500">${addon.inventory_name ? `<strong class="text-slate-700 dark:text-slate-300">${escapeOrderValue(addon.inventory_name)}</strong><br>${Number(addon.quantity)} ${escapeOrderValue(stocks.find(s => Number(s.id) === Number(addon.raw_stock_id))?.usage_unit || stocks.find(s => Number(s.id) === Number(addon.raw_stock_id))?.unit || 'unit')} per sale` : 'This add-on changes price only.'}</div><div class="mt-4 flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="editMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></article>`).join('') || '<p class="md:col-span-2 xl:col-span-3 py-12 text-center text-slate-500">No add-ons created yet.</p>'}</div>
+      <div id="menu-addon-card-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${addons.map(addon => `<article class="menu-addon-card rounded-2xl border border-slate-200 dark:border-slate-700 p-4 hover:border-amber-300 transition-colors" data-search="${escapeOrderValue(`${addon.name} ${(addon.ingredients || []).map(ingredient => ingredient.ingredient_name).join(' ')}`.toLowerCase())}"><div class="flex justify-between gap-3"><div class="min-w-0"><h4 class="font-black text-slate-900 dark:text-white truncate">${escapeOrderValue(addon.name)}</h4><p class="mt-1 text-lg font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()}</p></div><span class="h-fit px-2.5 py-1 rounded-full text-[10px] font-black ${addon.ingredients?.length ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${addon.ingredients?.length ? `${addon.ingredients.length} linked` : 'No inventory'}</span></div><div class="mt-4 min-h-10 space-y-1 text-xs text-slate-500">${menuAddonCatalogIngredientsHtml(addon)}</div><div class="mt-4 flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="editMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></article>`).join('') || '<p class="md:col-span-2 xl:col-span-3 py-12 text-center text-slate-500">No add-ons created yet.</p>'}</div>
     </section>
   </div>`;
-}
-
-function selectMenuAddonIngredient(value) {
-  const stock = (window._rawStocksList || []).find(item => item.name.trim().toLowerCase() === String(value || '').trim().toLowerCase());
-  $c('menu-addon-stock').value = stock?.id || '';
-  $c('menu-addon-usage-wrap')?.classList.toggle('hidden', !stock);
-  if (!stock) return;
-  const usageUnit = stock.usage_unit || stock.unit || 'unit';
-  $c('menu-addon-qty-label').textContent = `Quantity used per add-on (${usageUnit})`;
-  $c('menu-addon-conversion-note').textContent = `1 ${stock.unit} = ${Number(stock.conversion_factor || 1)} ${usageUnit}`;
-  if (!$c('menu-addon-qty').value || Number($c('menu-addon-qty').value) <= 0) $c('menu-addon-qty').value = 1;
 }
 
 function filterMenuAddonCards(value) {
@@ -3118,6 +3157,7 @@ async function openMenuAddonsPanel(editId = null) {
     window._rawStocksList = stocks;
     document.getElementById('menu-addons-modal')?.remove();
     const editing = addons.find(addon => Number(addon.id) === Number(editId));
+    _menuAddonIngredientsDraft = (editing?.ingredients || []).map(ingredient => ({ raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity) }));
     const modal = document.createElement('div');
     modal.id = 'menu-addons-modal';
     modal.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm';
@@ -3126,11 +3166,10 @@ async function openMenuAddonsPanel(editId = null) {
       ${currentUserHasPermission(editing ? 'products.update' : 'products.create') ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 mb-6">
         <input id="menu-addon-name" value="${escapeOrderValue(editing?.name || '')}" placeholder="Add-on name, e.g. Extra Cheese" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
         <input id="menu-addon-price" type="number" min="0" step="0.01" value="${Number(editing?.price || 0)}" placeholder="Extra price" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold">
-        <select id="menu-addon-stock" onchange="$c('menu-addon-qty').disabled=!this.value" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"><option value="">No inventory link (optional)</option>${stocks.map(stock => `<option value="${stock.id}" ${Number(editing?.raw_stock_id) === Number(stock.id) ? 'selected' : ''}>${escapeOrderValue(stock.name)}</option>`).join('')}</select>
-        <input id="menu-addon-qty" type="number" min="0.0001" step="0.01" value="${Number(editing?.quantity || 0)}" ${editing?.raw_stock_id ? '' : 'disabled'} placeholder="Inventory quantity used" class="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold disabled:opacity-50">
+        <div class="sm:col-span-2 space-y-3"><div class="flex items-center justify-between gap-3"><span class="text-xs font-black text-slate-600 dark:text-slate-300">Inventory ingredients (optional)</span><button type="button" onclick="addMenuAddonIngredient()" class="px-3 py-2 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-black">+ Add Ingredient</button></div><div id="menu-addon-ingredient-rows" class="space-y-2">${menuAddonIngredientRowsHtml()}</div></div>
         <div class="sm:col-span-2 flex justify-end gap-2">${editing ? `<button onclick="openMenuAddonsPanel()" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">Cancel Edit</button>` : ''}<button id="save-menu-addon" onclick="saveMenuAddon(${editing?.id || 'null'})" class="px-5 py-2 rounded-xl bg-amber-500 text-white font-bold">${editing ? 'Update Add-on' : 'Add Add-on'}</button></div>
       </div>` : ''}
-      <div class="space-y-2">${addons.map(addon => `<div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div><strong class="text-sm text-slate-900 dark:text-white">${escapeOrderValue(addon.name)}</strong><p class="text-[11px] text-slate-500 mt-1">Rs. ${Number(addon.price).toLocaleString()} · ${addon.inventory_name ? `${escapeOrderValue(addon.inventory_name)} (${Number(addon.quantity)} used)` : 'No inventory linked'}</p></div><div class="flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="openMenuAddonsPanel(${addon.id})" class="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></div>`).join('') || '<p class="py-10 text-center text-sm text-slate-500">No add-ons created yet.</p>'}</div>
+      <div class="space-y-2">${addons.map(addon => `<div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div><strong class="text-sm text-slate-900 dark:text-white">${escapeOrderValue(addon.name)}</strong><p class="text-[11px] text-slate-500 mt-1">Rs. ${Number(addon.price).toLocaleString()} · ${addon.ingredients?.length ? `${addon.ingredients.length} ingredient${addon.ingredients.length === 1 ? '' : 's'} linked` : 'No inventory linked'}</p></div><div class="flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="openMenuAddonsPanel(${addon.id})" class="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></div>`).join('') || '<p class="py-10 text-center text-sm text-slate-500">No add-ons created yet.</p>'}</div>
     </div>`;
     document.body.appendChild(modal);
   } catch (error) { toast(error.message, 'error'); } finally { hideAppLoader(); }
@@ -3139,9 +3178,10 @@ async function openMenuAddonsPanel(editId = null) {
 async function saveMenuAddon(id) {
   const button = $c('save-menu-addon');
   if (button?.disabled) return;
-  const rawStockId = $c('menu-addon-stock').value;
-  const payload = { name: $c('menu-addon-name').value.trim(), price: Number($c('menu-addon-price').value), raw_stock_id: rawStockId ? Number(rawStockId) : null, quantity: rawStockId ? Number($c('menu-addon-qty').value) : 0 };
+  const payload = { name: $c('menu-addon-name').value.trim(), price: Number($c('menu-addon-price').value), ingredients: _menuAddonIngredientsDraft.map(ingredient => ({ raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity) })) };
   if (!payload.name) return toast('Add-on name is required', 'error');
+  if (payload.ingredients.some(ingredient => !Number.isInteger(ingredient.raw_stock_id) || !Number.isFinite(ingredient.quantity) || ingredient.quantity <= 0)) return toast('Every ingredient needs a valid quantity', 'error');
+  if (new Set(payload.ingredients.map(ingredient => ingredient.raw_stock_id)).size !== payload.ingredients.length) return toast('The same ingredient cannot be added twice', 'error');
   button.disabled = true;
   showAppLoader(id ? 'Updating add-on' : 'Adding add-on', `Saving ${payload.name}...`);
   try {
@@ -5124,7 +5164,11 @@ function configuredOrderItemName(baseName, variants, addons) {
     .map(variant => variant?.name || variant?.label || variant?.value || variant)
     .filter(Boolean);
   const addonNames = parseOrderOptionList(addons)
-    .map(addon => addon?.name || addon?.label || addon)
+    .map(addon => {
+      const name = addon?.name || addon?.label || addon;
+      const quantity = Number(addon?.selection_quantity || 1);
+      return quantity > 1 ? `${name} ×${quantity}` : name;
+    })
     .filter(Boolean);
   return `${baseName || "Item"}${variantNames.length ? ` ${variantNames.join(" ")}` : ""}${addonNames.length ? ` — ${addonNames.join(", ")} (Add-ons)` : ""}`;
 }
@@ -6398,7 +6442,7 @@ function addToCart(productId) {
       ${configuredAddons.length ? `<div>
         <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Optional add-ons</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          ${configuredAddons.map((addon) => `<label class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"><span class="flex items-center gap-2"><input type="checkbox" name="pos-product-addon" value="${escapeOrderValue(addon.id)}" onchange="updateConfiguredProductPrice(${productId})" class="rounded text-indigo-600"><span class="text-xs font-bold">${escapeOrderValue(addon.name)}</span></span><span class="text-xs font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()}</span></label>`).join('')}
+          ${configuredAddons.map((addon) => `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700"><span class="min-w-0"><span class="block truncate text-xs font-bold">${escapeOrderValue(addon.name)}</span><span class="text-xs font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()} each</span></span><div class="grid h-9 shrink-0 grid-cols-[36px_38px_36px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"><button type="button" onclick="changeConfiguredAddonQuantity(${productId}, '${escapeOrderValue(addon.id)}', -1)" class="text-lg font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Remove one ${escapeOrderValue(addon.name)}">&minus;</button><input name="pos-product-addon-quantity" data-addon-id="${escapeOrderValue(addon.id)}" value="0" readonly class="w-full border-x border-slate-200 bg-white text-center text-xs font-black text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white" aria-label="${escapeOrderValue(addon.name)} quantity"><button type="button" onclick="changeConfiguredAddonQuantity(${productId}, '${escapeOrderValue(addon.id)}', 1)" class="text-lg font-black text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950" aria-label="Add one ${escapeOrderValue(addon.name)}">+</button></div></div>`).join('')}
         </div>
       </div>` : ''}
 
@@ -6428,12 +6472,24 @@ function addToCart(productId) {
   openModal("Add to Cart", content, "max-w-xl");
 }
 
+function changeConfiguredAddonQuantity(productId, addonId, delta) {
+  const input = [...document.querySelectorAll('input[name="pos-product-addon-quantity"]')]
+    .find(element => String(element.dataset.addonId) === String(addonId));
+  if (!input) return;
+  input.value = String(Math.min(99, Math.max(0, Number(input.value || 0) + Number(delta || 0))));
+  updateConfiguredProductPrice(productId);
+}
+
 function getConfiguredProductSelection(product) {
   const variants = getProductMenuVariants(product);
   const selectedVariantId = document.querySelector('input[name="pos-product-variant"]:checked')?.value;
   const variant = variants.length ? variants.find(v => String(v.id) === String(selectedVariantId)) : null;
-  const selectedAddonIds = [...document.querySelectorAll('input[name="pos-product-addon"]:checked')].map(el => el.value);
-  const addons = (product.addons || []).filter(addon => selectedAddonIds.includes(addon.id));
+  const selectedQuantities = new Map([...document.querySelectorAll('input[name="pos-product-addon-quantity"]')]
+    .map(element => [String(element.dataset.addonId), Number(element.value || 0)])
+    .filter(([, quantity]) => Number.isInteger(quantity) && quantity > 0));
+  const addons = (product.addons || [])
+    .filter(addon => selectedQuantities.has(String(addon.id)))
+    .map(addon => ({ ...addon, selection_quantity: selectedQuantities.get(String(addon.id)) }));
   return { variant, addons };
 }
 
@@ -6442,7 +6498,11 @@ function updateConfiguredProductPrice(productId) {
   const priceInput = $c('add-cart-price');
   if (!product || !priceInput) return;
   const { variant, addons } = getConfiguredProductSelection(product);
-  priceInput.value = (Number(variant?.price ?? product.selling_price ?? 0) + addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0)).toFixed(2);
+  priceInput.value = (Number(variant?.price ?? product.selling_price ?? 0) + addons.reduce((sum, addon) => sum + (Number(addon.price || 0) * Number(addon.selection_quantity || 0)), 0)).toFixed(2);
+}
+
+function configuredAddonSelectionKey(addons) {
+  return addons.map(addon => `${addon.id}:${Number(addon.selection_quantity || 1)}`).sort().join(',');
 }
 
 function commitAddCart(productId) {
@@ -6466,7 +6526,7 @@ function commitAddCart(productId) {
     if (qty > availableStock)
       return toast(`Only ${availableStock} items available`, "error");
 
-    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}:${(specialInstructions || '').toLowerCase()}`;
+    const selectionKey = `${selection.variant?.id || 'regular'}:${configuredAddonSelectionKey(selection.addons)}:${(specialInstructions || '').toLowerCase()}`;
     const existing = cart.find((c) => c.product_id === productId && c.selection_key === selectionKey);
     if (existing) {
       if (existing.quantity + qty > availableStock)
@@ -6478,7 +6538,7 @@ function commitAddCart(productId) {
     }
   } else {
     // Recipe item bypasses stock checks
-    const selectionKey = `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}:${(specialInstructions || '').toLowerCase()}`;
+    const selectionKey = `${selection.variant?.id || 'regular'}:${configuredAddonSelectionKey(selection.addons)}:${(specialInstructions || '').toLowerCase()}`;
     const existing = cart.find((c) => c.product_id === productId && c.selection_key === selectionKey);
     if (existing) {
       existing.quantity += qty;
@@ -6496,10 +6556,10 @@ function commitAddCart(productId) {
       selling_price: price,
       product,
       batch_id: defaultBatch,
-      selection_key: `${selection.variant?.id || 'regular'}:${selection.addons.map(a => a.id).sort().join(',')}:${(specialInstructions || '').toLowerCase()}`,
+      selection_key: `${selection.variant?.id || 'regular'}:${configuredAddonSelectionKey(selection.addons)}:${(specialInstructions || '').toLowerCase()}`,
       special_instructions: specialInstructions,
       variants: selection.variant ? [{ id: selection.variant.id, name: selection.variant.name, price: Number(selection.variant.price) }] : null,
-      addons: selection.addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price) })),
+      addons: selection.addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price), selection_quantity: Number(addon.selection_quantity) })),
       stock_variant_id: !isRecipe && selection.variant ? Number(selection.variant.id) : null
     });
   }
@@ -8138,6 +8198,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Customer</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Total</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Paid</th>
+          <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Payment</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Pending</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Served By</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase text-right">Actions</th>
@@ -8174,6 +8235,19 @@ function setSalesManualDate() {
   const rangeDropdown = document.getElementById("sales-range-filter");
   if (rangeDropdown) rangeDropdown.value = "custom";
   _renderSalesTable();
+}
+
+function salesPaymentMethodBadge(method) {
+  const normalized = String(method || 'cash').trim().toLowerCase();
+  const labels = { cash: 'Cash', card: 'Card', online: 'Online Transfer' };
+  const styles = {
+    cash: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
+    card: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
+    online: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20'
+  };
+  const label = labels[normalized] || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase()) || 'Cash';
+  const style = styles[normalized] || 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+  return `<span class="inline-flex whitespace-nowrap rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase ${style}">${escapeOrderValue(label)}</span>`;
 }
 
 function _renderSalesTable() {
@@ -8301,6 +8375,7 @@ function _renderSalesTable() {
           </td>
           <td class="px-5 py-4 text-slate-700 dark:text-slate-200 font-bold">Rs. ${parseFloat(s.total || 0).toFixed(0)}</td>
           <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">Rs. ${parseFloat(s.amount_received || 0).toFixed(0)}</td>
+          <td class="px-5 py-4">${salesPaymentMethodBadge(s.payment_method)}</td>
           <td class="px-5 py-4 font-black">
              ${isPending ? `<span class="text-rose-600 dark:text-rose-400">Rs. ${parseFloat(due).toFixed(0)}</span>` : `<span class="text-slate-400 dark:text-slate-600 font-normal">None</span>`}
           </td>
@@ -8329,7 +8404,7 @@ function _renderSalesTable() {
         </tr>`;
         })
         .join("")
-      : `<tr><td colspan="8" class="px-5 py-10 text-center text-slate-400 dark:text-slate-600 text-sm italic border-t border-slate-100 dark:border-slate-800">No sales found for this filter.</td></tr>`;
+      : `<tr><td colspan="9" class="px-5 py-10 text-center text-slate-400 dark:text-slate-600 text-sm italic border-t border-slate-100 dark:border-slate-800">No sales found for this filter.</td></tr>`;
 
     $c("sales-pagination").innerHTML =
       totalPages > 1

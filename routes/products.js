@@ -23,6 +23,39 @@ function parseAddonConfig(value) {
   try { return JSON.parse(value || '[]'); } catch (_) { return []; }
 }
 
+function parseMenuAddonIngredients(body) {
+  const source = Array.isArray(body.ingredients)
+    ? body.ingredients
+    : (body.raw_stock_id ? [{ raw_stock_id: body.raw_stock_id, quantity: body.quantity }] : []);
+  const ingredients = source.map(ingredient => ({
+    raw_stock_id: Number(ingredient.raw_stock_id),
+    quantity: Number(ingredient.quantity)
+  }));
+  if (ingredients.some(ingredient => !Number.isInteger(ingredient.raw_stock_id) || !Number.isFinite(ingredient.quantity) || ingredient.quantity <= 0)) {
+    throw new Error('Select valid inventory ingredients and quantities.');
+  }
+  if (new Set(ingredients.map(ingredient => ingredient.raw_stock_id)).size !== ingredients.length) {
+    throw new Error('The same inventory ingredient cannot be added twice.');
+  }
+  return ingredients;
+}
+
+async function validateMenuAddonIngredients(trx, shopId, ingredients) {
+  if (!ingredients.length) return;
+  const rows = await trx('raw_stocks')
+    .where({ shop_id: shopId, is_deleted: 0 })
+    .whereIn('id', ingredients.map(ingredient => ingredient.raw_stock_id))
+    .select('id');
+  if (rows.length !== ingredients.length) throw new Error('One or more selected inventory ingredients are invalid.');
+}
+
+async function replaceMenuAddonIngredients(trx, addonId, ingredients) {
+  await trx('menu_addon_ingredients').where({ menu_addon_id: addonId }).del();
+  if (ingredients.length) {
+    await trx('menu_addon_ingredients').insert(ingredients.map(ingredient => ({ menu_addon_id: addonId, ...ingredient })));
+  }
+}
+
 async function syncCatalogAddonToProducts(trx, shopId, addonId, replacement) {
   const optionId = `addon-${addonId}`;
   const products = await trx('products').where({ shop_id: shopId, is_deleted: 0 }).select('id', 'addons_config');
@@ -156,11 +189,26 @@ router.post('/', requireAuth, (req, res, next) => {
 // Restaurant-level reusable add-on catalog.
 router.get('/menu-addons', requireAuth, async (req, res) => {
   const rows = await db('menu_addons as ma')
-    .leftJoin('raw_stocks as rs', 'ma.raw_stock_id', 'rs.id')
     .where('ma.shop_id', req.session.user.shop_id)
     .where('ma.is_active', 1)
-    .select('ma.*', 'rs.name as inventory_name')
+    .select('ma.*')
     .orderBy('ma.name', 'asc');
+  const ingredientRows = rows.length ? await db('menu_addon_ingredients as mai')
+    .join('raw_stocks as rs', 'mai.raw_stock_id', 'rs.id')
+    .whereIn('mai.menu_addon_id', rows.map(row => row.id))
+    .select('mai.menu_addon_id', 'mai.raw_stock_id', 'mai.quantity', 'rs.name as ingredient_name', 'rs.unit', 'rs.usage_unit', 'rs.conversion_factor')
+    .orderBy('mai.id', 'asc') : [];
+  const ingredientsByAddon = ingredientRows.reduce((map, ingredient) => {
+    if (!map.has(ingredient.menu_addon_id)) map.set(ingredient.menu_addon_id, []);
+    map.get(ingredient.menu_addon_id).push(ingredient);
+    return map;
+  }, new Map());
+  rows.forEach(row => {
+    row.ingredients = ingredientsByAddon.get(row.id) || [];
+    row.raw_stock_id = row.ingredients[0]?.raw_stock_id || null;
+    row.quantity = Number(row.ingredients[0]?.quantity || 0);
+    row.inventory_name = row.ingredients[0]?.ingredient_name || null;
+  });
   res.json(rows);
 });
 
@@ -169,12 +217,11 @@ router.post('/menu-addons', requireAuth, async (req, res) => {
     const shopId = req.session.user.shop_id;
     const name = String(req.body.name || '').trim();
     const price = Number(req.body.price);
-    const rawStockId = req.body.raw_stock_id ? Number(req.body.raw_stock_id) : null;
-    const quantity = rawStockId ? Number(req.body.quantity) : 0;
+    const ingredients = parseMenuAddonIngredients(req.body);
+    const firstIngredient = ingredients[0] || null;
     if (!name || !Number.isFinite(price) || price < 0) throw new Error('Add-on name and a valid price are required.');
-    if (rawStockId && (!Number.isInteger(rawStockId) || !Number.isFinite(quantity) || quantity <= 0)) throw new Error('Select a valid inventory quantity.');
-    if (rawStockId && !await db('raw_stocks').where({ id: rawStockId, shop_id: shopId, is_deleted: 0 }).first('id')) throw new Error('Selected inventory ingredient is invalid.');
     const result = await db.transaction(async trx => {
+      await validateMenuAddonIngredients(trx, shopId, ingredients);
       const existing = await trx('menu_addons')
         .where({ shop_id: shopId })
         .whereRaw('LOWER(TRIM(name)) = LOWER(TRIM(?))', [name])
@@ -185,11 +232,14 @@ router.post('/menu-addons', requireAuth, async (req, res) => {
         throw duplicateError;
       }
       if (existing) {
-        await trx('menu_addons').where({ id: existing.id, shop_id: shopId }).update({ name, price, raw_stock_id: rawStockId, quantity, is_active: 1, updated_at: trx.fn.now() });
+        await trx('menu_addons').where({ id: existing.id, shop_id: shopId }).update({ name, price, raw_stock_id: firstIngredient?.raw_stock_id || null, quantity: firstIngredient?.quantity || 0, is_active: 1, updated_at: trx.fn.now() });
+        await replaceMenuAddonIngredients(trx, existing.id, ingredients);
         return { id: existing.id, restored: true };
       }
-      const inserted = await trx('menu_addons').insert({ shop_id: shopId, name, price, raw_stock_id: rawStockId, quantity }).returning('id');
-      return { id: typeof inserted[0] === 'object' ? inserted[0].id : inserted[0], restored: false };
+      const inserted = await trx('menu_addons').insert({ shop_id: shopId, name, price, raw_stock_id: firstIngredient?.raw_stock_id || null, quantity: firstIngredient?.quantity || 0 }).returning('id');
+      const addonId = typeof inserted[0] === 'object' ? inserted[0].id : inserted[0];
+      await replaceMenuAddonIngredients(trx, addonId, ingredients);
+      return { id: addonId, restored: false };
     });
     res.json({ ok: true, ...result });
   } catch (error) {
@@ -204,14 +254,16 @@ router.put('/menu-addons/:addonId', requireAuth, async (req, res) => {
     const id = Number(req.params.addonId);
     const name = String(req.body.name || '').trim();
     const price = Number(req.body.price);
-    const rawStockId = req.body.raw_stock_id ? Number(req.body.raw_stock_id) : null;
-    const quantity = rawStockId ? Number(req.body.quantity) : 0;
+    const ingredients = parseMenuAddonIngredients(req.body);
+    const firstIngredient = ingredients[0] || null;
     if (!name || !Number.isFinite(price) || price < 0) throw new Error('Add-on name and a valid price are required.');
-    if (rawStockId && (!Number.isInteger(rawStockId) || !Number.isFinite(quantity) || quantity <= 0)) throw new Error('Select a valid inventory quantity.');
-    if (rawStockId && !await db('raw_stocks').where({ id: rawStockId, shop_id: shopId, is_deleted: 0 }).first('id')) throw new Error('Selected inventory ingredient is invalid.');
     const updated = await db.transaction(async trx => {
-      const count = await trx('menu_addons').where({ id, shop_id: shopId }).update({ name, price, raw_stock_id: rawStockId, quantity, updated_at: trx.fn.now() });
-      if (count) await syncCatalogAddonToProducts(trx, shopId, id, { name, price, raw_stock_id: rawStockId, quantity });
+      await validateMenuAddonIngredients(trx, shopId, ingredients);
+      const count = await trx('menu_addons').where({ id, shop_id: shopId }).update({ name, price, raw_stock_id: firstIngredient?.raw_stock_id || null, quantity: firstIngredient?.quantity || 0, updated_at: trx.fn.now() });
+      if (count) {
+        await replaceMenuAddonIngredients(trx, id, ingredients);
+        await syncCatalogAddonToProducts(trx, shopId, id, { name, price, ingredients, raw_stock_id: firstIngredient?.raw_stock_id || null, quantity: firstIngredient?.quantity || 0 });
+      }
       return count;
     });
     if (!updated) return res.status(404).json({ error: 'Add-on not found.' });

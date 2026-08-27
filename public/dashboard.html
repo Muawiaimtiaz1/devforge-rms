@@ -40,11 +40,23 @@
     <style>
         html {
             font-size: 18px;
+        }
+
+        input[type="date"],
+        input[type="datetime-local"],
+        #sales-range-filter,
+        #sales-type-filter {
             color-scheme: light;
         }
 
-        html.dark {
-            color-scheme: dark;
+        #sales-range-filter option,
+        #sales-type-filter option {
+            background-color: #ffffff;
+            color: #0f172a;
+        }
+
+        #sales-range-filter option:disabled {
+            color: #64748b;
         }
 
         body {

@@ -482,6 +482,16 @@ CREATE TABLE IF NOT EXISTS menu_addons (
   FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS menu_addon_ingredients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  menu_addon_id INTEGER NOT NULL,
+  raw_stock_id INTEGER NOT NULL,
+  quantity REAL NOT NULL,
+  FOREIGN KEY (menu_addon_id) REFERENCES menu_addons(id) ON DELETE CASCADE,
+  FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE CASCADE,
+  UNIQUE (menu_addon_id, raw_stock_id)
+);
+
 CREATE TABLE IF NOT EXISTS raw_stock_waste (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   raw_stock_id INTEGER NOT NULL,
@@ -614,5 +624,6 @@ CREATE INDEX IF NOT EXISTS idx_third_party_persons_shop_id ON third_party_person
 CREATE INDEX IF NOT EXISTS idx_sale_items_third_party_person_id ON sale_items(third_party_person_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_stocks_shop_ingredient_code ON raw_stocks(shop_id, ingredient_code) WHERE ingredient_code IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_addons_shop_name ON menu_addons(shop_id, name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_menu_addon_ingredients_addon_id ON menu_addon_ingredients(menu_addon_id);
 CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);
 CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id);

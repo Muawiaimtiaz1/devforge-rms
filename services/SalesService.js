@@ -182,22 +182,40 @@ class SalesService {
     const requestedAddons = Array.isArray(item.addons) ? item.addons : [];
     const requestedIds = requestedAddons.map(a => String(a.id));
     if (new Set(requestedIds).size !== requestedIds.length) throw new Error(`Duplicate add-ons selected for "${product.name}".`);
-    const addons = requestedIds.map(id => addonOptions.find(a => String(a.id) === id));
+    const requestedQuantities = requestedAddons.map(addon => Number(addon.selection_quantity ?? addon.quantity ?? 1));
+    if (requestedQuantities.some(quantity => !Number.isInteger(quantity) || quantity < 1 || quantity > 99)) {
+      throw new Error(`Select valid add-on quantities for "${product.name}".`);
+    }
+    const addons = requestedIds.map((id, index) => {
+      const addon = addonOptions.find(option => String(option.id) === id);
+      return addon ? { ...addon, selection_quantity: requestedQuantities[index] } : null;
+    });
     if (addons.some(addon => !addon)) throw new Error(`An add-on selected for "${product.name}" is no longer available.`);
 
-    const requirements = [...(variant.ingredients || []).map(ingredient => ({
-      raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity)
-    })), ...addons.filter(addon => addon.raw_stock_id && Number(addon.quantity) > 0).map(addon => ({
-      raw_stock_id: Number(addon.raw_stock_id), quantity: Number(addon.quantity)
-    }))];
-    const price = Number(variant.price) + addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+    const requirements = [
+      ...(variant.ingredients || []).map(ingredient => ({
+        raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity)
+      })),
+      ...addons.flatMap(addon => Array.isArray(addon.ingredients) && addon.ingredients.length
+        ? addon.ingredients.map(ingredient => ({ raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity) * addon.selection_quantity }))
+        : (addon.raw_stock_id && Number(addon.quantity) > 0 ? [{ raw_stock_id: Number(addon.raw_stock_id), quantity: Number(addon.quantity) * addon.selection_quantity }] : []))
+    ];
+    const price = Number(variant.price) + addons.reduce((sum, addon) => sum + (Number(addon.price || 0) * addon.selection_quantity), 0);
     const cost = await this.calculateRequirementsCost(trx, requirements, shopId);
     return {
       price,
       cost,
       requirements,
       variants: [{ id: variant.id, name: variant.name, price: Number(variant.price), ingredients: variant.ingredients || [] }],
-      addons: addons.map(addon => ({ id: addon.id, name: addon.name, price: Number(addon.price || 0), raw_stock_id: addon.raw_stock_id ? Number(addon.raw_stock_id) : null, quantity: Number(addon.quantity || 0) }))
+      addons: addons.map(addon => ({
+        id: addon.id,
+        name: addon.name,
+        price: Number(addon.price || 0),
+        selection_quantity: addon.selection_quantity,
+        ingredients: (addon.ingredients || []).map(ingredient => ({ raw_stock_id: Number(ingredient.raw_stock_id), quantity: Number(ingredient.quantity) })),
+        raw_stock_id: addon.raw_stock_id ? Number(addon.raw_stock_id) : null,
+        quantity: Number(addon.quantity || 0)
+      }))
     };
   }
 
@@ -263,7 +281,12 @@ class SalesService {
     const addons = this.parseMenuConfig(item.addons_json);
     return [
       ...variants.flatMap(variant => Array.isArray(variant?.ingredients) ? variant.ingredients : []),
-      ...addons.filter(addon => addon?.raw_stock_id && Number(addon.quantity) > 0).map(addon => ({ raw_stock_id: addon.raw_stock_id, quantity: addon.quantity }))
+      ...addons.flatMap(addon => {
+        const selectionQuantity = Number(addon?.selection_quantity || 1);
+        return Array.isArray(addon?.ingredients) && addon.ingredients.length
+          ? addon.ingredients.map(ingredient => ({ raw_stock_id: ingredient.raw_stock_id, quantity: Number(ingredient.quantity) * selectionQuantity }))
+          : (addon?.raw_stock_id && Number(addon.quantity) > 0 ? [{ raw_stock_id: addon.raw_stock_id, quantity: Number(addon.quantity) * selectionQuantity }] : []);
+      })
     ];
   }
 
@@ -1057,9 +1080,12 @@ class SalesService {
       if (Array.isArray(value)) return value;
       try { return JSON.parse(value || '[]'); } catch { return []; }
     };
-    const compact = value => parse(value).map(entry => String(entry?.id ?? entry?.name ?? entry?.label ?? entry)).sort().join(',');
+    const compact = (value, includeSelectionQuantity = false) => parse(value).map(entry => {
+      const identity = String(entry?.id ?? entry?.name ?? entry?.label ?? entry);
+      return includeSelectionQuantity ? `${identity}:${Number(entry?.selection_quantity || 1)}` : identity;
+    }).sort().join(',');
     const product = item.product_id ? `p:${item.product_id}` : `c:${String(stored ? item.custom_name : item.name || '').trim().toLowerCase()}`;
-    return [product, item.stock_variant_id || '', compact(stored ? item.variants_json : item.variants), compact(stored ? item.addons_json : item.addons)].join('|');
+    return [product, item.stock_variant_id || '', compact(stored ? item.variants_json : item.variants), compact(stored ? item.addons_json : item.addons, true)].join('|');
   }
 
   assertOrderItemsNotReduced(oldItems, newItems) {
@@ -1084,8 +1110,11 @@ class SalesService {
       if (Array.isArray(value)) return value;
       try { return JSON.parse(value || '[]'); } catch (_) { return []; }
     };
-    const compact = value => parse(value)
-      .map(entry => String(entry?.id ?? entry?.name ?? entry?.label ?? entry))
+    const compact = (value, includeSelectionQuantity = false) => parse(value)
+      .map(entry => {
+        const identity = String(entry?.id ?? entry?.name ?? entry?.label ?? entry);
+        return includeSelectionQuantity ? `${identity}:${Number(entry?.selection_quantity || 1)}` : identity;
+      })
       .sort()
       .join(',');
     const productId = stored ? item.product_id : item.product?.id;
@@ -1094,7 +1123,7 @@ class SalesService {
       productId ? `p:${productId}` : `c:${String(name || '').trim().toLowerCase()}`,
       item.stock_variant_id || '',
       compact(stored ? item.variants_json : item.variants_json || item.variants),
-      compact(stored ? item.addons_json : item.addons_json || item.addons),
+      compact(stored ? item.addons_json : item.addons_json || item.addons, true),
       String(item.special_instructions || '').trim(),
     ].join('|');
   }
@@ -1607,13 +1636,12 @@ class SalesService {
         .where({ shop_id: shopId, user_id: userId, status: 'open' })
         .first();
       
-      const updateData = { amount_received: finalAmount, payment_receiver_id: userId, payment_received_at: trx.fn.now() };
+      const updateData = { amount_received: finalAmount, payment_method: paymentMethod, payment_receiver_id: userId, payment_received_at: trx.fn.now() };
       if (!activeShift) throw new Error('You must open a register shift to collect payments.');
 
       await trx('sales').where({ id: saleId }).update(updateData);
 
       if (finalAmount >= saleTotal - 0.01 && sale.order_status === 'completed' && paymentMethod === 'cash') {
-        await trx('sales').where({ id: saleId }).update({ payment_method: paymentMethod });
         await cashDrawerService.queueForPaidCompletedSale(saleId, shopId, trx);
       }
 

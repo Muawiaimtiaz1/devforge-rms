@@ -15,6 +15,7 @@ const variantSchema = z.object({
 const addonSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1),
+  ingredients: z.array(ingredientSchema).optional().default([]),
   raw_stock_id: z.number().int().positive().nullable().optional(),
   quantity: z.number().nonnegative().optional().default(0),
   price: z.number().nonnegative()
@@ -73,7 +74,9 @@ class ProductService {
     }
     const rawStockIds = [...new Set([
       ...variantList.flatMap(v => (v.ingredients || []).map(i => Number(i.raw_stock_id))),
-      ...addonList.filter(a => a.raw_stock_id).map(a => Number(a.raw_stock_id))
+      ...addonList.flatMap(addon => addon.ingredients?.length
+        ? addon.ingredients.map(ingredient => Number(ingredient.raw_stock_id))
+        : (addon.raw_stock_id ? [Number(addon.raw_stock_id)] : []))
     ])].filter(Number.isFinite);
     if (rawStockIds.length) {
       const rows = await trx('raw_stocks').where({ shop_id: shopId }).whereIn('id', rawStockIds).select('id');
