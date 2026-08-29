@@ -100,11 +100,20 @@ class ProductService {
     // Note: Due to the complexity of the existing subqueries, we'll start with clean Knex queries 
     // but keep the same data structure.
     
+    const menuPanelColumns = [
+      'p.id', 'p.shop_id', 'p.sku', 'p.name', 'p.category', 'p.barcode', 'p.description',
+      'p.brand_id', 'p.user_id', 'p.buying_price', 'p.selling_price', 'p.stock',
+      'p.min_stock_level', 'p.image_path', 'p.is_commission_based', 'p.third_party_person_id',
+      'p.commission_percentage', 'p.is_deleted', 'p.created_at', 'p.is_component',
+      'p.variants_config', 'p.addons_config', 'p.product_type', 'p.updated_at'
+    ];
     const baseQuery = db('products as p')
-      .select('p.*', 'b.name as brand_name')
-      .leftJoin('brands as b', 'p.brand_id', 'b.id')
+      .select(options.excludeDamageStock ? menuPanelColumns : ['p.*'])
       .where('p.shop_id', shopId)
       .where('p.is_deleted', 0);
+    if (options.includeBrandName !== false) {
+      baseQuery.leftJoin('brands as b', 'p.brand_id', 'b.id').select('b.name as brand_name');
+    }
 
     const search = String(options.search || '').trim().toLowerCase();
     if (search) {
@@ -172,7 +181,9 @@ class ProductService {
         .join('recipe_ingredients as ri', 'prl.recipe_id', 'ri.recipe_id')
         .join('raw_stocks as rs', 'ri.raw_stock_id', 'rs.id')
         .whereIn('prl.product_id', productIds),
-      db('product_batches').whereIn('product_id', productIds).where('quantity', '>', 0).orderBy('created_at', 'asc')
+      options.excludeBatches
+        ? Promise.resolve([])
+        : db('product_batches').whereIn('product_id', productIds).where('quantity', '>', 0).orderBy('created_at', 'asc')
     ]) : [[], [], [], []];
     const stockVariantsByProduct = new Map();
     for (const variant of stockVariantRows) {
@@ -213,6 +224,13 @@ class ProductService {
       items: products,
       pagination: { page, page_size: pageSize, total, total_pages: Math.max(1, Math.ceil(total / pageSize)) }
     };
+  }
+
+  async getInventoryActionContext(productId, shopId) {
+    const product = await db('products').where({ id: productId, shop_id: shopId, is_deleted: 0 }).select('id', 'damage_stock').first();
+    if (!product) return null;
+    const batches = await db('product_batches').where({ product_id: productId, shop_id: shopId }).where('quantity', '>', 0).orderBy('created_at', 'asc');
+    return { damage_stock: Number(product.damage_stock || 0), batches };
   }
 
   /**

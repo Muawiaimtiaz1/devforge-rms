@@ -2484,7 +2484,7 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
   const inventorySearch = String(state.search || '').trim();
   const productParams = new URLSearchParams({
     paginate: '1', page: String(requestedPage), page_size: String(INVENTORY_PRODUCTS_PER_PAGE),
-    menu_only: '1', exclude_components: '1', stock_filter: selectedStockFilter
+    menu_only: '1', exclude_components: '1', stock_filter: selectedStockFilter, list_view: 'menu_panel'
   });
   if (inventorySearch) productParams.set('search', inventorySearch);
   const [productResponse, brands, menuAddons] = await Promise.all([
@@ -2504,7 +2504,7 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
   const mainProducts = products.filter((p) => p.is_component !== 1 && isProductPublishedToMenu(p));
   updateLowStockBadge(mainProducts);
 
-  $c("page-content").innerHTML = `
+  const menuPanelHtml = `
     <div class="flex flex-col xl:flex-row xl:items-center gap-4 mb-8">
       <div class="flex-1 relative group w-full">
         <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
@@ -2544,6 +2544,7 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
       <p class="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]"><span id="product-count">${Number(productPagination.total || 0)}</span> <span id="product-count-label">${inventoryStockFilterLabel(selectedStockFilter)}</span></p>
       <button id="inventory-clear-filter" onclick="resetInventoryFilters()" class="hidden text-[10px] font-bold text-indigo-500 hover:text-indigo-600 transition-colors uppercase tracking-widest">Clear Filter</button>
     </div>
+    <div id="inventory-pagination">
     ${productPagination.total ? `<div class="mb-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div class="text-[11px] font-bold text-slate-500 dark:text-slate-400">Showing ${((_inventoryProductPage - 1) * Number(productPagination.page_size)) + 1}-${Math.min(_inventoryProductPage * Number(productPagination.page_size), Number(productPagination.total))} of ${Number(productPagination.total)}</div>
       <div class="flex items-center gap-2">
@@ -2552,17 +2553,15 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
         <button type="button" onclick="changeInventoryPage(${_inventoryProductPage + 1})" ${_inventoryProductPage >= Number(productPagination.total_pages || 1) ? 'disabled' : ''} class="h-8 rounded-lg border border-slate-200 px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700">Next</button>
       </div>
     </div>` : ''}
+    </div>
     <div class="glass rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800 transition-all">
       <table class="w-full text-sm" id="inventory-table">
         <thead><tr class="border-b border-slate-200 dark:border-slate-700 text-left bg-slate-50 dark:bg-black/20">
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">SKU</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Product</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Category</th>
-          <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Brand</th>
-          <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Batches (Cost)</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Fine Stock</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Selling Price</th>
-          <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Damaged</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase text-right">Actions</th>
         </tr></thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800" id="inventory-table-body">
@@ -2577,28 +2576,6 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
                 <div class="text-[10px] text-slate-500">${p.description || ""}</div>
               </td>
               <td class="px-5 py-4"><span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wider product-category">${p.category}</span></td>
-              <td class="px-5 py-4 text-slate-600 dark:text-slate-400 font-medium">${p.brand_name || "—"}</td>
-              <td class="px-5 py-4">
-                ${p.batches && p.batches.length > 1
-              ? `
-                  <div class="relative inline-block">
-                    <select class="appearance-none text-xs bg-transparent text-indigo-600 dark:text-indigo-400 rounded-lg pl-0 pr-6 py-1 font-black cursor-pointer transition-all focus:outline-none focus:ring-0 uppercase tracking-tight">
-                      <option disabled selected class="bg-white dark:bg-slate-900">Multiple Prices (${p.batches.length})</option>
-                      ${p.batches.map(b => `<option class="bg-white dark:bg-slate-900 text-sm font-bold">Rs. ${b.buying_price} (${b.quantity} qty)</option>`).join('')}
-                    </select>
-                    <div class="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500/50">
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </div>
-                  </div>
-                `
-              : (p.batches && p.batches.length === 1)
-                ? `<div class="inline-flex flex-col">
-                           <span class="text-[11px] font-black text-slate-900 dark:text-white">Rs. ${p.batches[0].buying_price}</span>
-                           <span class="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Standard Cost</span>
-                         </div>`
-                : '<span class="text-slate-300">No Batches</span>'
-            }
-              </td>
               <td class="px-5 py-4">
                 <div class="flex flex-col gap-1">
                   ${inventoryIsRecipeProduct(p)
@@ -2620,19 +2597,14 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
                 </div>
               </td>
               <td class="px-5 py-4 text-slate-600 dark:text-slate-400">${getProductMenuVariants(p).length ? getProductMenuVariants(p).map(v => `<div class="text-xs"><strong>${escapeOrderValue(v.name)}:</strong> Rs. ${Number(v.price).toLocaleString()}</div>`).join('') : `Rs. ${p.selling_price || 0}`}</td>
-              <td class="px-5 py-4">
-                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${p.damage_stock > 0 ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}">
-                  ${p.damage_stock || 0} Damaged
-                </span>
-              </td>
               <td class="px-5 py-4 text-right space-x-1 whitespace-nowrap">
                 ${!inventoryIsRecipeProduct(p) && !(p.stock_variants || []).length
               ? `<button onclick="adjustStock(${p.id},'${p.name.replace(/'/g, "\\'")}',${p.stock},${p.buying_price})" class="px-2 py-1 text-xs rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700">Stock</button>`
               : ""
                 }
                 ${!inventoryIsRecipeProduct(p) && !(p.stock_variants || []).length ? `<div class="inline-flex rounded-lg shadow-sm" role="group">
-                  <button onclick="openLossPopup(${p.id}, '${p.name.replace(/'/g, "\\'")}')" class="px-2 py-1 text-xs rounded-l-lg bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-800/50 transition-all border border-rose-200 dark:border-rose-900/50 border-r-0">Loss</button>
-                  <button onclick="openRecoveryPopup(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.damage_stock})" class="px-2 py-1 text-xs rounded-r-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-800/50 transition-all border border-emerald-200 dark:border-emerald-900/50">Recov</button>
+                  <button onclick="openMenuInventoryAction(${p.id}, '${p.name.replace(/'/g, "\\'")}', 'loss')" class="px-2 py-1 text-xs rounded-l-lg bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-800/50 transition-all border border-rose-200 dark:border-rose-900/50 border-r-0">Loss</button>
+                  <button onclick="openMenuInventoryAction(${p.id}, '${p.name.replace(/'/g, "\\'")}', 'recovery')" class="px-2 py-1 text-xs rounded-r-lg bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-800/50 transition-all border border-emerald-200 dark:border-emerald-900/50">Recov</button>
                 </div>` : ''}
                 <button onclick="openEditProduct(${p.id})" class="px-2 py-1 text-xs rounded-lg bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-all border border-indigo-200 dark:border-indigo-900/50">Edit</button>
                 ${p.barcode ? `<button onclick="printBarcode('${p.barcode.replace(/'/g, "\\'")}')" title="Print barcode" aria-label="Print barcode" class="inline-flex shrink-0 items-center justify-center p-2 rounded-lg bg-slate-50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all border border-slate-200 dark:border-slate-900/50"><svg class="block shrink-0 overflow-visible" style="width:20px;height:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></button>` : ""}
@@ -2640,11 +2612,26 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
             </tr>`,
         )
         .join("")
-      : `<tr><td colspan="9" class="px-6 py-12 text-center text-slate-500">No products. Add brands first, then products.</td></tr>`
+      : `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500">No products. Add brands first, then products.</td></tr>`
     }
         </tbody>
       </table>
     </div>`;
+  const pageContent = $c("page-content");
+  const existingTableBody = document.getElementById('inventory-table-body');
+  const existingPagination = document.getElementById('inventory-pagination');
+  if (state.partial && existingTableBody && existingPagination) {
+    const nextContent = document.createElement('div');
+    nextContent.innerHTML = menuPanelHtml;
+    const nextTableBody = nextContent.querySelector('#inventory-table-body');
+    const nextPagination = nextContent.querySelector('#inventory-pagination');
+    if (nextTableBody) existingTableBody.replaceWith(nextTableBody);
+    if (nextPagination) existingPagination.replaceWith(nextPagination);
+    const count = document.getElementById('product-count');
+    if (count) count.textContent = String(Number(productPagination.total || 0));
+  } else {
+    pageContent.innerHTML = menuPanelHtml;
+  }
   const renderedSearchInput = document.getElementById('inventory-search');
   if (currentSearchInput && renderedSearchInput) {
     renderedSearchInput.replaceWith(currentSearchInput);
@@ -2684,7 +2671,8 @@ async function editCategoryName(type, id) {
 const filterInventory = debounce(() => {
   renderProducts(_currentPage === "products-low-stock", 1, {
     search: document.getElementById("inventory-search")?.value || "",
-    stockFilter: document.getElementById("inventory-stock-filter")?.value || "all"
+    stockFilter: document.getElementById("inventory-stock-filter")?.value || "all",
+    partial: true
   });
 }, 300);
 
@@ -2698,7 +2686,8 @@ function changeInventoryFilter() {
 function changeInventoryPage(page) {
   renderProducts(_currentPage === "products-low-stock", page, {
     search: document.getElementById("inventory-search")?.value || "",
-    stockFilter: document.getElementById("inventory-stock-filter")?.value || "all"
+    stockFilter: document.getElementById("inventory-stock-filter")?.value || "all",
+    partial: true
   });
 }
 
@@ -3755,6 +3744,18 @@ async function toggleDamageAutoCalc(cb) {
   }
 }
 
+async function openMenuInventoryAction(productId, productName, action) {
+  try {
+    const context = await api(`/api/products/${productId}/inventory-context`);
+    const product = allProducts.find(item => Number(item.id) === Number(productId));
+    if (product) product.batches = Array.isArray(context.batches) ? context.batches : [];
+    if (action === 'recovery') openRecoveryPopup(productId, productName, Number(context.damage_stock || 0));
+    else openLossPopup(productId, productName);
+  } catch (error) {
+    toast(error.message || 'Unable to load inventory details', 'error');
+  }
+}
+
 function openLossPopup(productId, productName) {
   if (typeof showWasteLogModal === "function") {
     return showWasteLogModal({
@@ -4124,11 +4125,30 @@ function getPOSTableStatusStyle(status, selected = false) {
 
 function renderPOSTableSelectionContent() {
   const selectedId = Number(window._posSelectedTableId || 0);
-  const floorGroups = _posFloors.length
+  const currentTableUserRole = String(currentUser?.role || '').toLowerCase();
+  const groupTablesByWaiter = !['waiter', 'order_taker'].includes(currentTableUserRole);
+  let tableGroups = _posFloors.length
     ? _posFloors.map(floor => ({ ...floor, tables: _posAllTables.filter(table => Number(table.floor_id) === Number(floor.id)) }))
     : [{ id: 'all', name: 'Dining Area', tables: _posAllTables }];
   const unassigned = _posFloors.length ? _posAllTables.filter(table => !table.floor_id) : [];
-  if (unassigned.length) floorGroups.push({ id: 'unassigned', name: 'Other Tables', tables: unassigned });
+  if (unassigned.length) tableGroups.push({ id: 'unassigned', name: 'Other Tables', tables: unassigned });
+  if (groupTablesByWaiter) {
+    const waiterGroups = new Map();
+    _posAllTables.forEach(table => {
+      const waiterId = Number(table.assigned_waiter_id || 0);
+      const key = waiterId ? `waiter-${waiterId}` : 'unassigned';
+      const waiterName = waiterId
+        ? (table.assigned_waiter_name || table.assigned_waiter_username || `Waiter #${waiterId}`)
+        : 'Unassigned';
+      if (!waiterGroups.has(key)) waiterGroups.set(key, { id: key, name: waiterName, tables: [] });
+      waiterGroups.get(key).tables.push(table);
+    });
+    tableGroups = Array.from(waiterGroups.values()).sort((a, b) => {
+      if (a.id === 'unassigned') return 1;
+      if (b.id === 'unassigned') return -1;
+      return String(a.name).localeCompare(String(b.name));
+    });
+  }
   const availableCount = _posAllTables.filter(table => table.status === 'available').length;
   const reservedCount = _posAllTables.filter(table => table.status === 'reserved').length;
   const occupiedCount = _posAllTables.filter(table => table.status === 'occupied').length;
@@ -4147,20 +4167,24 @@ function renderPOSTableSelectionContent() {
     </button>`;
   };
 
-  const mapHtml = floorGroups.map(group => `
+  const groupedSectionHtml = (group, mapView) => `
     <section class="rounded-3xl border border-slate-200 bg-slate-100/70 p-4 dark:border-slate-800 dark:bg-slate-950/50">
       <div class="mb-4 flex items-center justify-between border-b border-dashed border-slate-300 pb-3 dark:border-slate-700">
         <div><h3 class="font-black text-slate-900 dark:text-white">${escapeOrderValue(group.name)}</h3><p class="text-xs font-medium text-slate-500">${group.tables.length} tables</p></div>
-        <span class="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-700 dark:bg-slate-900">Floor map</span>
+        <span class="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-700 dark:bg-slate-900">${groupTablesByWaiter ? 'Waiter' : 'Floor map'}</span>
       </div>
-      <div class="flex min-h-40 flex-wrap items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 p-5 dark:border-slate-800 dark:bg-slate-900/50">
-        ${group.tables.length ? group.tables.map(table => tableButton(table, true)).join('') : '<p class="text-sm font-bold text-slate-400">No tables on this floor</p>'}
+      <div class="${mapView ? 'flex min-h-40 flex-wrap items-center justify-center gap-5' : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'} rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 p-5 dark:border-slate-800 dark:bg-slate-900/50">
+        ${group.tables.length ? group.tables.map(table => tableButton(table, mapView)).join('') : '<p class="text-sm font-bold text-slate-400">No tables in this group</p>'}
       </div>
-    </section>`).join('');
+    </section>`;
 
-  const cardsHtml = `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-    ${_posAllTables.length ? _posAllTables.map(table => tableButton(table, false)).join('') : '<div class="col-span-full rounded-3xl border-2 border-dashed border-slate-200 py-20 text-center text-sm font-bold text-slate-400 dark:border-slate-800">No tables configured</div>'}
-  </div>`;
+  const mapHtml = tableGroups.map(group => groupedSectionHtml(group, true)).join('');
+
+  const cardsHtml = groupTablesByWaiter
+    ? tableGroups.map(group => groupedSectionHtml(group, false)).join('')
+    : `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        ${_posAllTables.length ? _posAllTables.map(table => tableButton(table, false)).join('') : '<div class="col-span-full rounded-3xl border-2 border-dashed border-slate-200 py-20 text-center text-sm font-bold text-slate-400 dark:border-slate-800">No tables configured</div>'}
+      </div>`;
 
   $c('page-content').innerHTML = `
     <div class="mx-auto max-w-7xl space-y-5 animate-in fade-in slide-in-from-bottom-3 duration-300">

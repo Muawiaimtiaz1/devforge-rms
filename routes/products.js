@@ -114,9 +114,18 @@ router.get('/', requireAuth, async (req, res) => {
       productType: req.query.product_type,
       stockFilter: req.query.stock_filter,
       menuOnly: req.query.menu_only === '1' || req.query.menu_only === 'true',
-      excludeComponents: req.query.exclude_components === '1' || req.query.exclude_components === 'true'
+      excludeComponents: req.query.exclude_components === '1' || req.query.exclude_components === 'true',
+      includeBrandName: req.query.list_view !== 'menu_panel',
+      excludeDamageStock: req.query.list_view === 'menu_panel',
+      excludeBatches: req.query.list_view === 'menu_panel'
     });
     res.json(products);
+});
+
+router.get('/:id/inventory-context', requireAuth, async (req, res) => {
+    const context = await productService.getInventoryActionContext(req.params.id, req.session.user.shop_id);
+    if (!context) return res.status(404).json({ error: 'Product not found' });
+    res.json(context);
 });
 
 // POST /api/products
