@@ -21,16 +21,33 @@ router.put("/:id/items", requireAuth, async (req, res) => {
 
 // GET /api/sales — list sales for current shop
 router.get("/", requireAuth, async (req, res) => {
-  const sales = await salesService.getSales(req.session.user.shop_id, req.session.user);
-  const isRestrictedSalesPanel = req.query.view === 'sales_panel'
-    && ['waiter', 'order_taker'].includes(String(req.session.user.role || '').toLowerCase());
-  if (isRestrictedSalesPanel) {
-    return res.json(sales.map(sale => ({
-      id: sale.id,
-      order_number: sale.order_number,
-      order_status: sale.order_status
-    })));
+  if (req.query.view === 'sales_panel') {
+    const result = await salesService.getSalesPage(req.session.user.shop_id, req.session.user, {
+      page: req.query.page,
+      pageSize: req.query.page_size,
+      search: req.query.search,
+      paymentStatus: req.query.payment_status,
+      orderType: req.query.order_type,
+      fromDate: req.query.from_date,
+      toDate: req.query.to_date
+    });
+    const isRestrictedSalesPanel = ['waiter', 'order_taker']
+      .includes(String(req.session.user.role || '').toLowerCase());
+    const rows = isRestrictedSalesPanel
+      ? result.rows.map(sale => ({ id: sale.id, order_number: sale.order_number, order_status: sale.order_status }))
+      : result.rows;
+    return res.json({
+      rows,
+      pagination: {
+        page: result.page,
+        page_size: result.pageSize,
+        total_records: result.totalRecords,
+        total_pages: result.totalPages
+      },
+      summary: { total_pending_due: result.pendingDueTotal }
+    });
   }
+  const sales = await salesService.getSales(req.session.user.shop_id, req.session.user);
   res.json(sales);
 });
 

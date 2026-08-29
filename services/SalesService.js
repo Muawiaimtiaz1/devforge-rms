@@ -1618,6 +1618,79 @@ class SalesService {
     return await query.orderBy('s.created_at', 'desc');
   }
 
+  async getSalesPage(shopId, currentUser = null, filters = {}) {
+    const page = Math.max(1, Number(filters.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 25));
+    const query = db('sales as s')
+      .leftJoin('users as u', 's.user_id', 'u.id')
+      .leftJoin('users as pr', 's.payment_receiver_id', 'pr.id')
+      .leftJoin('users as w', 's.waiter_id', 'w.id')
+      .leftJoin('users as r', 's.rider_id', 'r.id')
+      .leftJoin('users as k', 's.kitchen_id', 'k.id')
+      .leftJoin('tables as t', 's.table_id', 't.id')
+      .where('s.shop_id', shopId)
+      .whereIn('s.order_status', ['completed', 'payment_pending']);
+
+    const role = String(currentUser?.role || '').toLowerCase();
+    const isWaiter = ['waiter', 'order_taker'].includes(role);
+    const canViewAllShopOrders = ['admin', 'superadmin', 'manager', 'pos_user'].includes(role);
+    if (currentUser && isWaiter) {
+      query.andWhere(function() {
+        this.where('s.user_id', currentUser.id).orWhere('s.waiter_id', currentUser.id);
+      });
+    } else if (currentUser && !canViewAllShopOrders) {
+      const activeShift = await db('shifts')
+        .where({ shop_id: shopId, user_id: currentUser.id, status: 'open' })
+        .first();
+      query.andWhere(function() {
+        this.where('s.user_id', currentUser.id);
+        this.orWhere('s.waiter_id', currentUser.id);
+        if (activeShift) this.orWhere('s.shift_id', activeShift.id);
+        this.orWhere('s.order_status', 'payment_pending');
+        this.orWhereRaw('(s.total - s.amount_received) > 0.01');
+      });
+    }
+
+    if (filters.paymentStatus === 'pending') query.andWhereRaw('(s.total - s.amount_received) > 0.01');
+    if (filters.paymentStatus === 'paid') query.andWhereRaw('(s.total - s.amount_received) <= 0.01');
+    if (filters.orderType) query.andWhere('s.order_type', filters.orderType);
+    if (filters.fromDate) query.andWhere('s.created_at', '>=', filters.fromDate);
+    if (filters.toDate) query.andWhere('s.created_at', '<=', filters.toDate);
+
+    const search = String(filters.search || '').trim().toLowerCase();
+    if (search) {
+      const pattern = `%${search}%`;
+      query.andWhere(function() {
+        this.whereRaw('LOWER(COALESCE(CAST(s.order_number AS TEXT), CAST(s.id AS TEXT))) LIKE ?', [pattern])
+          .orWhereRaw("LOWER(COALESCE(s.customer_name, '')) LIKE ?", [pattern])
+          .orWhereRaw("LOWER(COALESCE(s.customer_phone, '')) LIKE ?", [pattern])
+          .orWhereRaw("LOWER(COALESCE(u.name, '')) LIKE ?", [pattern])
+          .orWhereRaw("LOWER(COALESCE(u.username, '')) LIKE ?", [pattern]);
+      });
+    }
+
+    const countRow = await query.clone().clearSelect().clearOrder().countDistinct({ count: 's.id' }).first();
+    const totalRecords = Number(countRow?.count || 0);
+    const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+    const safePage = Math.min(page, totalPages);
+
+    let pendingDueTotal = 0;
+    if (filters.paymentStatus === 'pending') {
+      const summary = await query.clone().clearSelect().clearOrder()
+        .sum({ total: db.raw('(s.total - s.amount_received)') }).first();
+      pendingDueTotal = Number(summary?.total || 0);
+    }
+
+    const rows = await query.clone()
+      .select('s.*', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'w.name as waiter_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select(db.raw('(SELECT SUM(quantity) FROM return_items WHERE return_id IN (SELECT id FROM returns WHERE sale_id = s.id)) as items_returned'))
+      .orderBy('s.created_at', 'desc')
+      .limit(pageSize)
+      .offset((safePage - 1) * pageSize);
+
+    return { rows, page: safePage, pageSize, totalRecords, totalPages, pendingDueTotal };
+  }
+
   async payDue(saleId, shopId, userId, amount, paymentMethod = 'cash', note) {
     return await db.transaction(async (trx) => {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();

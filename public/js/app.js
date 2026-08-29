@@ -8154,24 +8154,23 @@ let _salesRangeFilter = "today"; // today, last_week, etc. or null for manual
 let _salesPendingFilter = false;
 let _salesPage = 1;
 const _salesPageSize = 25;
+let _salesPagination = { page: 1, total_records: 0, total_pages: 1 };
+let _salesRestrictedView = false;
+let _salesSearchTimer = null;
 
 async function renderSalesHistory(onlyPendingDues = false) {
   try {
-    const restrictedSalesView = ['waiter', 'order_taker'].includes(String(currentUser?.role || '').toLowerCase());
-    const sales = await api(restrictedSalesView ? "/api/sales?view=sales_panel" : "/api/sales");
-    _allSalesCache = Array.isArray(sales)
-      ? sales.filter((s) => s.order_status === "completed" || s.order_status === "payment_pending")
-      : [];
-    if (restrictedSalesView) {
-      _salesPendingFilter = false;
-      _salesPage = 1;
+    _salesRestrictedView = ['waiter', 'order_taker'].includes(String(currentUser?.role || '').toLowerCase());
+    _salesPendingFilter = _salesRestrictedView ? false : onlyPendingDues;
+    _salesPage = 1;
+    if (_salesRestrictedView) {
       $c("page-content").innerHTML = `
         <div class="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-1">Orders</h2>
             <p class="text-slate-500 dark:text-slate-400 text-sm">Showing order IDs and ordered items only</p>
           </div>
-          <input id="sales-search" oninput="_renderRestrictedSalesTable()" placeholder="Search Order ID..." class="w-full sm:w-64 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm shadow-sm" />
+          <input id="sales-search" oninput="scheduleSalesPageReload()" placeholder="Search Order ID..." class="w-full sm:w-64 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm shadow-sm" />
         </div>
         <div class="glass rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800">
           <table class="w-full text-left border-collapse">
@@ -8181,13 +8180,11 @@ async function renderSalesHistory(onlyPendingDues = false) {
             </tr></thead>
             <tbody id="sales-table-body" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
           </table>
+          <div id="sales-pagination" class="bg-slate-50/50 dark:bg-black/20 px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between"></div>
         </div>`;
-      _renderRestrictedSalesTable();
+      await loadSalesPanelPage();
       return;
     }
-    updatePendingDuesBadge(_allSalesCache);
-    _salesPendingFilter = onlyPendingDues;
-    _salesPage = 1;
 
     const today = new Date().toISOString().split("T")[0];
     const statusLabel = onlyPendingDues ? "PENDING DUES" : "PAID SLIPS";
@@ -8226,7 +8223,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
           </div>
           <div class="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 shadow-sm">
             <label class="text-[10px] uppercase font-bold text-slate-400">Type</label>
-            <select id="sales-type-filter" onchange="_renderSalesTable()" class="bg-transparent text-sm focus:outline-none dark:text-white font-bold cursor-pointer">
+            <select id="sales-type-filter" onchange="reloadSalesPanelFromFirstPage()" class="bg-transparent text-sm focus:outline-none dark:text-white font-bold cursor-pointer">
               <option value="">All Types</option>
               <option value="dine_in">Dine-in</option>
               <option value="takeaway">Takeaway</option>
@@ -8237,7 +8234,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
             ${onlyPendingDues ? '📄 View Paid Slips' : '🔴 View Pending Dues'}
           </button>
           <div class="flex-1 min-w-[200px]">
-             <input id="sales-search" oninput="_renderSalesTable()" placeholder="Search Bill #, Name, Phone..."
+             <input id="sales-search" oninput="scheduleSalesPageReload()" placeholder="Search Bill #, Name, Phone..."
                class="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all text-sm shadow-sm" />
           </div>
         </div>
@@ -8265,7 +8262,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
       </div>
     </div>`;
 
-    _renderSalesTable();
+    await loadSalesPanelPage();
   } catch (err) {
     console.error("Sales History Error:", err);
     $c("page-content").innerHTML =
@@ -8282,21 +8279,20 @@ function setSalesHistoryRange(val) {
   if (fromInput) fromInput.value = "";
   if (toInput) toInput.value = "";
 
-  _renderSalesTable();
+  reloadSalesPanelFromFirstPage();
 }
 
 function setSalesManualDate() {
   _salesRangeFilter = null;
   const rangeDropdown = document.getElementById("sales-range-filter");
   if (rangeDropdown) rangeDropdown.value = "custom";
-  _renderSalesTable();
+  reloadSalesPanelFromFirstPage();
 }
 
 function _renderRestrictedSalesTable() {
   const body = $c('sales-table-body');
   if (!body) return;
-  const query = String($c('sales-search')?.value || '').trim().toLowerCase();
-  const rows = _allSalesCache.filter(sale => String(sale.order_number || sale.id || '').toLowerCase().includes(query));
+  const rows = _allSalesCache;
   body.innerHTML = rows.length ? rows.map(sale => `
     <tr class="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
       <td class="px-5 py-4 font-bold text-indigo-600 dark:text-indigo-400">#${escapeOrderValue(sale.order_number || sale.id)}</td>
@@ -8305,6 +8301,7 @@ function _renderRestrictedSalesTable() {
       </td>
     </tr>
   `).join('') : '<tr><td colspan="2" class="px-6 py-12 text-center text-sm font-bold text-slate-400">No orders found</td></tr>';
+  renderSalesPagination(rows.length);
 }
 
 function salesPaymentMethodBadge(method) {
@@ -8322,97 +8319,10 @@ function salesPaymentMethodBadge(method) {
 
 function _renderSalesTable() {
   try {
-    const searchInput = $c("sales-search");
-    const fromInput = $c("sales-from");
-    const toInput = $c("sales-to");
-    const typeFilter = $c("sales-type-filter")?.value;
-    if (!searchInput || !fromInput || !toInput) return;
+    const displayList = _allSalesCache;
 
-    const query = (searchInput.value || "").toLowerCase().trim();
-    const fromDate = fromInput.value;
-    const toDate = toInput.value;
-
-    console.log(
-      "Rendering table. Cache:",
-      _allSalesCache.length,
-      "Filter:",
-      _salesPendingFilter,
-      "Range:",
-      fromDate,
-      "to",
-      toDate,
-    );
-
-    // Initial filter by Status (Paid/Pending)
-    let displayList = _salesPendingFilter
-      ? _allSalesCache.filter(
-        (s) => Number(s.total || 0) - Number(s.amount_received || 0) > 0.01,
-      )
-      : _allSalesCache.filter(
-        (s) => Number(s.total || 0) - Number(s.amount_received || 0) <= 0.01,
-      );
-
-    // Filter by Date (Quick Range OR Manual Range)
-    if (_salesRangeFilter) {
-      if (_salesRangeFilter !== 'all') {
-        const now = new Date();
-        let fromDateLimit = new Date();
-        fromDateLimit.setHours(0, 0, 0, 0);
-
-        if (_salesRangeFilter === 'last_week') fromDateLimit.setDate(now.getDate() - 7);
-        else if (_salesRangeFilter === 'last_month') fromDateLimit.setMonth(now.getMonth() - 1);
-        else if (_salesRangeFilter === '6_month') fromDateLimit.setMonth(now.getMonth() - 6);
-        else if (_salesRangeFilter === 'last_year') fromDateLimit.setFullYear(now.getFullYear() - 1);
-        // else today = already set to today
-
-        displayList = displayList.filter((s) => {
-          const sDate = new Date(s.created_at);
-          return sDate >= fromDateLimit;
-        });
-      }
-    } else if (fromDate || toDate) {
-      displayList = displayList.filter((s) => {
-        const sDate = s.created_at.split(" ")[0]; // Extract YYYY-MM-DD
-        if (fromDate && sDate < fromDate) return false;
-        if (toDate && sDate > toDate) return false;
-        return true;
-      });
-    }
-
-    // Filter by Order Type
-    if (typeFilter) {
-      displayList = displayList.filter(s => s.order_type === typeFilter);
-    }
-
-    // Filter by Search Query
-    if (query) {
-      displayList = displayList.filter((s) => {
-        const orderNumber = (s.order_number || s.id || "").toString().toLowerCase();
-        const name = (s.customer_name || "").toLowerCase();
-        const phone = (s.customer_phone || "").toLowerCase();
-        const sellerName = (s.served_by_name || "").toLowerCase();
-        const sellerUser = (s.served_by_username || "").toLowerCase();
-        return (
-          orderNumber.includes(query) ||
-          name.includes(query) ||
-          phone.includes(query) ||
-          sellerName.includes(query) ||
-          sellerUser.includes(query)
-        );
-      });
-    }
-
-    if ($c("sales-count")) $c("sales-count").textContent = displayList.length;
-    if ($c("sales-total-dues")) {
-      const totalPending = displayList.reduce((sum, s) => sum + (Number(s.total || 0) - Number(s.amount_received || 0)), 0);
-      $c("sales-total-dues").textContent = totalPending.toLocaleString("en-IN", { minimumFractionDigits: 0 });
-    }
-
-    const totalPages = Math.ceil(displayList.length / _salesPageSize) || 1;
-    if (_salesPage > totalPages) _salesPage = 1;
-
-    const startIdx = (_salesPage - 1) * _salesPageSize;
-    const pageItems = displayList.slice(startIdx, startIdx + _salesPageSize);
+    if ($c("sales-count")) $c("sales-count").textContent = Number(_salesPagination.total_records || 0);
+    const pageItems = displayList;
 
     $c("sales-table-body").innerHTML = pageItems.length
       ? pageItems
@@ -8476,27 +8386,80 @@ function _renderSalesTable() {
         .join("")
       : `<tr><td colspan="9" class="px-5 py-10 text-center text-slate-400 dark:text-slate-600 text-sm italic border-t border-slate-100 dark:border-slate-800">No sales found for this filter.</td></tr>`;
 
-    $c("sales-pagination").innerHTML =
-      totalPages > 1
-        ? `
-      <div class="text-xs text-slate-500 font-medium">
-        Showing <span class="font-bold text-slate-900 dark:text-slate-200">${pageItems.length}</span> of <span class="font-bold text-slate-900 dark:text-slate-200">${displayList.length}</span> sales
-      </div>
-      <div class="flex items-center gap-2">
-        <button onclick="changeSalesPage(${_salesPage - 1})" ${_salesPage <= 1 ? "disabled" : ""} class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Previous</button>
-        <span class="text-xs font-bold text-slate-500 px-2">Page ${_salesPage} of ${totalPages}</span>
-        <button onclick="changeSalesPage(${_salesPage + 1})" ${_salesPage >= totalPages ? "disabled" : ""} class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Next</button>
-      </div>
-    `
-        : "";
+    renderSalesPagination(pageItems.length);
   } catch (err) {
     console.error("Table Render Error:", err);
   }
 }
 
+function renderSalesPagination(visibleCount) {
+  const container = $c('sales-pagination');
+  if (!container) return;
+  const totalPages = Number(_salesPagination.total_pages || 1);
+  const totalRecords = Number(_salesPagination.total_records || 0);
+  container.innerHTML = totalPages > 1 ? `
+    <div class="text-xs text-slate-500 font-medium">
+      Showing <span class="font-bold text-slate-900 dark:text-slate-200">${visibleCount}</span> of <span class="font-bold text-slate-900 dark:text-slate-200">${totalRecords}</span> sales
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="changeSalesPage(${_salesPage - 1})" ${_salesPage <= 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Previous</button>
+      <span class="text-xs font-bold text-slate-500 px-2">Page ${_salesPage} of ${totalPages}</span>
+      <button onclick="changeSalesPage(${_salesPage + 1})" ${_salesPage >= totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">Next</button>
+    </div>` : '';
+}
+
 function changeSalesPage(page) {
   _salesPage = page;
-  _renderSalesTable();
+  loadSalesPanelPage();
+}
+
+function scheduleSalesPageReload() {
+  clearTimeout(_salesSearchTimer);
+  _salesSearchTimer = setTimeout(() => reloadSalesPanelFromFirstPage(), 300);
+}
+
+function reloadSalesPanelFromFirstPage() {
+  _salesPage = 1;
+  return loadSalesPanelPage();
+}
+
+function salesPanelDateBounds() {
+  const formatBoundary = (date, endOfDay = false) => {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${endOfDay ? '23:59:59.999' : '00:00:00.000'}`;
+  };
+  const fromInput = $c('sales-from')?.value || '';
+  const toInput = $c('sales-to')?.value || '';
+  if (!_salesRangeFilter) return { from: fromInput ? `${fromInput} 00:00:00.000` : '', to: toInput ? `${toInput} 23:59:59.999` : '' };
+  if (_salesRangeFilter === 'all') return { from: '', to: '' };
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  if (_salesRangeFilter === 'last_week') from.setDate(from.getDate() - 7);
+  else if (_salesRangeFilter === 'last_month') from.setMonth(from.getMonth() - 1);
+  else if (_salesRangeFilter === '6_month') from.setMonth(from.getMonth() - 6);
+  else if (_salesRangeFilter === 'last_year') from.setFullYear(from.getFullYear() - 1);
+  return { from: formatBoundary(from), to: '' };
+}
+
+async function loadSalesPanelPage() {
+  const params = new URLSearchParams({ view: 'sales_panel', page: String(_salesPage), page_size: String(_salesPageSize) });
+  if (!_salesRestrictedView) params.set('payment_status', _salesPendingFilter ? 'pending' : 'paid');
+  const search = String($c('sales-search')?.value || '').trim();
+  const orderType = $c('sales-type-filter')?.value || '';
+  const bounds = salesPanelDateBounds();
+  if (search) params.set('search', search);
+  if (orderType) params.set('order_type', orderType);
+  if (bounds.from) params.set('from_date', bounds.from);
+  if (bounds.to) params.set('to_date', bounds.to);
+  const result = await api(`/api/sales?${params.toString()}`);
+  _allSalesCache = Array.isArray(result?.rows) ? result.rows : [];
+  _salesPagination = result?.pagination || { page: 1, total_records: 0, total_pages: 1 };
+  _salesPage = Number(_salesPagination.page || 1);
+  if (_salesRestrictedView) _renderRestrictedSalesTable();
+  else {
+    if ($c('sales-total-dues')) $c('sales-total-dues').textContent = Number(result?.summary?.total_pending_due || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
+    _renderSalesTable();
+  }
 }
 
 async function markSalePaid(saleId, grandTotal, currentReceived) {
