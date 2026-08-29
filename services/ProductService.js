@@ -140,7 +140,9 @@ class ProductService {
 
     const page = Math.max(1, Number(options.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(options.pageSize) || 20));
-    const productsQuery = baseQuery.orderBy('p.name', 'asc');
+    // Keep the paginated rows query separate so LIMIT/OFFSET never leak into
+    // the total-count query on page 2 and later.
+    const productsQuery = baseQuery.clone().orderBy('p.name', 'asc');
     if (options.paginate) productsQuery.limit(pageSize).offset((page - 1) * pageSize);
     let total = null;
     let products;
