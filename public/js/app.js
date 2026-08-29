@@ -6004,6 +6004,37 @@ function openPOSMobileCategories() {
   drawer.setAttribute('aria-hidden', 'false');
 }
 
+async function viewRestrictedSalesOrderItems(id) {
+  showAppLoader('Opening order details', `Loading order #${id}...`);
+  try {
+    const data = await api(`/api/sales/${id}/bill?view=sales_panel`);
+    if (!data || !data.sale) return toast("Order not found", "error");
+    const itemsHtml = (data.items || []).map(item => `
+      <div class="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
+        <div class="w-9 h-9 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-black text-slate-500">
+          ${Number(item.quantity || 0)}x
+        </div>
+        <div>
+          <div class="text-sm font-bold text-slate-800 dark:text-slate-200">${escapeOrderValue(configuredOrderItemName(item.product_name, item.variants_json, item.addons_json))}</div>
+          ${item.special_instructions ? `<div class="mt-1 text-[10px] italic text-amber-500">${escapeOrderValue(item.special_instructions)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+    openModal(`Order #${data.sale.order_number || id}`, `
+      <div class="space-y-4">
+        <div class="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[60vh] overflow-y-auto">
+          ${itemsHtml || '<p class="py-6 text-center text-sm text-slate-400">No ordered items found.</p>'}
+        </div>
+        <button onclick="closeModal()" class="w-full py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-sm hover:bg-slate-200 transition-all">Close</button>
+      </div>
+    `, "max-w-2xl");
+  } catch (e) {
+    toast("Failed to load items: " + e.message, "error");
+  } finally {
+    hideAppLoader();
+  }
+}
+
 function closePOSMobileCategories() {
   const drawer = $c('pos-mobile-categories');
   if (!drawer) return;
@@ -8126,10 +8157,34 @@ const _salesPageSize = 25;
 
 async function renderSalesHistory(onlyPendingDues = false) {
   try {
-    const sales = await api("/api/sales");
+    const restrictedSalesView = ['waiter', 'order_taker'].includes(String(currentUser?.role || '').toLowerCase());
+    const sales = await api(restrictedSalesView ? "/api/sales?view=sales_panel" : "/api/sales");
     _allSalesCache = Array.isArray(sales)
       ? sales.filter((s) => s.order_status === "completed" || s.order_status === "payment_pending")
       : [];
+    if (restrictedSalesView) {
+      _salesPendingFilter = false;
+      _salesPage = 1;
+      $c("page-content").innerHTML = `
+        <div class="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-1">Orders</h2>
+            <p class="text-slate-500 dark:text-slate-400 text-sm">Showing order IDs and ordered items only</p>
+          </div>
+          <input id="sales-search" oninput="_renderRestrictedSalesTable()" placeholder="Search Order ID..." class="w-full sm:w-64 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm shadow-sm" />
+        </div>
+        <div class="glass rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800">
+          <table class="w-full text-left border-collapse">
+            <thead class="bg-slate-50 dark:bg-black/20 border-b border-slate-200 dark:border-slate-700"><tr>
+              <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Order ID</th>
+              <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase text-right">Ordered Items</th>
+            </tr></thead>
+            <tbody id="sales-table-body" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
+          </table>
+        </div>`;
+      _renderRestrictedSalesTable();
+      return;
+    }
     updatePendingDuesBadge(_allSalesCache);
     _salesPendingFilter = onlyPendingDues;
     _salesPage = 1;
@@ -8235,6 +8290,21 @@ function setSalesManualDate() {
   const rangeDropdown = document.getElementById("sales-range-filter");
   if (rangeDropdown) rangeDropdown.value = "custom";
   _renderSalesTable();
+}
+
+function _renderRestrictedSalesTable() {
+  const body = $c('sales-table-body');
+  if (!body) return;
+  const query = String($c('sales-search')?.value || '').trim().toLowerCase();
+  const rows = _allSalesCache.filter(sale => String(sale.order_number || sale.id || '').toLowerCase().includes(query));
+  body.innerHTML = rows.length ? rows.map(sale => `
+    <tr class="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+      <td class="px-5 py-4 font-bold text-indigo-600 dark:text-indigo-400">#${escapeOrderValue(sale.order_number || sale.id)}</td>
+      <td class="px-5 py-4 text-right">
+        <button onclick="viewRestrictedSalesOrderItems(${Number(sale.id)})" class="inline-flex items-center rounded-lg bg-emerald-100 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400">View Items</button>
+      </td>
+    </tr>
+  `).join('') : '<tr><td colspan="2" class="px-6 py-12 text-center text-sm font-bold text-slate-400">No orders found</td></tr>';
 }
 
 function salesPaymentMethodBadge(method) {

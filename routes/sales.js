@@ -22,6 +22,15 @@ router.put("/:id/items", requireAuth, async (req, res) => {
 // GET /api/sales — list sales for current shop
 router.get("/", requireAuth, async (req, res) => {
   const sales = await salesService.getSales(req.session.user.shop_id, req.session.user);
+  const isRestrictedSalesPanel = req.query.view === 'sales_panel'
+    && ['waiter', 'order_taker'].includes(String(req.session.user.role || '').toLowerCase());
+  if (isRestrictedSalesPanel) {
+    return res.json(sales.map(sale => ({
+      id: sale.id,
+      order_number: sale.order_number,
+      order_status: sale.order_status
+    })));
+  }
   res.json(sales);
 });
 
@@ -51,6 +60,26 @@ router.patch("/:id/inquiry-bill", requireAuth, async (req, res) => {
 router.get("/:id/bill", requireAuth, async (req, res) => {
   const details = await salesService.getBill(req.params.id, req.session.user.shop_id);
   if (!details) return res.status(404).json({ error: "Sale not found" });
+  const isRestrictedSalesPanel = req.query.view === 'sales_panel'
+    && ['waiter', 'order_taker'].includes(String(req.session.user.role || '').toLowerCase());
+  if (isRestrictedSalesPanel) {
+    const saleIsVisible = (await salesService.getSales(req.session.user.shop_id, req.session.user))
+      .some(sale => Number(sale.id) === Number(req.params.id));
+    if (!saleIsVisible) return res.status(404).json({ error: "Sale not found" });
+    return res.json({
+      sale: {
+        id: details.sale.id,
+        order_number: details.sale.order_number
+      },
+      items: (details.items || []).map(item => ({
+        product_name: item.product_name,
+        quantity: item.quantity,
+        variants_json: item.variants_json,
+        addons_json: item.addons_json,
+        special_instructions: item.special_instructions
+      }))
+    });
+  }
   res.json(details);
 });
 
