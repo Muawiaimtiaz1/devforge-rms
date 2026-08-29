@@ -258,6 +258,7 @@ router.get('/:id/details', requireAuth, async (req, res) => {
   );
   if (shift.status === 'open' && !isShiftAdmin(req.session.user)) {
     delete details.summary.expected_balance;
+    delete details.summary.expected_total;
   }
   res.json(details);
 });

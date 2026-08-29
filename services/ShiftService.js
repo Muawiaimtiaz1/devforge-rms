@@ -185,6 +185,8 @@ class ShiftService {
       .where({ shift_id: shiftId, shop_id: shopId, type: 'payment', payment_method: 'online' })
       .sum('amount as total')
       .first();
+    const cardCollections = toMoney(cardCollectionsRow?.total);
+    const onlineCollections = toMoney(onlineCollectionsRow?.total);
 
     // Shop/business expenses are reported separately and do not reduce cashier drawer cash.
     const expensesTotal = await db('expenses')
@@ -193,12 +195,19 @@ class ShiftService {
     
     const cashExpenses = firstTotal(expensesTotal);
 
-    // Cash refunds paid out during this shift.
-    const refundsTotal = await db('returns')
-      .where({ shift_id: shiftId, shop_id: shopId, payment_method: 'cash' })
-      .sum('total_refund as total');
-
-    const cashRefunds = firstTotal(refundsTotal);
+    const refundRows = await db('returns')
+      .where({ shift_id: shiftId, shop_id: shopId })
+      .select(db.raw("LOWER(COALESCE(payment_method, 'cash')) as payment_method"))
+      .sum('total_refund as total')
+      .groupByRaw("LOWER(COALESCE(payment_method, 'cash'))");
+    const refundsByMethod = refundRows.reduce((totals, row) => {
+      totals[String(row.payment_method || 'cash')] = toMoney(row.total);
+      return totals;
+    }, {});
+    const cashRefunds = toMoney(refundsByMethod.cash);
+    const cardRefunds = toMoney(refundsByMethod.card);
+    const onlineRefunds = toMoney(refundsByMethod.online);
+    const totalRefunds = cashRefunds + cardRefunds + onlineRefunds;
 
     const pendingDrops = await db('cash_drops')
       .where({ shift_id: shiftId, shop_id: shopId, status: 'pending' })
@@ -227,6 +236,8 @@ class ShiftService {
     const confirmedHandovers = firstTotal(verifiedHandovers);
 
     const expectedBalance = (toMoney(shift.opening_balance) + cashSales + cashCollections) - (cashRefunds + currentDrops + confirmedHandovers);
+    const expectedTotal = (cashSales + cardSales + onlineSales + cashCollections + cardCollections + onlineCollections)
+      - (totalRefunds + cashExpenses + currentDrops + confirmedHandovers);
 
     return {
       opening_balance: toMoney(shift.opening_balance),
@@ -235,6 +246,9 @@ class ShiftService {
       net_online_sales: onlineSales,
       total_expenses: cashExpenses,
       total_cash_refunds: cashRefunds,
+      total_card_refunds: cardRefunds,
+      total_online_refunds: onlineRefunds,
+      total_refunds: totalRefunds,
       cash_drops: currentDrops,
       pending_cash_drops: firstTotal(pendingDrops),
       pending_cash_drop_count: Number(pendingDropCountRow?.count || 0),
@@ -242,9 +256,10 @@ class ShiftService {
       pending_cash_handover_count: Number(pendingHandoverCountRow?.count || 0),
       cash_handovers: confirmedHandovers,
       debt_collections: cashCollections,
-      card_collections: toMoney(cardCollectionsRow?.total),
-      online_collections: toMoney(onlineCollectionsRow?.total),
-      expected_balance: expectedBalance
+      card_collections: cardCollections,
+      online_collections: onlineCollections,
+      expected_balance: expectedBalance,
+      expected_total: expectedTotal
     };
   }
 
@@ -286,6 +301,7 @@ class ShiftService {
     await activityLog.log(shopId, closedByUserId, 'SHIFT_CLOSE', {
       shift_id: shiftId,
       expected: expectedAtClose,
+      expected_total: summary.expected_total,
       expected_before_pending: summary.expected_balance,
       actual: actualBalance,
       discrepancy: discrepancy,

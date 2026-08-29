@@ -11772,12 +11772,16 @@ async function renderRegister() {
 
       <section id="register-cash-summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         ${renderRegisterMetric("Expected Cash", summary.expected_balance, "emerald")}
+        ${renderRegisterMetric("Expected Total", summary.expected_total, "indigo")}
         ${renderRegisterMetric("Opening Cash", summary.opening_balance, "indigo")}
         ${renderRegisterMetric("Cash Sales", summary.net_cash_sales, "emerald")}
         ${renderRegisterMetric("Due Collections", summary.debt_collections, "blue")}
         ${renderRegisterMetric("Card Sales", summary.net_card_sales, "slate")}
         ${renderRegisterMetric("Online Sales", summary.net_online_sales, "blue")}
         ${renderRegisterMetric("Cash Refunds", summary.total_cash_refunds, "rose", true)}
+        ${renderRegisterMetric("Card Refunds", summary.total_card_refunds, "rose", true)}
+        ${renderRegisterMetric("Online Refunds", summary.total_online_refunds, "rose", true)}
+        ${renderRegisterMetric("Other Expenses", summary.total_expenses, "rose", true)}
         ${renderRegisterMetric("Cash Drops", summary.cash_drops, "amber", true)}
         ${Number(summary.pending_cash_drops || 0) > 0 ? renderRegisterMetric("Pending Drops", summary.pending_cash_drops, "amber", true) : ""}
         ${renderRegisterMetric("Verified Handovers", summary.cash_handovers, "amber", true)}
@@ -11969,6 +11973,10 @@ async function openShiftSummaryModal() {
           <div class="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40">
             <p class="text-[9px] font-black text-emerald-600 dark:text-emerald-300 uppercase tracking-widest mb-1">Expected Cash</p>
             <p class="text-sm font-bold text-emerald-700 dark:text-emerald-300">Rs. ${Number(summary.expected_balance || 0).toFixed(2)}</p>
+          </div>
+          <div class="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+            <p class="text-[9px] font-black text-indigo-600 dark:text-indigo-300 uppercase tracking-widest mb-1">Expected Total</p>
+            <p class="text-sm font-bold text-indigo-700 dark:text-indigo-300">Rs. ${Number(summary.expected_total || 0).toFixed(2)}</p>
           </div>
           ${hasPendingVerifications ? `
           <div class="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
@@ -12224,10 +12232,14 @@ function openShiftClosedReport(summary, shiftId) {
         </p>
       </div>
       ` : ''}
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[9px] font-black uppercase tracking-widest text-slate-400">Expected Cash</div>
           <div class="text-xl font-black text-slate-900 dark:text-white mt-1">Rs. ${Number(summary.expected_balance || 0).toFixed(2)}</div>
+        </div>
+        <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+          <div class="text-[9px] font-black uppercase tracking-widest text-slate-400">Expected Total</div>
+          <div class="text-xl font-black text-indigo-600 dark:text-indigo-300 mt-1">Rs. ${Number(summary.expected_total || 0).toFixed(2)}</div>
         </div>
         <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[9px] font-black uppercase tracking-widest text-slate-400">Actual Count</div>
@@ -12247,6 +12259,9 @@ function openShiftClosedReport(summary, shiftId) {
         <div class="flex justify-between"><span>Card Due Collections</span><span>Rs. ${Number(summary.card_collections || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Online Due Collections</span><span>Rs. ${Number(summary.online_collections || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Cash Refunds</span><span>- Rs. ${Number(summary.total_cash_refunds || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Card Refunds</span><span>- Rs. ${Number(summary.total_card_refunds || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Online Refunds</span><span>- Rs. ${Number(summary.total_online_refunds || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Other Expenses</span><span>- Rs. ${Number(summary.total_expenses || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Cash Drops</span><span>- Rs. ${Number(summary.cash_drops || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Verified Handovers</span><span>- Rs. ${Number(summary.cash_handovers || 0).toFixed(2)}</span></div>
       </div>

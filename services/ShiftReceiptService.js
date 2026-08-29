@@ -43,14 +43,17 @@ function renderShiftReceiptPage(details, options = {}) {
     ${row('Card due collections', `Rs. ${money(summary.card_collections)}`)}
     ${row('Online due collections', `Rs. ${money(summary.online_collections)}`)}
     ${row('Cash refunds', `- Rs. ${money(summary.total_cash_refunds)}`)}
+    ${row('Card refunds', `- Rs. ${money(summary.total_card_refunds)}`)}
+    ${row('Online refunds', `- Rs. ${money(summary.total_online_refunds)}`)}
     ${row('Refund transactions', Array.isArray(details.returns) ? details.returns.length : 0)}
-    ${row('Business expenses', `Rs. ${money(summary.total_expenses)}`)}
+    ${row('Business expenses', `- Rs. ${money(summary.total_expenses)}`)}
     <div class="rule"></div><div class="section">CASH MOVEMENT</div>
     ${row('Opening cash', `Rs. ${money(summary.opening_balance)}`)}
     ${row('Verified cash drops', `- Rs. ${money(summary.cash_drops)}`)}
     ${row('Verified handovers', `- Rs. ${money(summary.cash_handovers)}`)}
     ${Number(summary.pending_verification_total || 0) ? row('Pending verification', `- Rs. ${money(summary.pending_verification_total)}`) : ''}
     <div class="rule heavy"></div>
+    ${row('EXPECTED TOTAL', `Rs. ${money(summary.expected_total)}`, true)}
     ${row('EXPECTED CASH', `Rs. ${money(summary.expected_balance)}`, true)}
     ${row('ACTUAL CASH', `Rs. ${money(shift.closing_balance)}`, true)}
     <div class="result">${esc(result)}</div>
