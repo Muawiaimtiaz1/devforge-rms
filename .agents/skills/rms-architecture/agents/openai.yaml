@@ -1,0 +1,6 @@
+interface:
+  display_name: "RMS Architecture"
+  short_description: "Preserve boundaries while evolving the RMS"
+  default_prompt: "Use $rms-architecture to design this RMS change with safe module boundaries."
+policy:
+  allow_implicit_invocation: true

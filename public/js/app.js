@@ -11052,7 +11052,7 @@ function renderQuickSidebar() {
       </div>
       <div class="grid grid-cols-1 gap-2">
         ${group.panels.map(p => `
-          <div onclick="navigate('${p.id}'); toggleQuickMenu()" class="group flex items-center gap-4 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all cursor-pointer">
+          <div onclick="openLobbyPanel('${p.id}'); toggleQuickMenu()" class="group flex items-center gap-4 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all cursor-pointer">
             <div class="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500 group-hover:text-indigo-500 transition-colors">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 ${p.icon}

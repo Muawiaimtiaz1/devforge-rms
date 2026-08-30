@@ -1,0 +1,6 @@
+interface:
+  display_name: "RMS Data Integrity"
+  short_description: "Protect tenant, attendance, and payroll data"
+  default_prompt: "Use $rms-data-integrity to design this RMS data change safely and audibly."
+policy:
+  allow_implicit_invocation: true

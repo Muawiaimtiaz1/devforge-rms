@@ -1,0 +1,6 @@
+interface:
+  display_name: "RMS Backend Modules"
+  short_description: "Build safe modular-monolith backend features"
+  default_prompt: "Use $rms-backend-modules to implement this new RMS backend capability."
+policy:
+  allow_implicit_invocation: true

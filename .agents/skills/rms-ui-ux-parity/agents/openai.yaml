@@ -1,0 +1,6 @@
+interface:
+  display_name: "RMS UI/UX Parity"
+  short_description: "Migrate UI without changing product behavior"
+  default_prompt: "Use $rms-ui-ux-parity to implement this RMS interface with vanilla-to-React parity."
+policy:
+  allow_implicit_invocation: true

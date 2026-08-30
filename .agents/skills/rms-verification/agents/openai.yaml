@@ -1,0 +1,6 @@
+interface:
+  display_name: "RMS Verification"
+  short_description: "Validate migrations and release readiness"
+  default_prompt: "Use $rms-verification to verify this RMS change before release."
+policy:
+  allow_implicit_invocation: true

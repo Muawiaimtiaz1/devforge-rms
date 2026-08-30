@@ -1,0 +1,6 @@
+interface:
+  display_name: "RMS Web Hardening"
+  short_description: "Improve RMS security, queries, PWA, and speed"
+  default_prompt: "Use $rms-web-hardening to diagnose and improve this RMS code path with measurable verification."
+policy:
+  allow_implicit_invocation: true
