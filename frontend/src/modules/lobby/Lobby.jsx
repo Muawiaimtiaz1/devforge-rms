@@ -109,7 +109,7 @@ function Lobby() {
   if (error) return <main className="lobby-state"><h1>Could not load modules</h1><p>{error}</p><button onClick={() => window.location.reload()}>Try again</button></main>
   if (!data) return <main className="lobby-state"><div className="lobby-spinner" /><p>Loading your workspace…</p></main>
 
-  const { user, register, modules } = data
+  const { user, modules } = data
   return (
     <main className="react-lobby">
       <header className="lobby-topbar">
