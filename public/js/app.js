@@ -118,9 +118,11 @@ function toggleTheme() {
   if (isDark) {
     document.documentElement.classList.remove("dark");
     localStorage.setItem("theme", "light");
+    document.cookie = "rms_theme=light; Path=/; Max-Age=31536000; SameSite=Lax";
   } else {
     document.documentElement.classList.add("dark");
     localStorage.setItem("theme", "dark");
+    document.cookie = "rms_theme=dark; Path=/; Max-Age=31536000; SameSite=Lax";
   }
   updateProfileThemeLabel();
 }

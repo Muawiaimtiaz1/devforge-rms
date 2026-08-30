@@ -1,8 +1,20 @@
-import StaffDirectory from './modules/staff/StaffDirectory'
-import Lobby from './modules/lobby/Lobby'
+import { lazy, Suspense } from 'react'
+
+const StaffDirectory = lazy(() => import('./modules/staff/StaffDirectory'))
+const Lobby = lazy(() => import('./modules/lobby/Lobby'))
+
+function RouteLoader() {
+  return (
+    <main className="route-loader" aria-label="Loading application">
+      <div className="route-loader-spinner" />
+      <span>Loading workspace…</span>
+    </main>
+  )
+}
 
 function App() {
-  return window.location.pathname.startsWith('/app/staff') ? <StaffDirectory /> : <Lobby />
+  const page = window.location.pathname.startsWith('/app/staff') ? <StaffDirectory /> : <Lobby />
+  return <Suspense fallback={<RouteLoader />}>{page}</Suspense>
 }
 
 export default App

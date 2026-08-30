@@ -12,3 +12,28 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(79, 70, 229, .25); outline-offset: 2px; }
+
+.route-loader {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  color: #64748b;
+  background: #f5f7fb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.route-loader-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: route-loader-spin .75s linear infinite;
+}
+
+.dark .route-loader { color: #94a3b8; background: #0f1420; }
+.dark .route-loader-spinner { border-color: #293244; border-top-color: #818cf8; }
+@keyframes route-loader-spin { to { transform: rotate(360deg); } }

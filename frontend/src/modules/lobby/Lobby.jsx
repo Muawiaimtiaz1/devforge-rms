@@ -5,7 +5,10 @@ import './lobby.css'
 function Lobby() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
-  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches))
+  const [dark, setDark] = useState(() => {
+    const sharedTheme = document.cookie.match(/(?:^|; )rms_theme=(dark|light)(?:;|$)/)?.[1] || localStorage.getItem('theme')
+    return sharedTheme === 'dark' || (!sharedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  })
   const [profileOpen, setProfileOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const profileRef = useRef(null)
@@ -14,6 +17,7 @@ function Lobby() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
     localStorage.setItem('theme', dark ? 'dark' : 'light')
+    document.cookie = `rms_theme=${dark ? 'dark' : 'light'}; Path=/; Max-Age=31536000; SameSite=Lax`
   }, [dark])
 
   useEffect(() => {

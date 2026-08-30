@@ -15,6 +15,20 @@ function roleName(user) {
   return user.roles?.map((role) => role.name).join(', ') || String(user.role || 'staff').replaceAll('_', ' ')
 }
 
+function StaffDirectorySkeleton() {
+  return (
+    <main className="staff-page" aria-label="Loading Staff Directory">
+      <nav className="staff-topbar skeleton-topbar"><span className="skeleton skeleton-back" /><span className="skeleton skeleton-user" /></nav>
+      <section className="staff-shell">
+        <header className="staff-heading skeleton-heading"><div><span className="skeleton skeleton-label" /><span className="skeleton skeleton-title" /><span className="skeleton skeleton-subtitle" /></div><span className="skeleton skeleton-action" /></header>
+        <div className="staff-grid">
+          {Array.from({ length: 8 }, (_, index) => <article className="staff-card skeleton-card" key={index}><span className="skeleton skeleton-avatar" /><span className="skeleton skeleton-name" /><span className="skeleton skeleton-handle" /><span className="skeleton skeleton-role" /><span className="skeleton skeleton-lines" /><span className="skeleton skeleton-button" /></article>)}
+        </div>
+      </section>
+    </main>
+  )
+}
+
 function Modal({ title, children, onClose, wide = false }) {
   return (
     <div className="staff-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -256,7 +270,7 @@ export default function StaffDirectory() {
     } catch (requestError) { setError(requestError.message) }
   }
 
-  if (loading) return <main className="staff-page"><div className="loading-state">Loading Staff Directory…</div></main>
+  if (loading) return <StaffDirectorySkeleton />
 
   return (
     <main className="staff-page">

@@ -37,7 +37,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
     rel="stylesheet" />
   <script>
-    if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    const sharedTheme = document.cookie.match(/(?:^|; )rms_theme=(dark|light)(?:;|$)/)?.[1] || localStorage.getItem('theme');
+    if (sharedTheme) localStorage.setItem('theme', sharedTheme);
+    if (sharedTheme === 'dark' || (!sharedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
@@ -308,9 +310,11 @@
       if (isDark) {
         document.documentElement.classList.remove('dark');
         localStorage.setItem('theme', 'light');
+        document.cookie = 'rms_theme=light; Path=/; Max-Age=31536000; SameSite=Lax';
       } else {
         document.documentElement.classList.add('dark');
         localStorage.setItem('theme', 'dark');
+        document.cookie = 'rms_theme=dark; Path=/; Max-Age=31536000; SameSite=Lax';
       }
     }
 
