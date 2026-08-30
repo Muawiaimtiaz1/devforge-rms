@@ -9934,7 +9934,7 @@ function renderLobby() {
       ${allowed.map((p, index) => {
     const delay = index * 40;
     return `
-          <div onclick="navigate('${p.id}')" 
+          <div onclick="openLobbyPanel('${p.id}')" 
                style="animation: lobby-fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; animation-delay: ${delay}ms; opacity: 0;"
                class="group flex items-center gap-5 p-5 rounded-[2.5rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-1">
               
@@ -9959,6 +9959,16 @@ function renderLobby() {
   }).join("")}
     </div>
   `;
+}
+
+function openLobbyPanel(panelId) {
+  if (panelId !== 'users') return navigate(panelId);
+
+  const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const reactOrigin = isLocalDevelopment
+    ? `${window.location.protocol}//${window.location.hostname}:5173`
+    : window.location.origin;
+  window.location.assign(`${reactOrigin}/app/staff`);
 }
 
 // ─── NOTIFICATIONS ───────────────────────────────────────────────────────────

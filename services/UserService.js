@@ -58,12 +58,36 @@ class UserService {
     }
 
     const users = await query;
-    return Promise.all(users.map(async (u) => ({
-      ...u,
-      allowed_panels: u.allowed_panels ? JSON.parse(u.allowed_panels) : [],
-      roles: await db('user_roles as ur').join('roles as r', 'r.id', 'ur.role_id').where('ur.user_id', u.id).select('r.id', 'r.name'),
-      permission_keys: await db('user_permissions as up').join('permissions as p', 'p.id', 'up.permission_id').where('up.user_id', u.id).pluck('p.key')
-    })));
+    if (!users.length) return [];
+
+    const userIds = users.map(user => user.id);
+    const [roleRows, permissionRows] = await Promise.all([
+      db('user_roles as ur')
+        .join('roles as r', 'r.id', 'ur.role_id')
+        .whereIn('ur.user_id', userIds)
+        .select('ur.user_id', 'r.id', 'r.name'),
+      db('user_permissions as up')
+        .join('permissions as p', 'p.id', 'up.permission_id')
+        .whereIn('up.user_id', userIds)
+        .select('up.user_id', 'p.key'),
+    ]);
+    const rolesByUser = new Map();
+    const permissionsByUser = new Map();
+    roleRows.forEach(row => rolesByUser.set(Number(row.user_id), [
+      ...(rolesByUser.get(Number(row.user_id)) || []),
+      { id: row.id, name: row.name },
+    ]));
+    permissionRows.forEach(row => permissionsByUser.set(Number(row.user_id), [
+      ...(permissionsByUser.get(Number(row.user_id)) || []),
+      row.key,
+    ]));
+
+    return users.map(user => ({
+      ...user,
+      allowed_panels: user.allowed_panels ? JSON.parse(user.allowed_panels) : [],
+      roles: rolesByUser.get(Number(user.id)) || [],
+      permission_keys: permissionsByUser.get(Number(user.id)) || [],
+    }));
   }
 
   async createUser(payload, currentUser) {

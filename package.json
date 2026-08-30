@@ -6,7 +6,9 @@
     "main": "server.js",
     "scripts": {
         "start": "node server.js",
-        "dev": "node server.js",
+        "dev": "concurrently --kill-others-on-fail --names backend,frontend \"npm:dev:backend\" \"npm:dev:frontend\"",
+        "dev:backend": "node server.js",
+        "dev:frontend": "npm --prefix frontend run dev",
         "test": "node --test tests/order-realtime.test.js",
         "seed": "node db/seed.js",
         "postgres:check": "node scripts/check-postgres.js",
@@ -35,6 +37,7 @@
         "zod": "^4.4.3"
     },
     "devDependencies": {
+        "concurrently": "^10.0.5",
         "express-async-errors": "^3.1.1"
     }
 }

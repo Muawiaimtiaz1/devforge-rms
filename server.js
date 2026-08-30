@@ -203,6 +203,16 @@ app.get("/api/download-print-agent", async (req, res) => {
   res.send(configuredSource);
 });
 
+// React modules are built separately and mounted under /app. The legacy
+// frontend remains the owner of / and /dashboard during gradual migration.
+const reactDist = path.join(__dirname, "frontend", "dist");
+if (fs.existsSync(reactDist)) {
+  app.use("/app", express.static(reactDist));
+  app.get(/^\/app(?:\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(reactDist, "index.html"));
+  });
+}
+
 // Static assets (js, css, etc.) served after named routes
 app.use(express.static(path.join(__dirname, "public")));
 
