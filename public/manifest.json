@@ -2,7 +2,7 @@
   "id": "/dashboard",
   "name": "DevForge OS Restaurant Management",
   "short_name": "DevForge OS",
-  "start_url": "/dashboard",
+  "start_url": "/app/lobby",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",

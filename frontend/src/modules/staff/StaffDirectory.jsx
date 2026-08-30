@@ -260,7 +260,7 @@ export default function StaffDirectory() {
 
   return (
     <main className="staff-page">
-      <nav className="staff-topbar"><a href={legacyUrl('/dashboard#lobby')}>← Shop lobby</a><div><span>{session?.shop_name || 'DevForge RMS'}</span><strong>{session?.name || session?.username}</strong></div></nav>
+      <nav className="staff-topbar"><a href="/app/lobby">← Shop lobby</a><div><span>{session?.shop_name || 'DevForge RMS'}</span><strong>{session?.name || session?.username}</strong></div></nav>
       <section className="staff-shell">
         <header className="staff-heading">
           <div><p className="section-label">Team management</p><h1>Staff Directory</h1><p>Manage staff accounts, access roles, and register responsibilities.</p></div>

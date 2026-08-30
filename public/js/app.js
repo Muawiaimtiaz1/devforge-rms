@@ -270,6 +270,13 @@ function returnToNavigationHome() {
     window.location.href = "/admin/store-monitoring";
     return;
   }
+  if (sessionStorage.getItem('react_lobby_owner') === 'true') {
+    const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    window.location.href = local
+      ? `${window.location.protocol}//${window.location.hostname}:5173/app/lobby`
+      : '/app/lobby';
+    return;
+  }
   sessionStorage.removeItem("lobby_selected");
   history.pushState({ rmsView: 'lobby' }, '', `${location.pathname}#lobby`);
   renderLobby();
@@ -805,11 +812,18 @@ async function init() {
     if (!isPanelAllowedForCurrentUser(startPage)) {
       startPage = getAllowedPanelsForCurrentUser()[0]?.id || "dashboard";
     }
-    // Always keep an in-app lobby entry behind the restored page. Android Back
-    // returns here before the installed PWA is allowed to close.
-    history.replaceState({ rmsView: 'lobby' }, '', `${location.pathname}#lobby`);
-    _appHistoryReady = true;
-    navigate(startPage);
+    if (sessionStorage.getItem('react_lobby_owner') === 'true') {
+      // React owns the lobby for modules launched from /app/lobby. Keep this
+      // document as one history entry so browser Back returns to React.
+      history.replaceState({ rmsView: 'page', page: startPage }, '', `${location.pathname}#${encodeURIComponent(startPage)}`);
+      _appHistoryReady = true;
+      navigate(startPage, { history: false });
+    } else {
+      // Preserve the original vanilla lobby/history behavior as a fallback.
+      history.replaceState({ rmsView: 'lobby' }, '', `${location.pathname}#lobby`);
+      _appHistoryReady = true;
+      navigate(startPage);
+    }
   } catch (e) {
     console.error("Init Error:", e);
     window.location.replace("/");
@@ -1026,6 +1040,11 @@ window.addEventListener('popstate', event => {
     const state = event.state;
     if (state?.rmsView === 'page' && state.page) {
       navigate(state.page, { history: false });
+    } else if (sessionStorage.getItem('react_lobby_owner') === 'true') {
+      const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      window.location.replace(local
+        ? `${window.location.protocol}//${window.location.hostname}:5173/app/lobby`
+        : '/app/lobby');
     } else {
       sessionStorage.removeItem('lobby_selected');
       renderLobby();

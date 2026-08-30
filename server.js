@@ -120,6 +120,7 @@ app.use(enforceApiPermissions);
 
 // API Routes
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/lobby", require("./routes/lobby"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/roles", require("./routes/roles"));
 app.use("/api/brands", require("./routes/brands"));

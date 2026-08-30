@@ -278,13 +278,19 @@
   <script>
     let loginRedirectInProgress = false;
 
+    function reactAppUrl(path) {
+      const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      return local ? `${window.location.protocol}//${window.location.hostname}:5173${path}` : path;
+    }
+
     async function redirectIfAlreadyAuthenticated() {
       if (loginRedirectInProgress) return;
       try {
         const res = await fetch('/api/auth/me', { cache: 'no-store' });
         if (res.ok) {
+          const data = await res.json();
           loginRedirectInProgress = true;
-          window.location.replace('/dashboard');
+          window.location.replace(data.user?.role === 'superadmin' ? '/admin/store-monitoring' : reactAppUrl('/app/lobby'));
         }
       } catch {
         // Stay on login if the session check cannot reach the server.
@@ -348,7 +354,7 @@
           btn.classList.replace('from-indigo-600', 'from-emerald-500');
           btn.classList.replace('to-blue-600', 'to-emerald-600');
           setTimeout(() => {
-            window.location.replace('/dashboard');
+            window.location.replace(data.user?.role === 'superadmin' ? '/admin/store-monitoring' : reactAppUrl('/app/lobby'));
           }, 500);
           return; // Prevent resetting the button state
         }
