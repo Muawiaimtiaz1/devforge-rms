@@ -8,8 +8,6 @@ router.post('/templates', requirePermission('attendance.manage_schedules'), cont
 router.put('/templates/:id', requirePermission('attendance.manage_schedules'), controller.versionTemplate);
 router.put('/schedules/weekly', requirePermission('attendance.manage_schedules'), controller.schedule);
 router.post('/holidays', requirePermission('attendance.manage_schedules'), controller.holiday);
-router.get('/clock/state', requirePermission('attendance.view', 'attendance.clock'), controller.clockState);
-router.post('/clock', requirePermission('attendance.clock'), controller.clock);
 router.get('/calendar', requirePermission('attendance.view'), controller.calendar);
 router.get('/corrections', requirePermission('attendance.approve'), controller.corrections);
 router.post('/corrections', requirePermission('attendance.correct'), controller.requestCorrection);
@@ -17,8 +15,8 @@ router.patch('/corrections/:id/review', requirePermission('attendance.approve'),
 router.get('/snapshots', requirePermission('attendance.approve'), controller.snapshots);
 router.post('/snapshots', requirePermission('attendance.approve'), controller.createSnapshot);
 router.patch('/snapshots/:id/approve', requirePermission('attendance.approve'), controller.approveSnapshot);
-router.get('/daily-register', requirePermission('attendance.view'), controller.dailyRegister);
-router.post('/daily-register', requirePermission('attendance.mark_daily'), controller.markDailyRegister);
 router.get('/shift-register', requirePermission('attendance.view'), controller.shiftRegister);
 router.post('/shift-register', requirePermission('attendance.mark_daily'), controller.submitShiftRegister);
+router.post('/shift-register/staff/:staffId', requirePermission('attendance.mark_daily'), controller.markShiftStaff);
+router.post('/shift-register/:registerId/staff/:staffId/clock-out', requirePermission('attendance.mark_daily'), controller.clockOutShiftRegister);
 module.exports = router;

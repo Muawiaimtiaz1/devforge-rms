@@ -5,7 +5,7 @@ const ATTENDANCE_MIGRATION_SQL = `
     ('attendance.manage_schedules', 'attendance', 'manage_schedules', 'manage schedules attendance'),
     ('attendance.correct', 'attendance', 'correct', 'correct attendance'),
     ('attendance.approve', 'attendance', 'approve', 'approve attendance'),
-    ('attendance.mark_daily', 'attendance', 'mark_daily', 'mark daily attendance')
+    ('attendance.mark_daily', 'attendance', 'mark_daily', 'submit shift attendance')
   ON CONFLICT (key) DO UPDATE SET module = EXCLUDED.module, action = EXCLUDED.action, label = EXCLUDED.label;
 
   INSERT INTO role_permissions (role_id, permission_id)
@@ -173,8 +173,17 @@ const ATTENDANCE_MIGRATION_SQL = `
     ON attendance_shift_registers(shop_id, business_date DESC, shift_template_id);
   ALTER TABLE attendance_daily_marks
     ADD COLUMN IF NOT EXISTS shift_register_id BIGINT REFERENCES attendance_shift_registers(id) ON DELETE RESTRICT;
-  CREATE UNIQUE INDEX IF NOT EXISTS uq_attendance_shift_register_staff
-    ON attendance_daily_marks(shift_register_id, staff_profile_id)
+  ALTER TABLE attendance_clock_events
+    ADD COLUMN IF NOT EXISTS attendance_shift_register_id BIGINT REFERENCES attendance_shift_registers(id) ON DELETE RESTRICT;
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_attendance_shift_clock_event
+    ON attendance_clock_events(attendance_shift_register_id, staff_profile_id, event_type)
+    WHERE attendance_shift_register_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_attendance_shift_clock_lookup
+    ON attendance_clock_events(shop_id, attendance_shift_register_id, staff_profile_id, occurred_at);
+  DROP INDEX IF EXISTS uq_attendance_shift_register_staff;
+  DROP INDEX IF EXISTS uq_attendance_shift_mark_staff_date;
+  CREATE INDEX IF NOT EXISTS idx_attendance_shift_mark_history
+    ON attendance_daily_marks(shop_id, business_date, staff_profile_id, id DESC)
     WHERE shift_register_id IS NOT NULL;
   CREATE OR REPLACE FUNCTION reject_attendance_shift_register_mutation() RETURNS TRIGGER AS $$
   BEGIN RAISE EXCEPTION 'attendance_shift_registers are immutable'; END;
@@ -208,6 +217,8 @@ const ATTENDANCE_MIGRATION_SQL = `
     scheduled_days INTEGER NOT NULL DEFAULT 0,
     present_days NUMERIC(8,2) NOT NULL DEFAULT 0,
     paid_leave_days NUMERIC(8,2) NOT NULL DEFAULT 0,
+    paid_full_leave_days NUMERIC(8,2) NOT NULL DEFAULT 0,
+    paid_half_leave_count INTEGER NOT NULL DEFAULT 0,
     unpaid_leave_days NUMERIC(8,2) NOT NULL DEFAULT 0,
     absent_days NUMERIC(8,2) NOT NULL DEFAULT 0,
     work_minutes INTEGER NOT NULL DEFAULT 0,
@@ -219,6 +230,8 @@ const ATTENDANCE_MIGRATION_SQL = `
     UNIQUE (snapshot_id, staff_profile_id)
   );
   CREATE INDEX IF NOT EXISTS idx_attendance_snapshot_rows_staff ON attendance_summary_snapshot_rows(shop_id, staff_profile_id, snapshot_id);
+  ALTER TABLE attendance_summary_snapshot_rows ADD COLUMN IF NOT EXISTS paid_full_leave_days NUMERIC(8,2) NOT NULL DEFAULT 0;
+  ALTER TABLE attendance_summary_snapshot_rows ADD COLUMN IF NOT EXISTS paid_half_leave_count INTEGER NOT NULL DEFAULT 0;
 
   CREATE OR REPLACE FUNCTION reject_approved_attendance_snapshot_mutation() RETURNS TRIGGER AS $$
   BEGIN

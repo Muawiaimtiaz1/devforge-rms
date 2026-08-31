@@ -1,6 +1,6 @@
 const db = require('../../../db/knex');
 const repository = require('./attendance.repository');
-const { templateSchema, scheduleSchema, holidaySchema, clockSchema, correctionSchema, reviewSchema, rangeSchema, snapshotSchema, dailyRegisterSchema, shiftRegisterQuerySchema, shiftRegisterSchema } = require('./attendance.schema');
+const { templateSchema, scheduleSchema, holidaySchema, clockSchema, correctionSchema, reviewSchema, rangeSchema, snapshotSchema, shiftRegisterQuerySchema, shiftRegisterSchema, shiftClockOutSchema, personShiftMarkSchema } = require('./attendance.schema');
 
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
 function shopId(user) { const id = Number(user?.shop_id); if (!Number.isInteger(id) || id <= 0) throw httpError(403, 'Select a restaurant to use attendance.'); return id; }
@@ -10,6 +10,14 @@ function localParts(date, timezone) {
   return Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
 }
 function businessDate(date, timezone) { const p = localParts(date, timezone); return `${p.year}-${p.month}-${p.day}`; }
+function storedDate(value, timezone) {
+  if (typeof value === 'string') {
+    const match = value.match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) return match[0];
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return businessDate(value, timezone);
+  throw httpError(500, 'Attendance contains an invalid business date.');
+}
 function dateRangeDays(from, to) {
   const start = new Date(`${from}T00:00:00Z`); const end = new Date(`${to}T00:00:00Z`);
   const count = Math.floor((end - start) / 86400000) + 1;
@@ -18,12 +26,15 @@ function dateRangeDays(from, to) {
 }
 function minutes(time) { const [hour, minute] = String(time).slice(0, 5).split(':').map(Number); return hour * 60 + minute; }
 function scheduledMinutes(schedule) { if (!schedule || schedule.is_day_off) return 0; const start = minutes(schedule.start_time); let end = minutes(schedule.end_time); if (schedule.is_overnight) end += 1440; return Math.max(0, end - start - Number(schedule.unpaid_break_minutes || 0)); }
+function nextDate(value) { const date=new Date(`${value}T00:00:00Z`);date.setUTCDate(date.getUTCDate()+1);return date.toISOString().slice(0,10); }
+function shiftEnded(date,schedule,now,timezone){const local=localParts(now,timezone),localDate=`${local.year}-${local.month}-${local.day}`,localMinute=Number(local.hour)*60+Number(local.minute),endMinute=minutes(schedule.end_time);if(!schedule.is_overnight)return localDate>date||(localDate===date&&localMinute>=endMinute);const endDate=nextDate(date);return localDate>endDate||(localDate===endDate&&localMinute>=endMinute);}
+function workedStatus(workMinutes,requiredMinutes){const ratio=requiredMinutes>0?workMinutes/requiredMinutes:1;return{ratio,status:ratio>=.75?'present':ratio>=.5?'half_day':'less_than_half_day'};}
 function validateTemplateTimes(data) {
   if (data.start_time === data.end_time) throw httpError(400, 'Shift start and end time must differ.');
   const inferredOvernight = minutes(data.end_time) < minutes(data.start_time);
   if (inferredOvernight !== data.is_overnight) throw httpError(400, inferredOvernight ? 'This shift crosses midnight and must be marked overnight.' : 'Overnight is only valid when end time is earlier than start time.');
 }
-function applyDailyMark(row, mark) { if (!mark) return row; const common = { ...row, manual_mark: { id: mark.id, attendance_status: mark.attendance_status, reason: mark.reason, marked_by: mark.marked_by, created_at: mark.created_at } }; if (mark.attendance_status === 'present') return { ...common, status: 'present' }; if (mark.attendance_status === 'absent') return { ...common, status: 'unauthorized_absence', work_minutes: 0 }; if (mark.attendance_status === 'paid_leave') return { ...common, status: 'approved_leave', leave_name: 'Daily register: paid leave', leave_is_paid: true, work_minutes: 0 }; if (mark.attendance_status === 'unpaid_leave') return { ...common, status: 'approved_leave', leave_name: 'Daily register: unpaid leave', leave_is_paid: false, work_minutes: 0 }; if (mark.attendance_status === 'holiday') return { ...common, status: 'holiday', scheduled: false, work_minutes: 0 }; return { ...common, status: 'weekly_off', scheduled: false, work_minutes: 0 }; }
+function applyDailyMark(row, mark) { if (!mark) return row; const common = { ...row, manual_mark: { id: mark.id, attendance_status: mark.attendance_status, reason: mark.reason, marked_by: mark.marked_by, created_at: mark.created_at } }; if (mark.attendance_status === 'present') return mark.shift_register_id ? common : { ...common, status: 'present' }; if (mark.attendance_status === 'absent') return { ...common, status: 'unauthorized_absence', work_minutes: 0 }; if (mark.attendance_status === 'paid_leave') return { ...common, status: 'approved_leave', leave_name: 'Shift register: paid leave', leave_is_paid: true, work_minutes: 0 }; if (mark.attendance_status === 'unpaid_leave') return { ...common, status: 'approved_leave', leave_name: 'Shift register: unpaid leave', leave_is_paid: false, work_minutes: 0 }; if (mark.attendance_status === 'holiday') return { ...common, status: 'holiday', scheduled: false, work_minutes: 0 }; return { ...common, status: 'weekly_off', scheduled: false, work_minutes: 0 }; }
 
 async function listTemplates(user) { return repository.templates(shopId(user)); }
 async function listStaffOptions(user) {
@@ -90,7 +101,7 @@ async function clock(user, payload) {
       if (!data.register_shift_id) throw httpError(400, 'Register-shift attribution is required for register clock events.');
       if (!await trx('shifts').where({ id: data.register_shift_id, shop_id: tenant }).first()) throw httpError(400, 'Register shift does not belong to this restaurant.');
     }
-    const date = data.event_type === 'clock_in' || !latest || latest.event_type === 'clock_out' ? businessDate(now, config.timezone) : String(latest.business_date).slice(0, 10);
+    const date = data.event_type === 'clock_in' || !latest || latest.event_type === 'clock_out' ? businessDate(now, config.timezone) : storedDate(latest.business_date, config.timezone);
     const [event] = await trx('attendance_clock_events').insert({ shop_id: tenant, staff_profile_id: profile.id, event_type: data.event_type, occurred_at: now.toISOString(), business_date: date, source_type: data.source_type, device_id: data.device_id || null, register_shift_id: data.register_shift_id || null, actor_user_id: user.id, idempotency_key: data.idempotency_key }).returning('*');
     return { event, duplicate: false };
   });
@@ -109,9 +120,10 @@ function summarizeDay(date, schedule, events, adjustments, holiday, approvedLeav
   if (holiday) return { date, status: 'holiday', holiday: holiday.name, scheduled: false, events: effectiveEvents(events, adjustments), work_minutes: 0 };
   if (!schedule || schedule.is_day_off) return { date, status: 'weekly_off', scheduled: false, events: effectiveEvents(events, adjustments), work_minutes: 0 };
   const effective = effectiveEvents(events, adjustments); const clockIn = effective.find((e) => e.event_type === 'clock_in'); const clockOut = [...effective].reverse().find((e) => e.event_type === 'clock_out');
-  if (approvedLeave) return { date, status: 'approved_leave', leave_name: approvedLeave.name, leave_category: approvedLeave.category, leave_is_paid: approvedLeave.is_paid, day_part: approvedLeave.day_part, scheduled: true, scheduled_minutes: scheduledMinutes(schedule), shift_name: schedule.shift_name, events: effective, work_minutes: 0 };
+  const leaveFields = approvedLeave ? { leave_name: approvedLeave.name, leave_category: approvedLeave.category, leave_is_paid: approvedLeave.is_paid, day_part: approvedLeave.day_part } : {};
+  if (approvedLeave?.day_part === 'full_day' || (approvedLeave && !clockIn)) return { date, status: 'approved_leave', ...leaveFields, scheduled: true, scheduled_minutes: scheduledMinutes(schedule), shift_name: schedule.shift_name, events: effective, work_minutes: 0 };
   if (absence) return { date, status: `${absence}_absence`, scheduled: true, shift_name: schedule.shift_name, events: effective, work_minutes: 0 };
-  if (!clockIn) return { date, status: date < nowDate ? 'missing_clock_in' : 'scheduled', scheduled: true, shift_name: schedule.shift_name, events: effective, work_minutes: 0 };
+  if (!clockIn) return { date, status: shiftEnded(date,schedule,new Date(),config.timezone) ? 'absent' : 'scheduled', scheduled: true, scheduled_minutes: scheduledMinutes(schedule), shift_name: schedule.shift_name, events: effective, work_minutes: 0 };
   let breakMinutes = 0; let breakStart = null;
   effective.forEach((event) => { if (event.event_type === 'break_start') breakStart = new Date(event.occurred_at); if (event.event_type === 'break_end' && breakStart) { breakMinutes += Math.max(0, (new Date(event.occurred_at) - breakStart) / 60000); breakStart = null; } });
   const end = clockOut ? new Date(clockOut.occurred_at) : new Date(); const workMinutes = Math.max(0, Math.round((end - new Date(clockIn.occurred_at)) / 60000 - breakMinutes));
@@ -119,35 +131,44 @@ function summarizeDay(date, schedule, events, adjustments, holiday, approvedLeav
   const grace = schedule.grace_minutes ?? config.default_grace_minutes; const lateMinutes = Math.max(0, inMinutes - minutes(schedule.start_time) - grace);
   let earlyMinutes = 0;
   if (clockOut) { const outLocal = localParts(new Date(clockOut.occurred_at), config.timezone); let outMinutes = Number(outLocal.hour) * 60 + Number(outLocal.minute); if (schedule.is_overnight && `${outLocal.year}-${outLocal.month}-${outLocal.day}` > date) outMinutes += 1440; const expected = minutes(schedule.end_time) + (schedule.is_overnight ? 1440 : 0); earlyMinutes = Math.max(0, expected - outMinutes - config.early_departure_grace_minutes); }
-  return { date, status: clockOut ? (lateMinutes ? 'late' : earlyMinutes ? 'early_departure' : 'present') : 'missing_clock_out', scheduled: true, scheduled_minutes: scheduledMinutes(schedule), shift_name: schedule.shift_name, events: effective, work_minutes: workMinutes, late_minutes: lateMinutes, early_departure_minutes: earlyMinutes };
+  const required=scheduledMinutes(schedule),classification=workedStatus(workMinutes,required),workedRatio=classification.ratio,completedStatus=classification.status;
+  return { date, status: clockOut ? completedStatus : (date === nowDate ? 'clocked_in' : 'missing_clock_out'), ...leaveFields, scheduled: true, scheduled_minutes: required, worked_ratio: workedRatio, shift_name: schedule.shift_name, events: effective, work_minutes: workMinutes, late_minutes: lateMinutes, early_departure_minutes: earlyMinutes };
 }
 async function calendar(user, rawQuery) {
   const tenant = shopId(user); const query = rangeSchema.parse(rawQuery); const dates = dateRangeDays(query.from, query.to);
   let requestedStaff = query.staff_profile_id;
   if (!isManager(user)) { const own = await repository.staffForUser(tenant, user.id); if (!own) throw httpError(403, 'Your login is not linked to a staff profile.'); requestedStaff = own.id; }
-  const [data, config] = await Promise.all([repository.calendarData(tenant, query.from, query.to, requestedStaff), repository.settings(tenant)]);
+  const [data, config] = await Promise.all([repository.calendarData(tenant, query.from, query.to, requestedStaff, query.shift_template_id, query.search), repository.settings(tenant)]);
   const approvedLeaves = await require('../leave/leave.service').approvedCalendar(tenant, query.from, query.to, data.people.map((person) => person.id));
-  const holidayMap = new Map(data.holidays.map((row) => [String(row.holiday_date).slice(0, 10), row])); const nowDate = businessDate(new Date(), config.timezone);
+  const holidayMap = new Map(data.holidays.map((row) => [storedDate(row.holiday_date, config.timezone), row])); const nowDate = businessDate(new Date(), config.timezone);
   const rows = data.people.flatMap((person) => dates.map((date) => {
     const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-    const schedules = data.schedules.filter((s) => Number(s.staff_profile_id) === person.id && Number(s.weekday) === weekday && String(s.effective_from).slice(0, 10) <= date && (!s.effective_to || String(s.effective_to).slice(0, 10) >= date)).sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)));
-    const events = data.events.filter((e) => Number(e.staff_profile_id) === person.id && String(e.business_date).slice(0, 10) === date);
-    const adjustments = data.adjustments.filter((a) => Number(a.staff_profile_id) === person.id && String(a.business_date).slice(0, 10) === date);
-    const approvedLeave = approvedLeaves.find((leave) => Number(leave.staff_profile_id) === person.id && String(leave.start_date).slice(0,10) <= date && String(leave.end_date).slice(0,10) >= date);
-    const mark = data.dailyMarks.find((item) => Number(item.staff_profile_id) === person.id && String(item.business_date).slice(0,10) === date);
+    const schedules = data.schedules.filter((schedule) => Number(schedule.staff_profile_id) === Number(person.id) && Number(schedule.weekday) === weekday && storedDate(schedule.effective_from, config.timezone) <= date && (!schedule.effective_to || storedDate(schedule.effective_to, config.timezone) >= date)).sort((a, b) => storedDate(b.effective_from, config.timezone).localeCompare(storedDate(a.effective_from, config.timezone)));
+    const mark = data.dailyMarks.find((item) => Number(item.staff_profile_id) === Number(person.id) && storedDate(item.business_date, config.timezone) === date);
+    const events = data.events.filter((event) => Number(event.staff_profile_id) === person.id
+      && storedDate(event.business_date, config.timezone) === date
+      && (!mark?.shift_register_id || Number(event.attendance_shift_register_id) === Number(mark.shift_register_id)));
+    const adjustments = data.adjustments.filter((adjustment) => Number(adjustment.staff_profile_id) === Number(person.id) && storedDate(adjustment.business_date, config.timezone) === date);
+    const approvedLeave = approvedLeaves.find((leave) => Number(leave.staff_profile_id) === Number(person.id) && storedDate(leave.start_date, config.timezone) <= date && storedDate(leave.end_date, config.timezone) >= date);
     return { staff: person, ...applyDailyMark(summarizeDay(date, schedules[0], events, adjustments, holidayMap.get(date), approvedLeave, config, nowDate), mark) };
   }));
-  const summary = rows.reduce((out, row) => { out[row.status] = (out[row.status] || 0) + 1; out.work_minutes += row.work_minutes || 0; return out; }, { work_minutes: 0 });
+  const summary = rows.reduce((out, row) => {
+    out[row.status] = (out[row.status] || 0) + 1;
+    if (row.manual_mark?.attendance_status === 'present') out.marked_present += 1;
+    if (Number(row.late_minutes) > 0) out.late_count += 1;
+    out.work_minutes += row.work_minutes || 0;
+    return out;
+  }, { work_minutes: 0, marked_present: 0, late_count: 0 });
   return { timezone: config.timezone, rows, summary };
 }
 
 async function countScheduledWorkDays(tenant, staffId, from, to) {
-  const dates = dateRangeDays(from, to); const data = await repository.calendarData(tenant, from, to, staffId);
-  const holidays = new Set(data.holidays.map((row) => String(row.holiday_date).slice(0, 10)));
+  const dates = dateRangeDays(from, to); const [data, config] = await Promise.all([repository.calendarData(tenant, from, to, staffId), repository.settings(tenant)]);
+  const holidays = new Set(data.holidays.map((row) => storedDate(row.holiday_date, config.timezone)));
   return dates.filter((date) => {
     if (holidays.has(date)) return false;
     const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-    return data.schedules.some((schedule) => Number(schedule.staff_profile_id) === Number(staffId) && Number(schedule.weekday) === weekday && !schedule.is_day_off && String(schedule.effective_from).slice(0, 10) <= date && (!schedule.effective_to || String(schedule.effective_to).slice(0, 10) >= date));
+    return data.schedules.some((schedule) => Number(schedule.staff_profile_id) === Number(staffId) && Number(schedule.weekday) === weekday && !schedule.is_day_off && storedDate(schedule.effective_from, config.timezone) <= date && (!schedule.effective_to || storedDate(schedule.effective_to, config.timezone) >= date));
   }).length;
 }
 
@@ -190,10 +211,12 @@ async function createSnapshot(user, payload) {
     const rows = [...grouped.values()].map(({ staff_profile_id, rows: detail }) => ({
       snapshot_id: snapshot.id, shop_id: tenant, staff_profile_id,
       scheduled_days: detail.filter((r) => r.scheduled).length,
-      present_days: detail.filter((r) => ['present','late','early_departure'].includes(r.status)).length,
-      paid_leave_days: detail.filter((r) => r.status === 'approved_leave' && r.leave_is_paid).reduce((sum, r) => sum + (r.day_part === 'full_day' ? 1 : 0.5), 0),
-      unpaid_leave_days: detail.filter((r) => r.status === 'approved_leave' && !r.leave_is_paid).reduce((sum, r) => sum + (r.day_part === 'full_day' ? 1 : 0.5), 0),
-      absent_days: detail.filter((r) => /absence|missing_clock_in/.test(r.status)).length,
+      present_days: detail.reduce((sum,r)=>sum+(r.status==='present'?1:r.status==='half_day'?.5:r.status==='less_than_half_day'?Math.max(0,Math.min(.49,Number(r.worked_ratio||0))):0),0),
+      paid_leave_days: detail.filter((r) => r.leave_is_paid === true && r.day_part).reduce((sum, r) => sum + (r.day_part === 'full_day' ? 1 : 0.5), 0),
+      paid_full_leave_days: detail.filter((r) => r.leave_is_paid === true && r.day_part === 'full_day').length,
+      paid_half_leave_count: detail.filter((r) => r.leave_is_paid === true && r.day_part && r.day_part !== 'full_day').length,
+      unpaid_leave_days: detail.filter((r) => r.leave_is_paid === false && r.day_part).reduce((sum, r) => sum + (r.day_part === 'full_day' ? 1 : 0.5), 0),
+      absent_days: detail.filter((r) => r.status==='absent'||/absence/.test(r.status)).length,
       work_minutes: detail.reduce((sum, r) => sum + Number(r.work_minutes || 0), 0),
       overtime_minutes: detail.reduce((sum, r) => sum + Math.max(0, Number(r.work_minutes || 0) - Number(r.scheduled_minutes || 0)), 0),
       late_minutes: detail.reduce((sum, r) => sum + Number(r.late_minutes || 0), 0), early_departure_minutes: detail.reduce((sum, r) => sum + Number(r.early_departure_minutes || 0), 0),
@@ -207,14 +230,11 @@ async function approveSnapshot(user, rawId) {
   const tenant = shopId(user); const id = Number(rawId);
   return db.transaction(async (trx) => { const snapshot = await trx('attendance_summary_snapshots').where({ id, shop_id: tenant }).forUpdate().first(); if (!snapshot) throw httpError(404, 'Attendance snapshot not found.'); if (snapshot.status === 'approved') return snapshot; if (Number(snapshot.created_by) === Number(user.id)) throw httpError(409, 'A different user must approve the attendance snapshot.'); const [approved] = await trx('attendance_summary_snapshots').where({ id, status: 'draft' }).update({ status: 'approved', approved_by: user.id, approved_at: trx.fn.now() }).returning('*'); return approved; });
 }
+async function payrollCalendar(shop,from,to){return calendar({shop_id:shop,role:'manager',permissions:['attendance.approve']},{from,to});}
 async function approvedSnapshot(shop, id, trx = db) {
   const snapshot = await trx('attendance_summary_snapshots').where({ id, shop_id: shop, status: 'approved' }).first(); if (!snapshot) return null;
   const rows = await trx('attendance_summary_snapshot_rows').where({ snapshot_id: id, shop_id: shop }); return { ...snapshot, rows };
 }
-async function dailyRegister(user, rawDate) { const tenant=shopId(user); const parsed=zDate(rawDate); const people=await db('staff_profiles').where({shop_id:tenant}).whereNot('employment_status','terminated').select('id','employee_id','full_name','department','designation').orderBy('full_name').limit(500); const marks=await db('attendance_daily_marks').where({shop_id:tenant,business_date:parsed}).orderBy('id','desc'); const latest=new Map();for(const mark of marks)if(!latest.has(Number(mark.staff_profile_id)))latest.set(Number(mark.staff_profile_id),mark);return{business_date:parsed,staff:people.map(person=>({...person,mark:latest.get(Number(person.id))||null}))}; }
-function zDate(value){const result=require('zod').z.iso.date().safeParse(value);if(!result.success)throw httpError(400,'Use a valid attendance date.');return result.data;}
-async function markDailyRegister(user,payload){const tenant=shopId(user),data=dailyRegisterSchema.parse(payload);const ids=[...new Set(data.marks.map(m=>m.staff_profile_id))];if(ids.length!==data.marks.length)throw httpError(400,'Each staff member may appear only once.');return db.transaction(async trx=>{const valid=await trx('staff_profiles').where({shop_id:tenant}).whereIn('id',ids).select('id');if(valid.length!==ids.length)throw httpError(404,'One or more staff profiles were not found.');const existing=await trx('attendance_daily_marks').where({shop_id:tenant}).whereIn('idempotency_key',ids.map(id=>`${data.idempotency_key}:${id}`));if(existing.length===ids.length)return{saved:existing.length,business_date:data.business_date};const previous=await trx('attendance_daily_marks').where({shop_id:tenant,business_date:data.business_date}).whereIn('staff_profile_id',ids).orderBy('id','desc');const latest=new Map();for(const row of previous)if(!latest.has(Number(row.staff_profile_id)))latest.set(Number(row.staff_profile_id),row.id);const rows=data.marks.filter(mark=>!existing.some(row=>row.idempotency_key===`${data.idempotency_key}:${mark.staff_profile_id}`)).map(mark=>({...mark,shop_id:tenant,business_date:data.business_date,reason:data.reason,supersedes_id:latest.get(Number(mark.staff_profile_id))||null,marked_by:user.id,idempotency_key:`${data.idempotency_key}:${mark.staff_profile_id}`}));if(rows.length)await trx('attendance_daily_marks').insert(rows);return{saved:rows.length,business_date:data.business_date};});}
-
 async function scheduledShiftRoster(trx, tenant, shiftId, date) {
   const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
   return trx('attendance_weekly_schedules as ws')
@@ -252,9 +272,56 @@ async function shiftRegister(user, rawQuery) {
   if (!shift) throw httpError(404, 'This shift has no scheduled staff for today.');
   const staff = await scheduledShiftRoster(db, tenant, Number(shift.id), date);
   let marks = [];
-  if (shift.register_id) marks = await db('attendance_daily_marks').where({ shop_id: tenant, shift_register_id: shift.register_id }).select('staff_profile_id', 'attendance_status', 'reason', 'created_at');
-  const byStaff = new Map(marks.map((mark) => [Number(mark.staff_profile_id), mark]));
-  return { business_date: date, timezone: config.timezone, shifts, shift, submitted: Boolean(shift.register_id), staff: staff.map((person) => ({ ...person, mark: byStaff.get(Number(person.id)) || null })) };
+  let clockEvents = [];
+  if (shift.register_id) {
+    [marks, clockEvents] = await Promise.all([
+      db('attendance_daily_marks').where({ shop_id: tenant, shift_register_id: shift.register_id }).select('id', 'staff_profile_id', 'attendance_status', 'reason', 'created_at', 'supersedes_id').orderBy('id', 'desc'),
+      db('attendance_clock_events').where({ shop_id: tenant, attendance_shift_register_id: shift.register_id }).select('staff_profile_id', 'event_type', 'occurred_at').orderBy('occurred_at'),
+    ]);
+  }
+  const byStaff = new Map(); marks.forEach((mark) => { const id=Number(mark.staff_profile_id); if(!byStaff.has(id))byStaff.set(id,mark); });
+  return { business_date: date, timezone: config.timezone, shifts, shift, submitted: Boolean(shift.register_id), staff: staff.map((person) => {
+    const events = clockEvents.filter((event) => Number(event.staff_profile_id) === Number(person.id));
+    return { ...person, mark: byStaff.get(Number(person.id)) || null, clock_in_at: events.find((event) => event.event_type === 'clock_in')?.occurred_at || null, clock_out_at: events.find((event) => event.event_type === 'clock_out')?.occurred_at || null };
+  }) };
+}
+
+async function autoClosePreviousShift(trx,tenant,staffId,currentDate,timezone,actorUserId){
+  const open=await trx('attendance_clock_events as ci')
+    .join('attendance_shift_registers as sr','sr.id','ci.attendance_shift_register_id')
+    .join('attendance_shift_templates as st','st.id','sr.shift_template_id')
+    .where({'ci.shop_id':tenant,'ci.staff_profile_id':staffId,'ci.event_type':'clock_in'})
+    .where('ci.business_date','<',currentDate)
+    .whereNotExists(function(){this.select(trx.raw('1')).from('attendance_clock_events as co').whereRaw('co.attendance_shift_register_id = ci.attendance_shift_register_id').whereRaw('co.staff_profile_id = ci.staff_profile_id').where('co.event_type','clock_out');})
+    .select('ci.business_date','ci.attendance_shift_register_id','st.end_time','st.is_overnight').orderBy('ci.business_date','desc').orderBy('ci.id','desc').first();
+  if(!open)return null;
+  const priorDate=storedDate(open.business_date,timezone);
+  const [event]=await trx('attendance_clock_events').insert({shop_id:tenant,staff_profile_id:staffId,event_type:'clock_out',occurred_at:trx.raw("((?::date + ?::time + CASE WHEN ? THEN interval '1 day' ELSE interval '0 day' END) AT TIME ZONE ?)",[priorDate,String(open.end_time).slice(0,8),Boolean(open.is_overnight),timezone]),business_date:priorDate,source_type:'register',device_id:`auto-close-next-arrival:${open.attendance_shift_register_id}`,attendance_shift_register_id:open.attendance_shift_register_id,actor_user_id:actorUserId,idempotency_key:`auto-close-next-arrival:${open.attendance_shift_register_id}:${staffId}`}).returning('*');
+  return event;
+}
+
+async function markShiftStaff(user, rawStaffId, payload) {
+  const tenant=shopId(user),staffId=Number(rawStaffId),data=personShiftMarkSchema.parse(payload);
+  if(!Number.isInteger(staffId)||staffId<=0)throw httpError(400,'Use a valid staff ID.');
+  const config=await repository.settings(tenant),date=businessDate(new Date(),config.timezone);
+  try{return await db.transaction(async trx=>{
+    await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))',[`attendance:${tenant}:${date}:${staffId}`]);
+    const shift=await trx('attendance_shift_templates').where({id:data.shift_template_id,shop_id:tenant,is_active:true}).first();
+    if(!shift)throw httpError(404,'Shift not found.');
+    const roster=await scheduledShiftRoster(trx,tenant,shift.id,date);
+    if(!roster.some(person=>Number(person.id)===staffId))throw httpError(409,'This employee is not scheduled on this shift today.');
+    await trx('attendance_shift_registers').insert({shop_id:tenant,business_date:date,shift_template_id:shift.id,reason:'Individual attendance submissions',submitted_by:user.id}).onConflict(['shop_id','business_date','shift_template_id']).ignore();
+    const register=await trx('attendance_shift_registers').where({shop_id:tenant,business_date:date,shift_template_id:shift.id}).first();
+    const latest=await trx('attendance_daily_marks').where({shop_id:tenant,business_date:date,staff_profile_id:staffId}).whereNotNull('shift_register_id').orderBy('id','desc').first();
+    if(latest&&latest.attendance_status===data.attendance_status)throw httpError(409,`This employee is already marked ${data.attendance_status.replace('_',' ')} today.`);
+    const [mark]=await trx('attendance_daily_marks').insert({shop_id:tenant,staff_profile_id:staffId,business_date:date,attendance_status:data.attendance_status,reason:data.reason,supersedes_id:latest?.id||null,shift_register_id:register.id,marked_by:user.id,idempotency_key:data.idempotency_key}).returning('*');
+    if(data.attendance_status==='present'){
+      await autoClosePreviousShift(trx,tenant,staffId,date,config.timezone,user.id);
+      const existingClockIn=await trx('attendance_clock_events').where({shop_id:tenant,business_date:date,staff_profile_id:staffId,event_type:'clock_in'}).first();
+      if(!existingClockIn)await trx('attendance_clock_events').insert({shop_id:tenant,staff_profile_id:staffId,event_type:'clock_in',occurred_at:new Date().toISOString(),business_date:date,source_type:'register',device_id:`shift-attendance:${register.id}`,attendance_shift_register_id:register.id,actor_user_id:user.id,idempotency_key:`person-clock-in:${mark.id}`});
+    }
+    return{register_id:register.id,mark};
+  });}catch(error){if(error?.code==='23505')throw httpError(409,'This attendance submission was already recorded.');throw error;}
 }
 
 async function submitShiftRegister(user, payload) {
@@ -272,6 +339,22 @@ async function submitShiftRegister(user, payload) {
       if (rosterIds.length !== ids.length || rosterIds.some((id) => !ids.includes(id))) throw httpError(400, 'Submit attendance for every employee scheduled on this shift, with no extra employees.');
       const [register] = await trx('attendance_shift_registers').insert({ shop_id: tenant, business_date: date, shift_template_id: shift.id, reason: data.reason, submitted_by: user.id }).returning('*');
       await trx('attendance_daily_marks').insert(data.marks.map((mark) => ({ ...mark, shop_id: tenant, business_date: date, shift_register_id: register.id, reason: data.reason, marked_by: user.id, idempotency_key: `shift:${register.id}:${mark.staff_profile_id}:${data.idempotency_key}` })));
+      const present = data.marks.filter((mark) => mark.attendance_status === 'present');
+      if (present.length) {
+        const occurredAt = new Date().toISOString();
+        await trx('attendance_clock_events').insert(present.map((mark) => ({
+          shop_id: tenant,
+          staff_profile_id: mark.staff_profile_id,
+          event_type: 'clock_in',
+          occurred_at: occurredAt,
+          business_date: date,
+          source_type: 'register',
+          device_id: `shift-attendance:${register.id}`,
+          attendance_shift_register_id: register.id,
+          actor_user_id: user.id,
+          idempotency_key: `shift-clock-in:${register.id}:${mark.staff_profile_id}`,
+        })));
+      }
       return { id: register.id, business_date: date, shift_template_id: shift.id, saved: data.marks.length, submitted_at: register.submitted_at };
     });
   } catch (error) {
@@ -280,4 +363,29 @@ async function submitShiftRegister(user, payload) {
   }
 }
 
-module.exports = { listTemplates, listStaffOptions, createTemplate, versionTemplate, saveSchedule, addHoliday, clock, clockState, calendar, countScheduledWorkDays, requestCorrection, listCorrections, reviewCorrection, listSnapshots, createSnapshot, approveSnapshot, approvedSnapshot, dailyRegister, markDailyRegister, shiftRegister, submitShiftRegister, businessDate, dateRangeDays };
+async function clockOutShiftRegister(user, rawRegisterId, rawStaffId, payload) {
+  const tenant = shopId(user); const registerId = Number(rawRegisterId); const staffId = Number(rawStaffId); const data = shiftClockOutSchema.parse(payload);
+  if (!Number.isInteger(registerId) || registerId <= 0 || !Number.isInteger(staffId) || staffId <= 0) throw httpError(400, 'Use valid shift register and staff IDs.');
+  try {
+    return await db.transaction(async (trx) => {
+      const register = await trx('attendance_shift_registers as sr').join('attendance_shift_templates as st', 'st.id', 'sr.shift_template_id')
+        .where({ 'sr.id': registerId, 'sr.shop_id': tenant }).select('sr.*', 'st.name as shift_name').forUpdate('sr').first();
+      if (!register) throw httpError(404, 'Shift attendance register not found.');
+      const config = await repository.settings(tenant, trx); const now = new Date();
+      if (now - new Date(register.submitted_at) > Number(config.max_shift_hours) * 60 * 60 * 1000) throw httpError(409, 'This shift register is too old to clock out. Use an attendance correction.');
+      const mark = await trx('attendance_daily_marks').where({ shop_id: tenant, shift_register_id: registerId, staff_profile_id: staffId }).orderBy('id','desc').first();
+      if (!mark || mark.attendance_status !== 'present') throw httpError(409, 'Only an employee currently marked present in this shift can be clocked out.');
+      const clockIn = await trx('attendance_clock_events').where({ shop_id: tenant, attendance_shift_register_id: registerId, staff_profile_id: staffId, event_type: 'clock_in' }).first();
+      if (!clockIn) throw httpError(409, 'No shift clock-in exists for this employee.');
+      const existing = await trx('attendance_clock_events').where({ shop_id: tenant, attendance_shift_register_id: registerId, staff_profile_id: staffId, event_type: 'clock_out' }).first();
+      if (existing) throw httpError(409, 'This employee has already been clocked out for the shift.');
+      const [event] = await trx('attendance_clock_events').insert({ shop_id: tenant, staff_profile_id: staffId, event_type: 'clock_out', occurred_at: now.toISOString(), business_date: storedDate(register.business_date, config.timezone), source_type: 'register', device_id: `shift-attendance:${register.id}`, attendance_shift_register_id: register.id, actor_user_id: user.id, idempotency_key: data.idempotency_key }).returning('*');
+      return { event, shift_name: register.shift_name };
+    });
+  } catch (error) {
+    if (error?.code === '23505') throw httpError(409, 'This employee has already been clocked out for the shift.');
+    throw error;
+  }
+}
+
+module.exports = { listTemplates, listStaffOptions, createTemplate, versionTemplate, saveSchedule, addHoliday, clock, clockState, calendar, countScheduledWorkDays, requestCorrection, listCorrections, reviewCorrection, listSnapshots, createSnapshot, approveSnapshot, approvedSnapshot, payrollCalendar, shiftRegister, submitShiftRegister, markShiftStaff, clockOutShiftRegister, businessDate, storedDate, dateRangeDays, workedStatus };

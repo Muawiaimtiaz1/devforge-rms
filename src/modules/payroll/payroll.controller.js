@@ -6,4 +6,9 @@ async function period(req,res){res.status(201).json(await service.createPeriod(r
 async function run(req,res){res.status(201).json(await service.generate(req.session.user,req.body));} async function detail(req,res){res.json(await service.detail(req.session.user,req.params.id));}
 async function transition(req,res){res.json(await service.transition(req.session.user,req.params.id,req.body));} async function reverse(req,res){res.json(await service.reverse(req.session.user,req.params.id,req.body));}
 async function payslip(req,res){const row=await service.payslip(req.session.user,req.params.id,req.params.payslipId);res.set({'Content-Disposition':`attachment; filename="${row.payslip_number}.json"`,'Cache-Control':'no-store, private'}).json(row.snapshot_json);}
-module.exports={setup,salary,recurring,advance,adjustment,period,runs,run,detail,transition,reverse,payslip};
+async function staffSalary(req,res){res.json(await service.staffSalary(req.session.user,req.params.staffId));}
+async function releaseSalary(req,res){res.status(201).json(await service.releaseSalary(req.session.user,req.params.entryId,req.body));}
+async function analytics(req,res){res.json(await service.analytics(req.session.user));}
+async function currentMonthSalaries(req,res){res.json(await service.currentMonthSalaries(req.session.user));}
+async function releaseCurrentMonthSalary(req,res){res.status(201).json(await service.releaseCurrentMonthSalary(req.session.user,req.params.staffId,req.body));}
+module.exports={setup,staffSalary,salary,recurring,advance,adjustment,period,runs,run,detail,transition,reverse,payslip,releaseSalary,analytics,currentMonthSalaries,releaseCurrentMonthSalary};

@@ -1,4 +1,10 @@
 const express=require('express'); const {requirePermission}=require('../../../authorization/middleware'); const controller=require('./payroll.controller'); const router=express.Router();
+router.get('/staff/:staffId/salary',requirePermission('users.view','users.update','payroll.view'),controller.staffSalary);
+router.post('/staff/:staffId/salary',requirePermission('users.update','payroll.configure'),(req,res,next)=>{req.body={...req.body,staff_profile_id:req.params.staffId};next();},controller.salary);
+router.get('/analytics',requirePermission('payroll.view'),controller.analytics);
+router.get('/current-month-salaries',requirePermission('payroll.view'),controller.currentMonthSalaries);
+router.post('/current-month-salaries/:staffId/release',requirePermission('payroll.finalize'),controller.releaseCurrentMonthSalary);
+router.post('/entries/:entryId/payments',requirePermission('payroll.finalize'),controller.releaseSalary);
 router.get('/setup',requirePermission('payroll.view'),controller.setup); router.post('/salary-configs',requirePermission('payroll.configure'),controller.salary);
 router.post('/recurring-items',requirePermission('payroll.configure'),controller.recurring); router.post('/advances',requirePermission('payroll.configure'),controller.advance);
 router.post('/adjustments',requirePermission('payroll.configure'),controller.adjustment);

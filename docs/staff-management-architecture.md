@@ -1,7 +1,7 @@
 # Staff Management architecture and rules
 
 - `staff` owns employee identity; `users` owns login accounts.
-- `attendance` owns schedules, immutable clock events, append-only daily marks, corrections, and approved payroll snapshots.
+- `attendance` owns schedules, immutable clock events, one-time shift attendance registers, centralized clock-out control, append-only attendance marks, corrections, and approved payroll snapshots. Shift submission time is the clock-in time for staff marked present; personal self-service clock endpoints are not exposed.
 - `leave` owns leave policy, balances, requests, and immutable balance history.
 - `payroll` consumes an approved attendance snapshot and owns compensation, runs, line items, payslips, reversals, and advance recovery.
 - `documents` owns private metadata and audited file access; bytes live only in `STAFF_DOCUMENT_STORAGE_DIR`.

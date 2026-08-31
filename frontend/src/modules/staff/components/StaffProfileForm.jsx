@@ -1,14 +1,35 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../../../api/client'
 import { EMPTY_PROFILE, STATUS_LABELS } from '../staff.constants'
 import StaffModal from './StaffModal'
+import StaffSalarySection from './StaffSalarySection'
 
-export default function StaffProfileForm({ profile, onClose, onSaved }) {
+function todayInKarachi() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+  const part = (type) => parts.find((value) => value.type === type)?.value
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+function emptySalary(editing) { return { compensation_type: 'monthly', currency: 'PKR', base_amount: '', effective_from: todayInKarachi(), standard_monthly_minutes: 10400, overtime_enabled: false, overtime_multiplier: '1.500', monthly_unpaid_absence_policy: 'prorate_scheduled_days', paid_full_leave_allowance: 0, paid_half_leave_allowance: 0, deduct_excess_paid_leave: true, change_reason: editing ? 'Salary raise or policy change' : 'New employee salary' } }
+
+export default function StaffProfileForm({ profile, onClose, onSaved, canEditSalary }) {
   const [form, setForm] = useState(() => ({ ...EMPTY_PROFILE, ...profile, joining_date: profile?.joining_date ? String(profile.joining_date).slice(0, 10) : '' }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const editing = Boolean(profile?.id)
+  const [savedStaffId, setSavedStaffId] = useState(profile?.id || null)
+  const [salary, setSalary] = useState(() => emptySalary(editing))
+  const [salaryEnabled, setSalaryEnabled] = useState(() => canEditSalary && !editing)
+  const [salaryHistory, setSalaryHistory] = useState([])
+  const [currentSalary, setCurrentSalary] = useState(null)
+  const [salaryLoading, setSalaryLoading] = useState(Boolean(editing && canEditSalary))
   function set(field, value) { setForm((current) => ({ ...current, [field]: value })) }
+
+  useEffect(() => {
+    if (!editing || !canEditSalary) return undefined
+    let active = true
+    api(`/api/payroll/staff/${profile.id}/salary`).then((result) => { if (active) { setSalaryHistory(result.history || []); setCurrentSalary(result.current || null); if (result.current) setSalary((current) => ({ ...current, compensation_type: result.current.compensation_type, currency: result.current.currency, base_amount: result.current.base_amount, standard_monthly_minutes: result.current.standard_monthly_minutes || 10400, overtime_enabled: result.current.overtime_enabled, overtime_multiplier: result.current.overtime_multiplier, monthly_unpaid_absence_policy: result.current.monthly_unpaid_absence_policy, paid_full_leave_allowance: result.current.paid_full_leave_allowance, paid_half_leave_allowance: result.current.paid_half_leave_allowance, deduct_excess_paid_leave: result.current.deduct_excess_paid_leave })) } }).catch((requestError) => { if (active) setError(requestError.message) }).finally(() => { if (active) setSalaryLoading(false) })
+    return () => { active = false }
+  }, [editing, canEditSalary, profile?.id])
 
   async function submit(event) {
     event.preventDefault()
@@ -20,7 +41,14 @@ export default function StaffProfileForm({ profile, onClose, onSaved }) {
     }))
     try {
       setSaving(true)
-      await api(editing ? `/api/staff/${profile.id}` : '/api/staff', { method: editing ? 'PUT' : 'POST', body })
+      const targetId = savedStaffId
+      const savedProfile = await api(targetId ? `/api/staff/${targetId}` : '/api/staff', { method: targetId ? 'PUT' : 'POST', body })
+      const staffId = targetId || savedProfile.id
+      setSavedStaffId(staffId)
+      if (canEditSalary && salaryEnabled) {
+        try { await api(`/api/payroll/staff/${staffId}/salary`, { method: 'POST', body: salary }) }
+        catch (salaryError) { setError(`Staff profile saved, but salary was not saved: ${salaryError.message}`); await onSaved(); return }
+      }
       await onSaved()
       onClose()
     } catch (requestError) { setError(requestError.message) } finally { setSaving(false) }
@@ -37,6 +65,7 @@ export default function StaffProfileForm({ profile, onClose, onSaved }) {
     <label>Employment status<select value={form.employment_status} onChange={(e) => set('employment_status', e.target.value)}>{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Photo URL<input type="url" value={form.photo_url || ''} onChange={(e) => set('photo_url', e.target.value)} /></label>
     <label>Notes<textarea rows="4" value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} /></label>
+    {canEditSalary && <StaffSalarySection salary={salary} setSalary={setSalary} enabled={salaryEnabled} setEnabled={setSalaryEnabled} editing={editing} loading={salaryLoading} current={currentSalary} history={salaryHistory} />}
     <footer><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? 'Saving…' : 'Save staff member'}</button></footer>
   </form></StaffModal>
 }

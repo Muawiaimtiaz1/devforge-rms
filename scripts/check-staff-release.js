@@ -5,9 +5,9 @@ async function scalar(sql) { return (await query(sql)).rows[0]; }
 
 async function main() {
   if (process.env.DB_CLIENT !== 'postgres') throw new Error('Release verification requires DB_CLIENT=postgres.');
-  const requiredTables = ['staff_profiles','session_devices','security_events','staff_departments','attendance_clock_events','attendance_daily_marks','leave_requests','payroll_runs','payroll_adjustments','staff_documents','staff_activity_records'];
+  const requiredTables = ['staff_profiles','session_devices','security_events','staff_departments','attendance_clock_events','attendance_daily_marks','attendance_shift_registers','leave_requests','payroll_runs','payroll_adjustments','staff_documents','staff_activity_records'];
   const requiredIndexes = ['idx_sales_staff_creator_date','idx_sales_staff_waiter_date','idx_sales_staff_rider_date','idx_sales_staff_kitchen_date','idx_sales_payment_receiver_date','idx_shifts_staff_date','idx_activity_logs_shop_created','idx_sessions_expires','idx_security_events_shop_created','idx_staff_profiles_shop_name','idx_staff_profiles_shop_user'];
-  const requiredTriggers = ['trg_attendance_clock_events_immutable','trg_attendance_daily_marks_immutable','trg_leave_balance_ledger_immutable','trg_payroll_payslips_immutable','trg_payroll_adjustments_protected','trg_staff_activity_history_immutable'];
+  const requiredTriggers = ['trg_attendance_clock_events_immutable','trg_attendance_daily_marks_immutable','trg_attendance_shift_registers_immutable','trg_leave_balance_ledger_immutable','trg_payroll_payslips_immutable','trg_payroll_adjustments_protected','trg_staff_activity_history_immutable'];
   const existing = await query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name=ANY($1::text[]) ORDER BY table_name`, [requiredTables]);
   const indexes = await query(`SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname=ANY($1::text[]) ORDER BY indexname`, [requiredIndexes]);
   const triggers = await query(`SELECT DISTINCT trigger_name FROM information_schema.triggers WHERE event_object_schema='public' AND trigger_name=ANY($1::text[]) ORDER BY trigger_name`, [requiredTriggers]);

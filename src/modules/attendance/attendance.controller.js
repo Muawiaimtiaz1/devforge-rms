@@ -14,8 +14,8 @@ async function reviewCorrection(req, res) { res.json(await service.reviewCorrect
 async function snapshots(req, res) { res.json(await service.listSnapshots(req.session.user)); }
 async function createSnapshot(req, res) { res.status(201).json(await service.createSnapshot(req.session.user, req.body)); }
 async function approveSnapshot(req, res) { res.json(await service.approveSnapshot(req.session.user, req.params.id)); }
-async function dailyRegister(req,res){res.json(await service.dailyRegister(req.session.user,req.query.date));}
-async function markDailyRegister(req,res){res.status(201).json(await service.markDailyRegister(req.session.user,req.body));}
 async function shiftRegister(req,res){res.json(await service.shiftRegister(req.session.user,req.query));}
 async function submitShiftRegister(req,res){res.status(201).json(await service.submitShiftRegister(req.session.user,req.body));}
-module.exports = { templates, staffOptions, createTemplate, versionTemplate, schedule, holiday, clock, clockState, calendar, corrections, requestCorrection, reviewCorrection, snapshots, createSnapshot, approveSnapshot, dailyRegister, markDailyRegister, shiftRegister, submitShiftRegister };
+async function markShiftStaff(req,res){res.status(201).json(await service.markShiftStaff(req.session.user,req.params.staffId,req.body));}
+async function clockOutShiftRegister(req,res){res.status(201).json(await service.clockOutShiftRegister(req.session.user,req.params.registerId,req.params.staffId,req.body));}
+module.exports = { templates, staffOptions, createTemplate, versionTemplate, schedule, holiday, clock, clockState, calendar, corrections, requestCorrection, reviewCorrection, snapshots, createSnapshot, approveSnapshot, shiftRegister, submitShiftRegister, markShiftStaff, clockOutShiftRegister };

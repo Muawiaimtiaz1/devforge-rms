@@ -9,7 +9,8 @@ import StaffAssignmentPanel from './components/StaffAssignmentPanel'
 const AttendanceWorkspacePanel = lazy(() => import('./components/AttendanceWorkspacePanel'))
 import StaffWorkspaceSidebar from './components/StaffWorkspaceSidebar'
 const LeaveWorkspacePanel = lazy(() => import('./components/LeaveWorkspacePanel'))
-const PayrollWorkspacePanel = lazy(() => import('./components/PayrollWorkspacePanel'))
+const SimpleSalaryPanel = lazy(() => import('./components/SimpleSalaryPanel'))
+const StaffAnalyticsPanel = lazy(() => import('./components/StaffAnalyticsPanel'))
 const StaffDocumentsWorkspacePanel = lazy(() => import('./components/StaffDocumentsWorkspacePanel'))
 const StaffActivityWorkspacePanel = lazy(() => import('./components/StaffActivityWorkspacePanel'))
 import StaffDirectorySkeleton from './components/StaffDirectorySkeleton'
@@ -102,13 +103,14 @@ export default function StaffDirectory() {
           {activePanel === 'roles' && has('roles.view') && <RoleManagementPanel embedded has={has} />}
           {activePanel === 'sessions' && <MySessionsPanel embedded />}
           {activePanel === 'leave' && has('leave.view') && <LeaveWorkspacePanel has={has} />}
-          {activePanel === 'payroll' && has('payroll.view') && <PayrollWorkspacePanel has={has} />}
+          {activePanel === 'payroll' && has('payroll.view') && <SimpleSalaryPanel has={has} />}
+          {activePanel === 'analytics' && has('payroll.view') && <StaffAnalyticsPanel />}
           {activePanel === 'documents' && has('documents.view') && <StaffDocumentsWorkspacePanel has={has} />}
           {activePanel === 'activity' && has('staff_activity.view') && <StaffActivityWorkspacePanel has={has} />}
         </Suspense>
       </section>
     </div>
-    {editing !== undefined && <StaffProfileForm profile={editing} onClose={() => setEditing(undefined)} onSaved={saved} />}
+    {editing !== undefined && <StaffProfileForm profile={editing} canEditSalary={has('users.update')} onClose={() => setEditing(undefined)} onSaved={saved} />}
     {selected && <StaffProfileDetail profile={selected} canUpdate={has('users.update')} canManageAccess={has('users.view')} onClose={() => setSelected(null)} onAssignment={() => { const profile = selected; setSelected(null); setAssignmentProfile(profile) }} onAccess={() => { const profile = selected; setSelected(null); setAccessProfile(profile) }} onEdit={() => { const profile = selected; setSelected(null); openEditor(profile) }} />}
     {accessProfile && <StaffAccessPanel profile={accessProfile} has={has} onClose={() => setAccessProfile(null)} onChanged={saved} />}
     {assignmentProfile && <StaffAssignmentPanel profile={assignmentProfile} canUpdate={has('users.update')} isSuperadmin={session?.role === 'superadmin'} onClose={() => setAssignmentProfile(null)} onChanged={() => loadStaff(filters, true)} />}

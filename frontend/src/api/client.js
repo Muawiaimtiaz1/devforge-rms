@@ -12,7 +12,8 @@ export async function api(path, options = {}) {
 
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const error = new Error(data.error || `Request failed (${response.status})`)
+    const detailMessage = Array.isArray(data.details) && data.details.length ? data.details.join(' ') : ''
+    const error = new Error(detailMessage || data.error || `Request failed (${response.status})`)
     error.status = response.status
     error.details = data
     throw error

@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react'
 
 const ICONS = { directory: '▦', organization: '⌘', attendance: '◷', leave: '◇', roles: '⚿', sessions: '◉' }
 export default function StaffWorkspaceSidebar({ active, has, onSelect }) {
-  const icons = { ...ICONS, payroll: '$', documents: 'D', activity: 'A' }
+  const icons = { ...ICONS, payroll: '$', analytics: '↗', documents: 'D', activity: 'A' }
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('rms_staff_sidebar_collapsed') === 'true')
   const [mobileOpen, setMobileOpen] = useState(false)
   useEffect(() => { localStorage.setItem('rms_staff_sidebar_collapsed', String(collapsed)) }, [collapsed])
   const items = [
     has('users.view') && ['directory', 'Directory'], has('users.view') && ['organization', 'Organization'],
     has('attendance.view') && ['attendance', 'Attendance'], has('leave.view') && ['leave', 'Leave'],
-    has('payroll.view') && ['payroll', 'Payroll'],
+    has('payroll.view') && ['payroll', 'Salary'],
+    has('payroll.view') && ['analytics', 'Staff analytics'],
     has('documents.view') && ['documents', 'Documents'],
     has('staff_activity.view') && ['activity', 'Activity & records'],
     has('roles.view') && ['roles', 'Roles & permissions'], ['sessions', 'My sessions'],

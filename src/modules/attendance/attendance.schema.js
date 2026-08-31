@@ -25,9 +25,14 @@ const correctionSchema = z.object({
   reason: z.string().trim().min(3).max(1000),
 }).strict();
 const reviewSchema = z.object({ decision: z.enum(['approved', 'rejected']), note: z.string().trim().min(2).max(1000) }).strict();
-const rangeSchema = z.object({ from: date, to: date, staff_profile_id: id.optional() }).strict();
+const rangeSchema = z.object({
+  from: date,
+  to: date,
+  staff_profile_id: id.optional(),
+  shift_template_id: id.optional(),
+  search: z.string().trim().max(120).optional(),
+}).strict();
 const snapshotSchema = z.object({ period_start: date, period_end: date, idempotency_key: z.string().trim().min(8).max(160) }).strict();
-const dailyRegisterSchema = z.object({ business_date: date, reason: z.string().trim().min(3).max(500), idempotency_key: z.string().trim().min(8).max(160), marks: z.array(z.object({ staff_profile_id: id, attendance_status: z.enum(['present','absent','paid_leave','unpaid_leave','holiday','day_off']) }).strict()).min(1).max(500) }).strict();
 const shiftRegisterQuerySchema = z.object({ shift_template_id: id.optional() }).strict();
 const shiftRegisterSchema = z.object({
   shift_template_id: id,
@@ -38,5 +43,12 @@ const shiftRegisterSchema = z.object({
     attendance_status: z.enum(['present', 'absent', 'paid_leave', 'unpaid_leave']),
   }).strict()).min(1).max(500),
 }).strict();
+const shiftClockOutSchema = z.object({ idempotency_key: z.string().trim().min(8).max(160) }).strict();
+const personShiftMarkSchema = z.object({
+  shift_template_id: id,
+  attendance_status: z.literal('present'),
+  reason: z.string().trim().min(3).max(500),
+  idempotency_key: z.string().trim().min(8).max(160),
+}).strict();
 
-module.exports = { templateSchema, scheduleSchema, holidaySchema, clockSchema, correctionSchema, reviewSchema, rangeSchema, snapshotSchema, dailyRegisterSchema, shiftRegisterQuerySchema, shiftRegisterSchema };
+module.exports = { templateSchema, scheduleSchema, holidaySchema, clockSchema, correctionSchema, reviewSchema, rangeSchema, snapshotSchema, shiftRegisterQuerySchema, shiftRegisterSchema, shiftClockOutSchema, personShiftMarkSchema };

@@ -37,7 +37,7 @@ function actionFor(req, resource) {
   if (resource === 'users' && /assignable/.test(path)) return 'view';
   if (resource === 'staff' && /\/access/.test(path)) return method === 'GET' ? 'view' : 'update';
   if (resource === 'attendance') {
-    if (/\/daily-register/.test(path)) return method === 'GET' ? 'view' : 'mark_daily';
+    if (/\/shift-register/.test(path)) return method === 'GET' ? 'view' : 'mark_daily';
     if (/\/clock/.test(path)) return method === 'GET' ? 'view' : 'clock';
     if (/\/corrections\/\d+\/review/.test(path)) return 'approve';
     if (/\/corrections/.test(path)) return method === 'GET' ? 'approve' : 'correct';
@@ -51,6 +51,7 @@ function actionFor(req, resource) {
     return 'view';
   }
   if (resource === 'payroll') {
+    if (/\/staff\/\d+\/salary/.test(path)) return method === 'GET' ? 'view' : 'configure';
     if (/\/salary-configs|\/recurring-items|\/advances|\/adjustments/.test(path)) return method === 'GET' ? 'view' : 'configure';
     if (/\/runs\/\d+\/transition/.test(path)) return ({ review:'review', approve:'approve', finalize:'finalize' }[req.body?.action] || 'view');
     if (/\/runs\/\d+\/reverse/.test(path)) return 'finalize';
@@ -139,6 +140,11 @@ function enforceApiPermissions(req, res, next) {
   }
   if (resource === 'staff' && /\/access$/.test(req.path) && req.method === 'PATCH') {
     return requirePermission('users.update', 'users.assign_roles')(req, res, next);
+  }
+  if (resource === 'payroll' && /\/staff\/\d+\/salary/.test(req.path)) {
+    return req.method === 'GET'
+        ? requirePermission('users.view', 'users.update', 'payroll.view')(req, res, next)
+      : requirePermission('users.update', 'payroll.configure')(req, res, next);
   }
   return requirePermission(`${module}.${action}`, ...supportingOrderReads)(req, res, next);
 }
