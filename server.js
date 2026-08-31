@@ -7,8 +7,15 @@ const path = require("path");
 const fs = require('fs');
 const db = require("./db/knex");
 const { formatErrorResponse } = require("./utils/error-response");
+const { createCsrfProtection } = require('./src/modules/session-security/csrf');
 
 const app = express();
+const isProduction = process.env.NODE_ENV === 'production';
+const sessionSecret = process.env.SESSION_SECRET || (!isProduction ? 'dev-only-session-secret-change-me' : null);
+if (!sessionSecret) throw new Error('SESSION_SECRET is required in production.');
+if (String(process.env.TRUST_PROXY || '').toLowerCase() === 'true') app.set('trust proxy', 1);
+const secureSessionCookie = String(process.env.SESSION_COOKIE_SECURE || (isProduction ? 'true' : 'false')).toLowerCase() === 'true';
+const SESSION_COOKIE_NAME = 'rms.sid';
 
 class KnexSessionStore extends session.Store {
   constructor(knex, options = {}) {
@@ -100,28 +107,67 @@ class KnexSessionStore extends session.Store {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store, private');
+  next();
+});
 
 const sessionMiddleware = session({
+    name: SESSION_COOKIE_NAME,
     store: new KnexSessionStore(db),
-    secret: process.env.SESSION_SECRET || "pos-super-secret-key-2024",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     rolling: true,
     cookie: {
       httpOnly: true,
+      secure: secureSessionCookie,
       sameSite: "lax",
+      path: '/',
       maxAge: Number(process.env.SESSION_MAX_AGE_MS || 24 * 60 * 60 * 1000),
     },
   });
 app.use(sessionMiddleware);
+
+app.use(async (req, res, next) => {
+  try {
+    await require('./src/modules/session-security/session-security.service').trackSession(req);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use(createCsrfProtection({
+  allowedOrigins: process.env.CSRF_ALLOWED_ORIGINS,
+  isProduction,
+}));
+
+app.use((req, res, next) => {
+  const passwordChangeAllowed = req.path === '/api/auth/me' || req.path === '/api/auth/change-password' || req.path === '/api/auth/logout';
+  if (req.path.startsWith('/api/') && req.session?.user?.must_change_password && !passwordChangeAllowed) {
+    return res.status(403).json({ error: 'You must change your temporary password before continuing.', code: 'PASSWORD_CHANGE_REQUIRED' });
+  }
+  return next();
+});
 
 const { enforceApiPermissions } = require('./authorization/api-policy');
 app.use(enforceApiPermissions);
 
 // API Routes
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/auth", require("./src/modules/session-security/session-security.routes"));
 app.use("/api/lobby", require("./routes/lobby"));
 app.use("/api/users", require("./routes/users"));
+app.use("/api/staff", require("./src/modules/staff/staff.routes"));
+app.use("/api/attendance", require("./src/modules/attendance/attendance.routes"));
+app.use("/api/leave", require("./src/modules/leave/leave.routes"));
+app.use("/api/payroll", require("./src/modules/payroll/payroll.routes"));
+app.use("/api/documents", require("./src/modules/documents/documents.routes"));
+app.use("/api/staff-activity", require("./src/modules/staff-activity/staff-activity.routes"));
 app.use("/api/roles", require("./routes/roles"));
 app.use("/api/brands", require("./routes/brands"));
 app.use("/api/products", require("./routes/products"));
@@ -208,14 +254,20 @@ app.get("/api/download-print-agent", async (req, res) => {
 // frontend remains the owner of / and /dashboard during gradual migration.
 const reactDist = path.join(__dirname, "frontend", "dist");
 if (fs.existsSync(reactDist)) {
-  app.use("/app", express.static(reactDist));
+  app.use("/app", express.static(reactDist, { setHeaders: (res, filePath) => {
+    if (/[/\\]assets[/\\].+\.[A-Za-z0-9_-]{8,}\.(?:js|css)$/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    else res.setHeader('Cache-Control', 'no-cache');
+  } }));
   app.get(/^\/app(?:\/.*)?$/, (req, res) => {
     res.sendFile(path.join(reactDist, "index.html"));
   });
 }
 
 // Static assets (js, css, etc.) served after named routes
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), { setHeaders: (res, filePath) => {
+  const name = path.basename(filePath);
+  if (['service-worker.js', 'manifest.json', 'offline.html'].includes(name)) res.setHeader('Cache-Control', 'no-cache');
+} }));
 
 const { initPostgres } = require("./db/db-init");
 const { usePostgres } = require("./db/runtime");
@@ -225,10 +277,17 @@ const PORT = process.env.PORT || 4000;
 function startServer(port = PORT) {
   const server = http.createServer(app);
   require('./services/OrderRealtimeService').initialize(server, sessionMiddleware);
-  return server.listen(port, () => {
+  const listener = server.listen(port, () => {
     console.log(`✅ POS System running at http://localhost:${port}`);
     console.log("   Login: admin / admin123");
   });
+  const sessionSecurity = require('./src/modules/session-security/session-security.service');
+  sessionSecurity.pruneExpiredSessions().catch((error) => console.error('[Session Cleanup]', error.message));
+  const cleanupTimer = setInterval(() => {
+    sessionSecurity.pruneExpiredSessions().catch((error) => console.error('[Session Cleanup]', error.message));
+  }, 60 * 60 * 1000);
+  cleanupTimer.unref?.();
+  return listener;
 }
 
 // Global Error Handler - Ensures all errors are returned as JSON

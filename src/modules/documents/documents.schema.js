@@ -1,0 +1,5 @@
+const {z}=require('zod');const id=z.coerce.number().int().positive(),date=z.iso.date();
+const categorySchema=z.object({name:z.string().trim().min(2).max(120),description:z.string().trim().max(500).optional(),default_retention_days:z.union([z.coerce.number().int().min(0).max(36500),z.null(),z.literal('')]).optional().transform(v=>v===''?null:v),requires_expiry:z.coerce.boolean().default(false)}).strict();
+const uploadSchema=z.object({staff_profile_id:id,category_id:id,title:z.string().trim().min(2).max(200),issued_on:z.union([date,z.literal('')]).optional().transform(v=>v||null),expires_on:z.union([date,z.literal('')]).optional().transform(v=>v||null),retention_until:z.union([date,z.literal('')]).optional().transform(v=>v||null),notes:z.string().trim().max(1000).optional()}).strict();
+const listSchema=z.object({staff_profile_id:id.optional(),status:z.enum(['active','archived','all']).default('active'),expiring_days:z.coerce.number().int().min(0).max(365).optional()}).strict();
+module.exports={categorySchema,uploadSchema,listSchema};

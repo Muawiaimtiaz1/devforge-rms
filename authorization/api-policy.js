@@ -5,7 +5,12 @@ const RESOURCE_MODULE = {
   'product-categories': 'products', 'raw-stock': 'raw_stock', recipes: 'recipes', brands: 'brands',
   customers: 'customers', expenses: 'expenses', 'expense-categories': 'expenses', tables: 'tables',
   analytics: 'analytics', ai: 'analytics', shifts: 'register', 'shop-settings': 'settings', printers: 'settings',
-  users: 'users', roles: 'roles', notifications: 'notifications', 'activity-logs': 'activity_logs', waste: 'waste',
+  users: 'users', staff: 'users', roles: 'roles', notifications: 'notifications', 'activity-logs': 'activity_logs', waste: 'waste',
+  attendance: 'attendance',
+  leave: 'leave',
+  payroll: 'payroll',
+  documents: 'documents',
+  'staff-activity': 'staff_activity',
   shops: 'platform_shops', subscriptions: 'platform_subscriptions', admin: 'platform_shops',
 };
 
@@ -30,6 +35,35 @@ function actionFor(req, resource) {
     return 'open';
   }
   if (resource === 'users' && /assignable/.test(path)) return 'view';
+  if (resource === 'staff' && /\/access/.test(path)) return method === 'GET' ? 'view' : 'update';
+  if (resource === 'attendance') {
+    if (/\/daily-register/.test(path)) return method === 'GET' ? 'view' : 'mark_daily';
+    if (/\/clock/.test(path)) return method === 'GET' ? 'view' : 'clock';
+    if (/\/corrections\/\d+\/review/.test(path)) return 'approve';
+    if (/\/corrections/.test(path)) return method === 'GET' ? 'approve' : 'correct';
+    if (/\/templates|\/schedules|\/holidays/.test(path)) return method === 'GET' ? 'view' : 'manage_schedules';
+    return 'view';
+  }
+  if (resource === 'leave') {
+    if (/\/requests\/\d+\/decision/.test(path)) return 'approve';
+    if (/\/types|\/balances/.test(path)) return method === 'GET' ? 'view' : 'manage';
+    if (/\/requests/.test(path)) return method === 'GET' ? 'view' : 'request';
+    return 'view';
+  }
+  if (resource === 'payroll') {
+    if (/\/salary-configs|\/recurring-items|\/advances|\/adjustments/.test(path)) return method === 'GET' ? 'view' : 'configure';
+    if (/\/runs\/\d+\/transition/.test(path)) return ({ review:'review', approve:'approve', finalize:'finalize' }[req.body?.action] || 'view');
+    if (/\/runs\/\d+\/reverse/.test(path)) return 'finalize';
+    if (/\/runs/.test(path)) return method === 'GET' ? 'view' : 'run';
+    if (/\/periods/.test(path)) return method === 'GET' ? 'view' : 'run';
+    return 'view';
+  }
+  if (resource === 'documents') {
+    if (/\/categories/.test(path)) return method === 'GET' ? 'view' : 'manage';
+    if (/\/download$/.test(path)) return 'download'; if (/\/view$/.test(path)) return 'view'; if (/\/archive$/.test(path)) return 'manage';
+    return method === 'GET' ? 'view' : 'upload';
+  }
+  if (resource === 'staff-activity') { if (/\/export$/.test(path)) return 'export'; if (/\/records/.test(path)) return method==='GET'?'view':'manage'; return 'view'; }
   if (resource === 'notifications') return method === 'GET' ? 'view' : (method === 'PATCH' && /read/.test(path) ? 'mark_read' : 'manage');
   if (resource === 'products' && /stock|harvest/.test(path)) return 'adjust_stock';
   if (resource === 'products' && /damage/.test(path)) return 'manage_damage';
@@ -100,7 +134,13 @@ function enforceApiPermissions(req, res, next) {
     return next();
   }
   if (resource === 'admin' && /financial-logs/.test(req.path)) return requirePermission(`platform_finance.${action}`)(req, res, next);
+  if (resource === 'staff' && /\/access$/.test(req.path) && req.method === 'POST') {
+    return requirePermission('users.create', 'users.update')(req, res, next);
+  }
+  if (resource === 'staff' && /\/access$/.test(req.path) && req.method === 'PATCH') {
+    return requirePermission('users.update', 'users.assign_roles')(req, res, next);
+  }
   return requirePermission(`${module}.${action}`, ...supportingOrderReads)(req, res, next);
 }
 
-module.exports = { enforceApiPermissions };
+module.exports = { enforceApiPermissions, actionFor, RESOURCE_MODULE };

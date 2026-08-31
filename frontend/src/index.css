@@ -11,7 +11,7 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(79, 70, 229, .25); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid rgba(79, 70, 229, .42); outline-offset: 2px; }
 
 .route-loader {
   min-height: 100vh;
@@ -37,3 +37,4 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dark .route-loader { color: #94a3b8; background: #0f1420; }
 .dark .route-loader-spinner { border-color: #293244; border-top-color: #818cf8; }
 @keyframes route-loader-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }

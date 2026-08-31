@@ -1,0 +1,12 @@
+const { z } = require('zod');
+const id = z.coerce.number().int().positive(); const date = z.iso.date();
+const money = z.string().trim().regex(/^\d{1,12}(\.\d{1,2})?$/); const currency = z.string().trim().regex(/^[A-Z]{3}$/);
+const salarySchema = z.object({ staff_profile_id:id, compensation_type:z.enum(['monthly','hourly']), currency:currency.default('PKR'), base_amount:money, effective_from:date, effective_to:date.nullable().optional(), standard_monthly_minutes:z.coerce.number().int().positive().max(50000).nullable().optional(), overtime_enabled:z.boolean().default(false), overtime_multiplier:z.string().regex(/^\d{1,2}(\.\d{1,3})?$/).default('1.500'), monthly_unpaid_absence_policy:z.enum(['none','prorate_scheduled_days']).default('prorate_scheduled_days') }).strict();
+const recurringSchema = z.object({ staff_profile_id:id, item_type:z.enum(['allowance','deduction']), name:z.string().trim().min(2).max(160), amount:money, effective_from:date, effective_to:date.nullable().optional() }).strict();
+const advanceSchema = z.object({ staff_profile_id:id, currency:currency.default('PKR'), principal_amount:money, installment_amount:money, issued_on:date, note:z.string().trim().min(3).max(1000) }).strict();
+const periodSchema = z.object({ name:z.string().trim().min(2).max(160), period_start:date, period_end:date, pay_date:date }).strict();
+const runSchema = z.object({ payroll_period_id:id, attendance_snapshot_id:id, currency:currency.default('PKR'), idempotency_key:z.string().trim().min(8).max(160) }).strict();
+const transitionSchema = z.object({ action:z.enum(['review','approve','finalize']), note:z.string().trim().min(2).max(1000), idempotency_key:z.string().trim().min(8).max(160).optional() }).strict();
+const reversalSchema = z.object({ reason:z.string().trim().min(5).max(1000) }).strict();
+const adjustmentSchema = z.object({ staff_profile_id:id, target_period_id:id, origin_run_id:id.nullable().optional(), adjustment_type:z.enum(['earning','deduction']), name:z.string().trim().min(2).max(160), currency:currency.default('PKR'), amount:money, reason:z.string().trim().min(5).max(1000), idempotency_key:z.string().trim().min(8).max(160) }).strict();
+module.exports={ salarySchema,recurringSchema,advanceSchema,periodSchema,runSchema,transitionSchema,reversalSchema,adjustmentSchema };

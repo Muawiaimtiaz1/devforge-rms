@@ -1,5 +1,5 @@
 {
-  "id": "/dashboard",
+  "id": "/",
   "name": "DevForge OS Restaurant Management",
   "short_name": "DevForge OS",
   "start_url": "/app/lobby",

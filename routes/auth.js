@@ -1,21 +1,33 @@
 const express = require('express');
 const authService = require('../services/AuthService');
 const db = require('../db/knex');
-const { requireSuperAdmin } = require('../middleware/auth');
+const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 const router = express.Router();
+const sessionSecurity = require('../src/modules/session-security/session-security.service');
+const SESSION_COOKIE_NAME = 'rms.sid';
+const secureCookie = String(process.env.SESSION_COOKIE_SECURE || (process.env.NODE_ENV === 'production' ? 'true' : 'false')).toLowerCase() === 'true';
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    const user = await authService.login(username, password);
-    
-    req.session.user = user;
-    res.json({ ok: true, user });
+    try {
+        const user = await authService.login(username, password);
+        await new Promise((resolve, reject) => req.session.regenerate((error) => error ? reject(error) : resolve()));
+        req.session.user = user;
+        await new Promise((resolve, reject) => req.session.save((error) => error ? reject(error) : resolve()));
+        await sessionSecurity.registerLogin(req, user);
+        res.json({ ok: true, user });
+    } catch (error) {
+        await sessionSecurity.recordLoginFailure(req, username).catch(() => {});
+        throw error;
+    }
 });
 
 // POST /api/auth/logout
-router.post('/logout', (req, res) => {
-    req.session.destroy();
+router.post('/logout', async (req, res) => {
+    await sessionSecurity.recordLogout(req);
+    await new Promise((resolve, reject) => req.session.destroy((error) => error ? reject(error) : resolve()));
+    res.clearCookie(SESSION_COOKIE_NAME, { httpOnly: true, secure: secureCookie, sameSite: 'lax', path: '/' });
     res.json({ ok: true });
 });
 
@@ -42,7 +54,8 @@ router.get('/me', async (req, res) => {
         role: freshUser.role,
         can_manage_register: freshUser.can_manage_register,
         permissions: freshUser.permissions,
-        roles: freshUser.roles
+        roles: freshUser.roles,
+        must_change_password: Boolean(freshUser.must_change_password)
     };
 
     // Statistical counts for dashboard
@@ -66,6 +79,13 @@ router.get('/me', async (req, res) => {
 router.post('/forgot-password', requireSuperAdmin, async (req, res) => {
     const tempPassword = await authService.resetPassword(req.body.username);
     res.json({ ok: true, tempPassword, message: 'Password reset successful.' });
+});
+
+router.post('/change-password', requireAuth, async (req, res) => {
+    await authService.changePassword(req.session.user.id, req.body.current_password, req.body.new_password);
+    await sessionSecurity.revokeOtherSessions(req.session.user.id, req.sessionID);
+    req.session.user.must_change_password = false;
+    res.json({ ok: true });
 });
 
 module.exports = router;

@@ -1,0 +1,37 @@
+# Staff Management completion audit
+
+Audit date: 2026-08-31
+
+Scope: the ten-phase Staff Management roadmap in the Codex goal objective. The supported production database is PostgreSQL/Neon. All Staff user interfaces are React micro-components under `/app/staff`; authentication continues to use database-backed Express sessions rather than JWT.
+
+## Verification gates
+
+- `node scripts/check-staff-release.js`: passed against Neon. All 11 required representative tables, 11 release indexes, and 6 protected-history triggers were present. Every reconciliation count was zero, including cross-shop attendance/payroll/document rows, missing audit history, missing payroll adjustment lines, and expired sessions.
+- `node scripts/check-staff-schema.js`: passed against Neon. It confirmed Staff, account security, organization, attendance, leave, payroll, document, and activity tables, columns, permissions, and immutable-history triggers.
+- `node scripts/check-staff-activity.js`: passed against Neon and returned six Staff metric rows with all expected operational and attendance columns.
+- `npm test`: 40/40 tests passed.
+- `npm --prefix frontend run lint`: passed.
+- `npm --prefix frontend run build`: passed; Vite built 73 modules and emitted separate lazy chunks for Attendance, Leave, Payroll, Documents, Activity, Organization, Roles, and Sessions.
+- `git diff --check`: passed.
+
+## Requirement evidence
+
+| Phase | Result | Authoritative implementation and verification evidence |
+| --- | --- | --- |
+| 1. Staff Directory foundation | Complete | `src/modules/staff/` separates profiles from optional user accounts and implements employee/contact/employment/lifecycle data, tenant-scoped search/filter/sort/pagination, and history-preserving deactivation. `StaffDirectory.jsx` and the separate `StaffTable`, row, filters, pagination, form, detail, summary, and sidebar components provide the responsive React workspace. `staff-service.test.js` verifies tenant scope and lifecycle validation; Neon reported 17 profiles and 16 optional account links. |
+| 2. Accounts, roles, permissions | Complete | `src/modules/staff/access/`, `RoleManagementPanel.jsx`, `RolePermissionEditor.jsx`, `StaffAccessPanel.jsx`, the authorization catalog/policy, and account services implement account creation/linking, role/permission summaries, blocking, secure resets, register access, confirmations, audit events, and self-change protection. `staff-access-service.test.js` and `staff-authorization.test.js` verify server enforcement and representative role separation. |
+| 3. Session and account security | Complete | `src/modules/session-security/`, `routes/auth.js`, `AuthService.js`, and `server.js` implement database sessions, login regeneration, secure cookie settings, complete logout, device listing/revocation, security history, CSRF, and revocation after sensitive account/employment/permission changes. `MySessionsPanel.jsx` exposes session management. Session-expiry, CSRF, API privacy-header, and web-hardening tests pass; Neon reconciliation found zero expired sessions awaiting cleanup. |
+| 4. Organization structure | Complete | `src/modules/staff/organization/` and the separate organization catalog, assignment, history, and hierarchy components implement departments, titles, reporting managers, locations, classifications, effective-dated assignments, filters, controlled cross-shop transfers, and audit history. Organization tests verify session tenant scope, platform-only cross-shop transfer, effective dates, and reasons. |
+| 5. Scheduling and attendance | Complete | `src/modules/attendance/` implements templates, weekly schedules, clock/break events, overnight shifts, late/early calculations, holidays/days off, missing-clock detection, audited corrections/approval, calendars/summaries, device/register attribution, approved payroll snapshots, and append-only daily marks. `DailyAttendanceRegister.jsx` provides per-day roster marking and “Mark all present” inside the Attendance sidebar workspace. Neon confirms clock-event and daily-mark immutability; attendance tests cover timezone dates, bounded calendars, weekly completeness, idempotency, immutable events, and daily rosters. |
+| 6. Leave and absence | Complete | `src/modules/leave/` and separate policy, balance, request-form, request-list, and workspace components implement leave types/balances, partial days, absence classifications, approval/rejection/history, calendar integration, and in-app status notifications. Payroll only consumes approved attendance snapshots after leave rules are represented. Tenant, schema, and immutable-ledger tests pass; Neon confirms leave tables and trigger. |
+| 7. Compensation and payroll | Complete | `src/modules/payroll/` and separate configuration, adjustment, run, detail, and workspace components implement effective salary, hourly/monthly pay, allowances/deductions, overtime, advances, periods, attendance-based runs, draft/reviewed/approved/finalized/reversed transitions, downloadable payslip snapshots, immutable final history, reversals, and later adjustments. `money.js` uses integer minor units and half-up rounding, never JS floating-point money. Tests cover precision and adjustment protection; Neon confirms payroll tables/triggers and zero finalized entries without payslips or applied adjustments without lines. |
+| 8. Documents and compliance | Complete | `src/modules/documents/` and separate category, upload, table, and workspace components implement contracts/IDs/certificates/categories, expiry filtering and 30-day reminders, automatic retention dates, private authorized access, signature and 10 MB validation, archive/retention, integrity hashes, and download/view audit history. Storage defaults outside `public/` and is gitignored. Tests verify signatures, private storage, indexes/audits, and UTC retention; Neon found zero documents without upload audits. |
+| 9. Staff activity and performance | Complete | `src/modules/staff-activity/` and separate filters, metrics, record form/list, and workspace components report orders, payments, registers, approved attendance reliability, tasks/notes, recognition, and disciplinary history with staff/department/date filters and bounded CSV export. The query is set-based and formula-injection-safe; no automatic HR score exists. Tests and the live Neon activity probe pass. |
+| 10. Optimization and release hardening | Complete | `src/modules/release-hardening/` adds tenant/date/report indexes; repositories use bounded/set-based loading; exports and lists are capped; React panels are lazy-loaded; PWA caching excludes APIs/private HTML; focus, modal, navigation, responsive, and reduced-motion behavior were reviewed; authorization, isolation, expiry, PWA, and HTTP-header tests pass. The live verifier confirmed all release indexes, clean reconciliation, and viable Staff/activity query plans. `staff-management-release.md` contains production configuration, release sequence, backup requirements, and rollback procedure. |
+
+## Operational handoff
+
+- Daily marking is at `/app/staff` → **Attendance** → **Daily attendance**.
+- Log out and sign in once after a deployment or permission change so the session receives the latest permission grants.
+- Deploy the React build and restart the Express application for code changes; the PostgreSQL/Neon Staff migrations and release indexes are already applied and verified.
+- Keep `STAFF_DOCUMENT_STORAGE_DIR` on private persistent storage and back it up together with PostgreSQL.

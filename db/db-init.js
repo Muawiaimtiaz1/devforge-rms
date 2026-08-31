@@ -2,6 +2,16 @@ const fs = require("fs");
 const path = require("path");
 const bcrypt = require("bcryptjs");
 const { query } = require("./postgres");
+const { ensureStaffProfileSchema } = require('../src/modules/staff/staff.migration');
+const { ensureStaffAccessSchema } = require('../src/modules/staff/access/staff-access.migration');
+const { ensureSessionSecuritySchema } = require('../src/modules/session-security/session-security.migration');
+const { ensureStaffOrganizationSchema } = require('../src/modules/staff/organization/staff-organization.migration');
+const { ensureAttendanceSchema } = require('../src/modules/attendance/attendance.migration');
+const { ensureLeaveSchema } = require('../src/modules/leave/leave.migration');
+const { ensurePayrollSchema } = require('../src/modules/payroll/payroll.migration');
+const { ensureDocumentsSchema } = require('../src/modules/documents/documents.migration');
+const { ensureStaffActivitySchema } = require('../src/modules/staff-activity/staff-activity.migration');
+const { ensureReleaseHardeningSchema } = require('../src/modules/release-hardening/release-hardening.migration');
 
 async function initPostgres() {
   if (process.env.DB_CLIENT !== "postgres") return;
@@ -58,6 +68,16 @@ async function initPostgres() {
       )
     `);
     await query("CREATE INDEX IF NOT EXISTS idx_kitchen_order_statuses_shop_id ON kitchen_order_statuses(shop_id)");
+    await ensureStaffProfileSchema(query);
+    await ensureStaffAccessSchema(query);
+    await ensureSessionSecuritySchema(query);
+    await ensureStaffOrganizationSchema(query);
+    await ensureAttendanceSchema(query);
+    await ensureLeaveSchema(query);
+    await ensurePayrollSchema(query);
+    await ensureDocumentsSchema(query);
+    await ensureStaffActivitySchema(query);
+    await ensureReleaseHardeningSchema(query);
 
     // 2. Check if any user exists (to ensure we have an admin)
     const userCheck = await query("SELECT id FROM users LIMIT 1");

@@ -1,5 +1,6 @@
 const db = require('../db/knex');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { z } = require('zod');
 
 function toDateOnlyString(value) {
@@ -161,7 +162,8 @@ class AuthService {
       username: user.username,
       role: user.role,
       shop_id: user.shop_id,
-      can_manage_register: !!user.can_manage_register
+      can_manage_register: !!user.can_manage_register,
+      must_change_password: !!user.must_change_password,
     };
   }
 
@@ -234,11 +236,41 @@ class AuthService {
     const user = await db('users').select('id').where({ username }).first();
     if (!user) throw new Error('User not found');
 
-    const tempPassword = 'Reset@' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    const hash = bcrypt.hashSync(tempPassword, 10);
+    const tempPassword = `Tmp9!${crypto.randomBytes(9).toString('base64url')}`;
+    const hash = await bcrypt.hash(tempPassword, 12);
 
-    await db('users').where({ id: user.id }).update({ password_hash: hash });
+    await db('users').where({ id: user.id }).update({
+      password_hash: hash,
+      must_change_password: true,
+      password_changed_at: null,
+      updated_at: db.fn.now(),
+    });
     return tempPassword;
+  }
+
+  async changePassword(userId, currentPassword, newPassword) {
+    const input = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(10).max(128),
+    }).parse({ currentPassword, newPassword });
+    const user = await db('users').where({ id: userId }).first();
+    if (!user || !(await bcrypt.compare(input.currentPassword, user.password_hash))) {
+      const error = new Error('Current password is incorrect.');
+      error.status = 400;
+      throw error;
+    }
+    if (input.currentPassword === input.newPassword) {
+      const error = new Error('Choose a new password different from the temporary password.');
+      error.status = 400;
+      throw error;
+    }
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+    await db('users').where({ id: user.id }).update({
+      password_hash: passwordHash,
+      must_change_password: false,
+      password_changed_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    });
   }
 }
 

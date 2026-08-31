@@ -1,13 +1,10 @@
-const fs = require("fs");
-const path = require("path");
-const { query, close } = require("../db/postgres");
-
-const schemaPath = path.join(__dirname, "..", "db", "postgres-schema.sql");
+const { initPostgres } = require('../db/db-init');
+const { close } = require("../db/postgres");
 
 async function main() {
-  const schema = fs.readFileSync(schemaPath, "utf8");
-  await query(schema);
-  console.log("PostgreSQL schema applied successfully.");
+  if (process.env.DB_CLIENT !== 'postgres') throw new Error('Set DB_CLIENT=postgres before applying the PostgreSQL schema.');
+  await initPostgres();
+  console.log("PostgreSQL base schema and all modular migrations applied successfully.");
 }
 
 main()

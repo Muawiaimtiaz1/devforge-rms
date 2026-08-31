@@ -1,0 +1,4 @@
+const{z}=require('zod');const id=z.coerce.number().int().positive(),date=z.iso.date();
+const filtersSchema=z.object({from:date,to:date,department_id:id.optional(),staff_profile_id:id.optional(),record_type:z.enum(['all','task','operational_note','recognition','disciplinary']).default('all')}).strict();
+const recordSchema=z.object({staff_profile_id:id,record_type:z.enum(['task','operational_note','recognition','disciplinary']),title:z.string().trim().min(2).max(200),details:z.string().trim().min(3).max(4000),occurred_on:date,due_date:z.union([date,z.literal('')]).optional().transform(v=>v||null),severity:z.enum(['low','normal','high','critical']).nullable().optional(),is_private:z.boolean().default(false)}).strict();
+const statusSchema=z.object({status:z.enum(['completed','archived']),note:z.string().trim().min(3).max(1000)}).strict();module.exports={filtersSchema,recordSchema,statusSchema};

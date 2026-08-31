@@ -1,0 +1,7 @@
+import { useState } from 'react'
+import { api } from '../../../api/client'
+export default function HolidayManager() {
+  const [form, setForm] = useState({ holiday_date: '', name: '', is_paid: true }); const [message, setMessage] = useState(''); const [error, setError] = useState('')
+  async function submit(event) { event.preventDefault(); setError(''); try { await api('/api/attendance/holidays', { method: 'POST', body: form }); setMessage('Holiday saved.'); setForm({ holiday_date: '', name: '', is_paid: true }) } catch (requestError) { setError(requestError.message) } }
+  return <section className="holiday-manager"><header><h3>Holidays</h3><p>Holiday dates override normal schedules in attendance summaries.</p></header>{error && <div className="form-error">{error}</div>}{message && <div className="form-success">{message}</div>}<form className="staff-form" onSubmit={submit}><div className="form-grid"><label>Date<input type="date" value={form.holiday_date} onChange={(e) => setForm((f) => ({ ...f, holiday_date: e.target.value }))} required /></label><label>Name<input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required /></label></div><label className="check-row"><input type="checkbox" checked={form.is_paid} onChange={(e) => setForm((f) => ({ ...f, is_paid: e.target.checked }))} /> Paid holiday</label><button className="primary-button">Save holiday</button></form></section>
+}

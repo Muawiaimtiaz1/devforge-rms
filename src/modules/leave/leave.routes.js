@@ -1,0 +1,14 @@
+const express = require('express');
+const { requirePermission } = require('../../../authorization/middleware');
+const controller = require('./leave.controller');
+const router = express.Router();
+router.get('/types', requirePermission('leave.view'), controller.types);
+router.get('/staff-options', requirePermission('leave.view'), controller.staffOptions);
+router.post('/types', requirePermission('leave.manage'), controller.createType);
+router.get('/balances', requirePermission('leave.view'), controller.balances);
+router.post('/balances/allocate', requirePermission('leave.manage'), controller.allocate);
+router.get('/requests', requirePermission('leave.view'), controller.requests);
+router.post('/requests', requirePermission('leave.request'), controller.createRequest);
+router.patch('/requests/:id/decision', requirePermission('leave.approve'), controller.decide);
+router.patch('/requests/:id/cancel', requirePermission('leave.request'), controller.cancel);
+module.exports = router;

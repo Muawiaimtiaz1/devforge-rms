@@ -143,6 +143,15 @@ class UserService {
       throw error;
     }
 
+    if (Number(userId) === Number(currentUser.id)) {
+      if (Object.prototype.hasOwnProperty.call(payload, 'role_ids')) {
+        throw this.permissionError('You cannot change your own role.');
+      }
+      if (payload.status === 'blocked') {
+        throw this.permissionError('You cannot block your own account.');
+      }
+    }
+
     if (!isSuper) {
       const canUpdate = permissions.includes('users.update');
       const canAssignRoles = permissions.includes('users.assign_roles');
@@ -242,6 +251,66 @@ class UserService {
         if (oldShopId) await trx('shops').where({ id: oldShopId }).decrement('user_count', 1);
         if (newShopId) await trx('shops').where({ id: newShopId }).increment('user_count', 1);
       }
+    });
+  }
+
+  async createStaffAccountInTransaction(trx, { profile, username, password, role, status, can_manage_register }) {
+    const existing = await trx('users').where({ username }).first();
+    if (existing) {
+      const error = new Error('Username already taken');
+      error.status = 409;
+      throw error;
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    const [created] = await trx('users').insert({
+      shop_id: profile.shop_id,
+      name: profile.full_name,
+      email: profile.email,
+      phone: profile.phone,
+      username,
+      password_hash: passwordHash,
+      role: this.legacyRoleForAssignedRole(role.name),
+      status,
+      allowed_panels: JSON.stringify([]),
+      can_manage_register: Boolean(can_manage_register),
+      use_custom_permissions: false,
+      must_change_password: true,
+    }).returning('*');
+    const user = typeof created === 'object' ? created : await trx('users').where({ id: created }).first();
+    await trx('user_roles').insert({ user_id: user.id, role_id: role.id });
+    await trx('shops').where({ id: profile.shop_id }).increment('user_count', 1);
+    return user;
+  }
+
+  async updateStaffAccessInTransaction(trx, user, data, shopId) {
+    const updates = {};
+    if (Object.prototype.hasOwnProperty.call(data, 'status')) updates.status = data.status;
+    if (Object.prototype.hasOwnProperty.call(data, 'can_manage_register')) {
+      updates.can_manage_register = Boolean(data.can_manage_register);
+    }
+    if (data.role_id) {
+      const role = await this.resolveSingleRole(trx, shopId, [data.role_id]);
+      await trx('user_roles').where({ user_id: user.id }).del();
+      await trx('user_roles').insert({ user_id: user.id, role_id: role.id });
+      await trx('user_permissions').where({ user_id: user.id }).del();
+      updates.role = this.legacyRoleForAssignedRole(role.name, user.role);
+      updates.use_custom_permissions = false;
+    }
+    if (Object.keys(updates).length) {
+      updates.updated_at = trx.fn.now();
+      const [updated] = await trx('users').where({ id: user.id, shop_id: shopId }).update(updates).returning('*');
+      return updated || { ...user, ...updates };
+    }
+    return user;
+  }
+
+  async resetStaffPasswordInTransaction(trx, user, temporaryPassword) {
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    await trx('users').where({ id: user.id }).update({
+      password_hash: passwordHash,
+      must_change_password: true,
+      password_changed_at: null,
+      updated_at: trx.fn.now(),
     });
   }
 

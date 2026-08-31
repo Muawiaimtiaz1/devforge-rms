@@ -292,7 +292,7 @@
         if (res.ok) {
           const data = await res.json();
           loginRedirectInProgress = true;
-          window.location.replace(data.user?.role === 'superadmin' ? '/admin/store-monitoring' : reactAppUrl('/app/lobby'));
+          window.location.replace(data.user?.must_change_password ? reactAppUrl('/app/change-password') : (data.user?.role === 'superadmin' ? '/admin/store-monitoring' : reactAppUrl('/app/lobby')));
         }
       } catch {
         // Stay on login if the session check cannot reach the server.
@@ -358,7 +358,7 @@
           btn.classList.replace('from-indigo-600', 'from-emerald-500');
           btn.classList.replace('to-blue-600', 'to-emerald-600');
           setTimeout(() => {
-            window.location.replace(data.user?.role === 'superadmin' ? '/admin/store-monitoring' : reactAppUrl('/app/lobby'));
+            window.location.replace(data.user?.must_change_password ? reactAppUrl('/app/change-password') : (data.user?.role === 'superadmin' ? '/admin/store-monitoring' : reactAppUrl('/app/lobby')));
           }, 500);
           return; // Prevent resetting the button state
         }

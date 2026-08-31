@@ -9,7 +9,7 @@
         "dev": "concurrently --kill-others-on-fail --names backend,frontend \"npm:dev:backend\" \"npm:dev:frontend\"",
         "dev:backend": "node server.js",
         "dev:frontend": "npm --prefix frontend run dev",
-        "test": "node --test tests/order-realtime.test.js",
+        "test": "node --test tests/order-realtime.test.js tests/staff-service.test.js tests/staff-access-service.test.js tests/session-security.test.js tests/session-expiry.test.js tests/staff-authorization.test.js tests/staff-organization.test.js tests/attendance-service.test.js tests/leave-service.test.js tests/payroll-money.test.js tests/documents-security.test.js tests/staff-activity.test.js tests/pwa-release.test.js tests/web-hardening.test.js",
         "seed": "node db/seed.js",
         "postgres:check": "node scripts/check-postgres.js",
         "postgres:schema": "node scripts/apply-postgres-schema.js",

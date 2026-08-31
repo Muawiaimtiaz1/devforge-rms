@@ -11,3 +11,5 @@ cookies.txt
 *.zip
 temp-win-sqlite/
 tmp/
+# Private staff document bytes must never enter source control or public assets.
+storage/staff-documents/
