@@ -6,6 +6,7 @@ const RESOURCE_MODULE = {
   customers: 'customers', expenses: 'expenses', 'expense-categories': 'expenses', tables: 'tables',
   analytics: 'analytics', ai: 'analytics', shifts: 'register', 'shop-settings': 'settings', printers: 'settings',
   users: 'users', staff: 'users', roles: 'roles', notifications: 'notifications', 'activity-logs': 'activity_logs', waste: 'waste',
+  'notification-preferences': 'settings',
   attendance: 'attendance',
   leave: 'leave',
   payroll: 'payroll',
@@ -102,6 +103,9 @@ function enforceApiPermissions(req, res, next) {
     const inboxRead = req.method === 'GET' && inboxChannel;
     const inboxReadState = req.method === 'PATCH' && inboxChannel && /\/read(?:-all)?$|\/\d+\/read$/.test(req.path);
     if (inboxRead || inboxReadState) return next();
+  }
+  if (resource === 'analytics' && /\/dashboard-data$/.test(req.path)) {
+    return requirePermission('dashboard.view')(req, res, next);
   }
   let action = actionFor(req, resource);
   // Reception operates its own drawer. Route-level shift checks still restrict

@@ -79,8 +79,8 @@ class SalesService {
       const creator = await db('users').where({ id: creatorId, shop_id: shopId }).first();
       if (!creator) return;
 
-      const recipientIds = new Set([Number(creatorId)]);
-      if (waiterId) recipientIds.add(Number(waiterId));
+      const recipientIds = new Set();
+      if (waiterId && Number(waiterId) !== Number(creatorId)) recipientIds.add(Number(waiterId));
 
       const creatorIsOrderTaker = ['waiter', 'order_taker'].includes(String(creator.role || '').toLowerCase());
       if (creatorIsOrderTaker) {
@@ -472,7 +472,9 @@ class SalesService {
         .where({ shop_id: shopId, role: 'receptionist' })
         .where(builder => builder.whereNull('status').orWhere('status', 'active'))
         .pluck('id');
-      const userRecipients = new Set([...recipientIds, ...activeReceptionists].map(Number).filter(Boolean));
+      const userRecipients = new Set([...recipientIds, ...activeReceptionists]
+        .map(Number)
+        .filter(id => id && id !== Number(editorId)));
       const changeSummary = (changes.length
         ? changes.map(item => `${item.change_action === 'remove' ? 'Remove' : 'Add'} ${item.quantity} x ${item.name}`).join(', ')
         : 'Order details were updated.').slice(0, 3500);

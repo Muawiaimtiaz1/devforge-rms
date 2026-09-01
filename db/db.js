@@ -42,6 +42,10 @@ try {
   db.exec("ALTER TABLE raw_stocks ADD COLUMN ingredient_code TEXT;");
   console.log("DB Migration Applied: added ingredient_code to raw_stocks");
 } catch (e) {}
+try {
+  db.exec("ALTER TABLE raw_stock_batches ADD COLUMN expiry_date TEXT;");
+  console.log("DB Migration Applied: added expiry_date to raw_stock_batches");
+} catch (e) {}
 db.exec("UPDATE raw_stocks SET ingredient_code = 'ING-' || printf('%05d', id) WHERE ingredient_code IS NULL OR trim(ingredient_code) = '';");
 db.exec(`
   CREATE TABLE IF NOT EXISTS menu_addons (
@@ -1090,6 +1094,29 @@ if (!tableExists) {
       CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);
       CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
       CREATE INDEX IF NOT EXISTS idx_notification_reads_user_id ON notification_reads(user_id);
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notification_alert_settings (
+        shop_id INTEGER NOT NULL,
+        alert_key TEXT NOT NULL,
+        updated_by_user_id INTEGER,
+        updated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (shop_id, alert_key),
+        FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE,
+        FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE TABLE IF NOT EXISTS notification_alert_recipients (
+        shop_id INTEGER NOT NULL,
+        alert_key TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        in_app_enabled INTEGER NOT NULL DEFAULT 1,
+        push_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (shop_id, alert_key, user_id),
+        FOREIGN KEY (shop_id, alert_key) REFERENCES notification_alert_settings(shop_id, alert_key) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_notification_alert_recipients_user ON notification_alert_recipients(shop_id, user_id, alert_key);
     `);
 
   }

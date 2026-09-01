@@ -5,7 +5,7 @@ const { z } = require('zod');
 const notificationSchema = z.object({
   shop_id: z.coerce.number().int().positive().nullable().optional(),
   target_user_id: z.coerce.number().int().positive().nullable().optional(),
-  type: z.enum(['announcement', 'assignment', 'release', 'billing', 'maintenance', 'support', 'system']).default('announcement'),
+  type: z.enum(['announcement', 'assignment', 'release', 'billing', 'maintenance', 'support', 'system', 'inventory']).default('announcement'),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
   title: z.string().trim().min(3).max(160),
   message: z.string().trim().min(3).max(4000),

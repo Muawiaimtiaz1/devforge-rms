@@ -1,0 +1,2 @@
+import { money } from '../dashboard.utils'
+export default function PaymentReceivers({ rows = [] }) { if (!rows.length) return null; return <section className="dashboard-card"><header><h2>Sales by Payment Receiver</h2></header><div className="receiver-list">{rows.map((row) => <div key={row.user_id || row.username}><div><strong>{row.name || row.username || 'Unknown'}</strong><small>{Number(row.orders || 0)} received payment{Number(row.orders) === 1 ? '' : 's'}</small></div><b>Rs. {money(row.received_sales)}</b></div>)}</div></section> }

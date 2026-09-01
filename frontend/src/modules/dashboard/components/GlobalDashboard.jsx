@@ -1,0 +1,2 @@
+import { legacyUrl } from '../../../api/client'
+export default function GlobalDashboard() { return <section className="global-dashboard dashboard-card"><header><h2>System Owner Quick Actions</h2></header><div><a href={legacyUrl('/admin/store-monitoring')}><strong>SaaS Command Center</strong><span>Monitor all restaurants, view growth charts, and manage platform status</span></a><a href={legacyUrl('/dashboard#subscriptions')}><strong>Track Payments</strong><span>Manage setup fees, advances, repairs, subscriptions, and platform income</span></a></div></section> }

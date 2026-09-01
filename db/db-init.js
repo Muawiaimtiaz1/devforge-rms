@@ -12,6 +12,7 @@ const { ensurePayrollSchema } = require('../src/modules/payroll/payroll.migratio
 const { ensureDocumentsSchema } = require('../src/modules/documents/documents.migration');
 const { ensureStaffActivitySchema } = require('../src/modules/staff-activity/staff-activity.migration');
 const { ensureReleaseHardeningSchema } = require('../src/modules/release-hardening/release-hardening.migration');
+const { ensureNotificationPreferencesSchema } = require('../src/modules/notification-preferences/notification-preferences.migration');
 
 async function initPostgres() {
   if (process.env.DB_CLIENT !== "postgres") return;
@@ -78,6 +79,7 @@ async function initPostgres() {
     await ensureDocumentsSchema(query);
     await ensureStaffActivitySchema(query);
     await ensureReleaseHardeningSchema(query);
+    await ensureNotificationPreferencesSchema(query);
 
     // 2. Check if any user exists (to ensure we have an admin)
     const userCheck = await query("SELECT id FROM users LIMIT 1");
@@ -910,6 +912,7 @@ async function initPostgres() {
     await query("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_shop_client_request ON sales(shop_id, client_request_id) WHERE client_request_id IS NOT NULL");
     await query("CREATE INDEX IF NOT EXISTS idx_customer_ledger_shift_id ON customer_ledger(shift_id)");
     await query("ALTER TABLE raw_stocks ADD COLUMN IF NOT EXISTS ingredient_code TEXT");
+    await query("ALTER TABLE raw_stock_batches ADD COLUMN IF NOT EXISTS expiry_date DATE");
     await query("UPDATE raw_stocks SET ingredient_code = 'ING-' || LPAD(id::text, 5, '0') WHERE ingredient_code IS NULL OR BTRIM(ingredient_code) = ''");
     await query("CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_stocks_shop_ingredient_code ON raw_stocks(shop_id, ingredient_code) WHERE ingredient_code IS NOT NULL");
     await query(`CREATE TABLE IF NOT EXISTS menu_addons (

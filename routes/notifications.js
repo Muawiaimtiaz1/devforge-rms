@@ -2,6 +2,8 @@ const express = require('express');
 const notificationService = require('../services/NotificationService');
 const activityLogService = require('../services/ActivityLogService');
 const pushNotificationService = require('../services/PushNotificationService');
+const expiryNotificationService = require('../services/ExpiryNotificationService');
+const { getUserPermissions } = require('../authorization/service');
 const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -47,6 +49,8 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 router.get('/unread-count', requireAuth, async (req, res) => {
+  const permissions = Array.isArray(req.permissions) ? req.permissions : await getUserPermissions(req.session.user);
+  await expiryNotificationService.syncForUser(req.session.user, permissions).catch((error) => console.error('Inventory notification sync failed:', error.message));
   const count = await notificationService.unreadCount(req.session.user, req.query);
   res.json({ count });
 });

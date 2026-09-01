@@ -1,0 +1,1 @@
+export default function DashboardTopbar({ user }) { return <nav className="dashboard-topbar"><a href="/app/lobby">&larr; Shop lobby</a><div><span>{user.shop_name || 'DevForge RMS'}</span><strong>{user.name || user.username}</strong></div></nav> }

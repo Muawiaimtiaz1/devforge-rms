@@ -460,6 +460,7 @@ CREATE TABLE IF NOT EXISTS raw_stock_batches (
   shop_id INTEGER NOT NULL,
   buying_price REAL NOT NULL,
   quantity REAL NOT NULL DEFAULT 0,
+  expiry_date TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE CASCADE,
   FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
@@ -481,6 +482,27 @@ CREATE TABLE IF NOT EXISTS menu_addons (
   FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE,
   FOREIGN KEY (raw_stock_id) REFERENCES raw_stocks(id) ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS notification_alert_settings (
+  shop_id INTEGER NOT NULL,
+  alert_key TEXT NOT NULL,
+  updated_by_user_id INTEGER,
+  updated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (shop_id, alert_key),
+  FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS notification_alert_recipients (
+  shop_id INTEGER NOT NULL,
+  alert_key TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
+  in_app_enabled INTEGER NOT NULL DEFAULT 1,
+  push_enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (shop_id, alert_key, user_id),
+  FOREIGN KEY (shop_id, alert_key) REFERENCES notification_alert_settings(shop_id, alert_key) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_notification_alert_recipients_user ON notification_alert_recipients(shop_id, user_id, alert_key);
 
 CREATE TABLE IF NOT EXISTS menu_addon_ingredients (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

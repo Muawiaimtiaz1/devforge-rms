@@ -672,7 +672,8 @@ async function updateNotificationTopbarBadge() {
 
   button.classList.remove("hidden");
   try {
-    const data = await api("/api/notifications/unread-count");
+    const channel = currentUser.role === 'superadmin' ? 'platform' : 'inbox';
+    const data = await api(`/api/notifications/unread-count?channel=${channel}`);
     const count = Number(data.count || 0);
     if (count > 0) {
       badge.textContent = count > 99 ? "99+" : String(count);
@@ -693,7 +694,7 @@ function openNotificationsPanel() {
   }
   sessionStorage.setItem("lobby_selected", "true");
   document.body.classList.remove("lobby-active");
-  return navigate("notifications");
+  return navigate(currentUser.role === 'superadmin' ? "notifications" : "notification-inbox");
 }
 
 const MODULE_GROUPS = [
@@ -846,7 +847,31 @@ window.addEventListener("pageshow", (event) => {
 });
 
 // ─── Router ──────────────────────────────────────────────────────────
+function openPendingInventoryProductEditor(page) {
+  if (page !== 'products') return;
+  const stored = sessionStorage.getItem('inventory_product_editor');
+  if (!stored) return;
+  sessionStorage.removeItem('inventory_product_editor');
+  try {
+    const pending = JSON.parse(stored);
+    window.setTimeout(() => {
+      if (pending.action === 'add' && typeof openAddProductForm === 'function') openAddProductForm('stock_based');
+      else if (pending.action === 'edit' && Number(pending.productId) > 0 && typeof openEditProduct === 'function') openEditProduct(Number(pending.productId));
+    }, 0);
+  } catch (error) { console.error('Could not open pending inventory product editor:', error); }
+}
+
 function navigate(page, options = {}) {
+  if (page === "dashboard") {
+    localStorage.setItem("pos_page", page);
+    window.location.assign("/app/dashboard");
+    return true;
+  }
+  if (page === "raw-stock") {
+    localStorage.setItem("pos_page", page);
+    window.location.assign("/app/inventory");
+    return true;
+  }
   if (page === "register" && !canCurrentUserAccessRegister()) {
     toast("You do not have permission to manage the register.", "error");
     return false;
@@ -1008,11 +1033,11 @@ function navigate(page, options = {}) {
     try {
       const res = pages[page]();
       if (res instanceof Promise) {
-        res.catch(err => {
+        res.then(() => openPendingInventoryProductEditor(page)).catch(err => {
           console.error("Page load error:", err);
           content.innerHTML = `<div class="flex items-center justify-center h-40 text-red-500 font-bold">Error loading page: ${err.message}</div>`;
         });
-      }
+      } else openPendingInventoryProductEditor(page);
     } catch (err) {
       console.error("Page load sync error:", err);
       content.innerHTML = `<div class="flex items-center justify-center h-40 text-red-500 font-bold">Error loading page: ${err.message}</div>`;
@@ -1091,7 +1116,7 @@ let _activeSettingsTab = localStorage.getItem("active_settings_tab") || "profile
 let _thirdPartyReportMonth = new Date().toISOString().slice(0, 7);
 let _thirdPartyReportPersonId = "";
 
-const PLATFORM_OWNER_HIDDEN_SETTINGS_TABS = new Set(["receipt", "printer-routing", "third-parties"]);
+const PLATFORM_OWNER_HIDDEN_SETTINGS_TABS = new Set(["receipt", "printer-routing", "third-parties", "notification-recipients"]);
 
 function getSettingsNavItems() {
   const items = [
@@ -1099,6 +1124,7 @@ function getSettingsNavItems() {
     { id: 'category-order', label: 'POS Category Order', icon: 'M4 6h16M4 12h16M4 18h16' },
     { id: 'receipt', label: 'Receipt Settings', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
     { id: 'printer-routing', label: 'Printers & Routing', icon: 'M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z' }
+    ,{ id: 'notification-recipients', label: 'Notification Recipients', icon: 'M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0a3 3 0 01-6 0m6 0H9' }
   ];
 
   if (!isPlatformOwner()) return items;
@@ -1196,6 +1222,7 @@ async function renderSettings(tab) {
 
 
 async function renderActiveSettingsContent() {
+  if (_activeSettingsTab === "notification-recipients") return renderNotificationRecipientSettings();
   if (_activeSettingsTab === "profile") {
     return `
       <div class="w-full animate-in fade-in slide-in-from-right-4 duration-500">
@@ -9966,7 +9993,7 @@ function renderLobby() {
               </div>
               
               <div class="flex-1 min-w-0">
-                  <div class="text-lg font-black text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors tracking-tight truncate">${p.label}</div>
+                  <div class="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors tracking-tight"><span class="truncate">${p.label}</span>${['dashboard', 'users', 'raw-stock'].includes(p.id) ? '<span title="React page" aria-label="React page" class="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border border-indigo-200 bg-indigo-50 text-[9px] font-black leading-none text-indigo-600 dark:border-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">R</span>' : ''}</div>
                   <div class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 line-clamp-2 opacity-80">${p.desc || ""}</div>
               </div>
 
@@ -10006,6 +10033,7 @@ function notificationTypeMeta(type) {
     billing: { label: "Billing", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20" },
     maintenance: { label: "Maintenance", dot: "bg-orange-500", chip: "bg-orange-50 text-orange-700 border-orange-100 dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/20" },
     support: { label: "Support", dot: "bg-indigo-500", chip: "bg-indigo-50 text-indigo-700 border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/20" },
+    inventory: { label: "Inventory", dot: "bg-rose-500", chip: "bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20" },
     system: { label: "System", dot: "bg-slate-500", chip: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700" },
   };
   return map[type] || map.announcement;
@@ -10136,10 +10164,72 @@ function renderNotificationInbox() {
   return renderNotifications('inbox');
 }
 
+async function renderNotificationRecipientSettings() {
+  try {
+    const data = await api("/api/notification-preferences");
+    const users = Array.isArray(data.users) ? data.users : [];
+    const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+    return `
+      <div class="w-full animate-in fade-in slide-in-from-right-4 duration-500">
+        <header class="mb-8"><h3 class="text-3xl font-black text-slate-950 dark:text-white mb-2 tracking-tight">Notification Recipients</h3><p class="text-slate-500 dark:text-slate-400 text-sm italic">Choose which active users receive management alerts. Order lifecycle notifications remain unchanged.</p></header>
+        <div class="space-y-5" id="notification-recipient-alerts">
+          ${alerts.map((alert) => {
+            const selected = new Set((alert.configured ? alert.recipient_ids : alert.default_recipient_ids || []).map(Number));
+            const eligible = new Set((alert.eligible_recipient_ids || []).map(Number));
+            return `<section class="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6" data-notification-alert="${escapeOrderValue(alert.key)}">
+              <div class="mb-5"><div class="flex flex-wrap items-center gap-2"><h4 class="text-lg font-black text-slate-950 dark:text-white">${escapeOrderValue(alert.label)}</h4>${!alert.configured ? '<span class="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-[9px] font-black uppercase tracking-widest">Current defaults</span>' : ''}</div><p class="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">${escapeOrderValue(alert.description)}</p></div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">${users.map((user) => { const allowed = eligible.has(Number(user.id)); return `<label class="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 ${allowed ? 'cursor-pointer hover:border-indigo-400' : 'opacity-50 cursor-not-allowed'} transition"><input type="checkbox" class="w-5 h-5 accent-indigo-600" data-recipient-user="${Number(user.id)}" ${selected.has(Number(user.id)) ? 'checked' : ''} ${allowed ? '' : 'disabled'}><span class="min-w-0"><strong class="block truncate text-sm text-slate-800 dark:text-slate-200">${escapeOrderValue(user.name || user.username)}</strong><small class="block text-[10px] font-black uppercase tracking-widest text-slate-400">${escapeOrderValue(user.role || 'user')}${allowed ? '' : ' · permission required'}</small></span></label>`; }).join('') || '<p class="text-sm text-slate-400">No active users are available.</p>'}</div>
+            </section>`;
+          }).join('')}
+        </div>
+        <div class="mt-8 flex justify-end"><button onclick="saveNotificationRecipientSettings()" class="px-7 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all">Save Notification Recipients</button></div>
+      </div>`;
+  } catch (error) {
+    return `<div class="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-700 font-bold">${escapeOrderValue(error.message || 'Failed to load notification recipients.')}</div>`;
+  }
+}
+
+async function saveNotificationRecipientSettings() {
+  const alerts = Array.from(document.querySelectorAll("[data-notification-alert]")).map((section) => ({
+    key: section.dataset.notificationAlert,
+    recipient_ids: Array.from(section.querySelectorAll("[data-recipient-user]:checked")).map((input) => Number(input.dataset.recipientUser)),
+  }));
+  try {
+    await api("/api/notification-preferences", "PUT", { alerts });
+    toast("Notification recipients saved");
+    renderSettings("notification-recipients");
+  } catch (error) {
+    toast(error.message || "Failed to save notification recipients", "error");
+  }
+}
+
+function openInventoryNotificationAlerts() {
+  _notificationFilter = 'inventory';
+  if (_currentPage === 'notification-inbox') return renderNotifications('inbox');
+  return openLobbyPanel('notification-inbox');
+}
+
+function renderInventoryAlertsPanel(notifications) {
+  const alerts = notifications.filter((notification) => notification.type === 'inventory');
+  if (!alerts.length) return '';
+  const urgent = alerts.filter((notification) => notification.priority === 'urgent').length;
+  return `
+    <section class="rounded-3xl border border-rose-200 bg-rose-50/70 p-5 dark:border-rose-500/20 dark:bg-rose-500/10">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div class="text-[10px] font-black uppercase tracking-[0.2em] text-rose-600 dark:text-rose-300">Inventory Alert Panel</div>
+          <h3 class="mt-1 text-xl font-black text-slate-950 dark:text-white">${alerts.length} active stock or expiry alert${alerts.length === 1 ? '' : 's'}</h3>
+          <p class="mt-1 text-sm font-medium text-slate-600 dark:text-slate-300">${urgent} urgent. Review low stock, out-of-stock items, near-expiry batches, and expired batches.</p>
+        </div>
+        <button onclick="openInventoryNotificationAlerts()" class="shrink-0 rounded-xl bg-rose-600 px-4 py-2 text-xs font-black text-white transition hover:bg-rose-500">Review Inventory Alerts</button>
+      </div>
+    </section>`;
+}
+
 async function renderNotifications(channel = 'platform') {
   const isInbox = channel === 'inbox';
   const availableFilters = isInbox
-    ? new Set(['all', 'unread', 'assignment', 'system', 'announcement', 'support'])
+    ? new Set(['all', 'unread', 'assignment', 'system', 'inventory', 'announcement', 'support'])
     : new Set(['all', 'unread', 'assignment', 'release', 'announcement', 'billing', 'maintenance']);
   if (!availableFilters.has(_notificationFilter)) _notificationFilter = 'all';
   const content = document.getElementById("page-content");
@@ -10155,10 +10245,13 @@ async function renderNotifications(channel = 'platform') {
   if (currentUser.role === "superadmin") params.set("include_archived", "1");
 
   try {
-    const [notifications, unreadData] = await Promise.all([
-      api(`/api/notifications?${params.toString()}`),
-      api(`/api/notifications/unread-count?channel=${channel}`).catch(() => ({ count: 0 })),
-    ]);
+    const unreadData = await api(`/api/notifications/unread-count?channel=${channel}`).catch(() => ({ count: 0 }));
+    const notifications = await api(`/api/notifications?${params.toString()}`);
+    const inventoryAlerts = currentUser.role === 'superadmin'
+      ? []
+      : isInbox
+        ? notifications.filter((notification) => notification.type === 'inventory')
+        : await api('/api/notifications?limit=150&channel=inbox&type=inventory').catch(() => []);
 
     _notificationsData = Array.isArray(notifications) ? notifications : [];
     const unreadCount = Number(unreadData.count || 0);
@@ -10166,6 +10259,7 @@ async function renderNotifications(channel = 'platform') {
     const assignmentCount = _notificationsData.filter((n) => n.type === "assignment").length;
     const releaseCount = _notificationsData.filter((n) => n.type === "release").length;
     const systemCount = _notificationsData.filter((n) => n.type === "system").length;
+    const inventoryCount = inventoryAlerts.length;
 
     content.innerHTML = `
       <div class="space-y-6">
@@ -10188,7 +10282,9 @@ async function renderNotifications(channel = 'platform') {
           </div>
         </section>
 
-        <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        ${renderInventoryAlertsPanel(inventoryAlerts)}
+
+        <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
             <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Unread</div>
             <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${unreadCount}</div>
@@ -10201,6 +10297,10 @@ async function renderNotifications(channel = 'platform') {
             <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">${isInbox ? 'Assignments' : 'Releases'}</div>
             <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${isInbox ? assignmentCount : releaseCount}</div>
           </div>
+          ${inventoryAlerts.length ? `<div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+            <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory Alerts</div>
+            <div class="text-3xl font-black text-slate-950 dark:text-white mt-2">${inventoryCount}</div>
+          </div>` : ''}
         </section>
 
         <section class="flex flex-wrap gap-2">
@@ -10208,6 +10308,7 @@ async function renderNotifications(channel = 'platform') {
           ${notificationFilterButton("unread", "Unread", unreadCount)}
           ${notificationFilterButton("assignment", "Assignments")}
           ${isInbox ? notificationFilterButton("system", "Order Updates") : notificationFilterButton("release", "Releases")}
+          ${isInbox ? notificationFilterButton("inventory", "Inventory Alerts", inventoryCount) : ''}
           ${notificationFilterButton("announcement", "Announcements")}
           ${!isInbox ? notificationFilterButton("billing", "Billing") : ''}
           ${!isInbox ? notificationFilterButton("maintenance", "Maintenance") : notificationFilterButton("support", "Support")}
@@ -11059,7 +11160,7 @@ function renderQuickSidebar() {
               </svg>
             </div>
             <div>
-              <div class="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 transition-colors">${p.label}</div>
+              <div class="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 transition-colors"><span>${p.label}</span>${['dashboard', 'users', 'raw-stock'].includes(p.id) ? '<span title="React page" aria-label="React page" class="inline-flex h-4 w-4 items-center justify-center rounded border border-indigo-200 bg-indigo-50 text-[8px] font-black leading-none text-indigo-600 dark:border-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">R</span>' : ''}</div>
               <div class="text-[10px] text-slate-400 font-medium line-clamp-1">${p.desc}</div>
             </div>
           </div>

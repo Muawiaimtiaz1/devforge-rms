@@ -1,5 +1,6 @@
 const db = require('../db/knex');
 const activityLog = require('./ActivityLogService');
+const cashDropNotificationService = require('./CashDropNotificationService');
 
 function toMoney(value) {
   const num = Number(value || 0);
@@ -394,6 +395,10 @@ class ShiftService {
       drop_id: dropId,
       note: note
     }, shiftId, 'shift');
+
+    cashDropNotificationService.notifyRequested({
+      shopId, requesterId: requestedByUserId || shift.user_id, amount: toMoney(amount), note: note || '',
+    }).catch((error) => console.error(`Cash drop ${dropId} notification failed:`, error.message));
 
     return dropId;
   }

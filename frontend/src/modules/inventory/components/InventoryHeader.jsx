@@ -1,0 +1,3 @@
+export default function InventoryHeader({ canCreateIngredient, canCreateProduct, onAddIngredient, onAddProduct }) {
+  return <header className="inventory-heading"><div><h1>Inventory</h1><p>Manage raw ingredients and finished stock products.</p></div><div>{canCreateIngredient && <button type="button" className="inventory-primary" onClick={onAddIngredient}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12" /></svg>Add New Ingredient</button>}{canCreateProduct && <button type="button" className="inventory-product-button" onClick={onAddProduct}>Add Stock Product</button>}</div></header>
+}

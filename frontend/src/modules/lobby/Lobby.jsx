@@ -152,7 +152,7 @@ function Lobby() {
           {modules.map((module, index) => (
             <button className="module-card" style={{ '--delay': `${index * 40}ms` }} key={module.id} onClick={() => openModule(module)}>
               <span className="module-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" dangerouslySetInnerHTML={{ __html: module.icon }} /></span>
-              <span className="module-copy"><strong>{module.label}</strong><small>{module.desc}</small></span>
+              <span className="module-copy"><span className="module-title-row"><strong>{module.label}</strong>{module.frontend === 'react' && <span className="react-module-badge" title="React page" aria-label="React page">R</span>}</span><small>{module.desc}</small></span>
               <span className="module-arrow">→</span>
             </button>
           ))}

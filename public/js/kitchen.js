@@ -269,6 +269,16 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search =
     window._rawStocksList = rawStocks;
     const stockProducts = products.filter(product => product.product_type === 'stock_based' && product.is_component !== 1);
     window._inventoryStockProducts = stockProducts;
+    const todayUtc = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+    const expiryWarnings = rawStocks.flatMap(stock => (stock.batches || [])
+      .filter(batch => Number(batch.quantity) > 0 && batch.expiry_date)
+      .map(batch => ({
+        name: stock.name, unit: stock.unit, quantity: Number(batch.quantity),
+        expiryDate: String(batch.expiry_date).slice(0, 10),
+        daysLeft: Math.ceil((Date.parse(`${String(batch.expiry_date).slice(0, 10)}T00:00:00Z`) - todayUtc) / 86400000)
+      })))
+      .filter(item => Number.isFinite(item.daysLeft) && item.daysLeft <= 7)
+      .sort((a, b) => a.daysLeft - b.daysLeft);
 
     let html = `
       <div class="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -286,6 +296,11 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search =
           </div>
         </div>
 
+        ${expiryWarnings.length ? `<div class="rounded-3xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-5" role="status" aria-live="polite">
+          <h4 class="font-black text-amber-800 dark:text-amber-300 mb-2">Expiry notifications</h4>
+          <div class="space-y-1">${expiryWarnings.map(item => `<p class="text-sm font-bold ${item.daysLeft < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-amber-700 dark:text-amber-300'}">${Number(item.quantity.toFixed(3))} ${escapeWasteValue(item.unit)} of ${escapeWasteValue(item.name)} ${item.daysLeft < 0 ? `expired ${Math.abs(item.daysLeft)} day${Math.abs(item.daysLeft) === 1 ? '' : 's'} ago` : item.daysLeft === 0 ? 'expires today' : `is near expiry (${item.daysLeft} day${item.daysLeft === 1 ? '' : 's'} left)`}.</p>`).join('')}</div>
+        </div>` : ''}
+
         <div class="flex flex-col lg:flex-row items-center justify-center gap-4">
           <div class="inline-flex p-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm" role="group" aria-label="Inventory type filter">
             <button id="inventory-filter-all" onclick="setInventoryCatalogFilter('all')" class="inventory-filter-pill px-5 py-2.5 rounded-full text-xs font-black transition-all">All Inventory</button>
@@ -300,33 +315,28 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search =
 
         <section id="inventory-ingredients-section"><div class="mb-4"><h4 class="text-xl font-black text-slate-900 dark:text-white">Raw Ingredients</h4><p class="text-xs text-slate-500">Ingredients consumed by recipe products and add-ons.</p></div>
         ${inventoryCatalogPaginationHtml('ingredients', rawStockPagination)}
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          ${rawStocks.map(rs => `
-            <div data-inventory-search="${escapeWasteValue(`${rs.ingredient_code || ''} ${rs.name} ${rs.unit} ${rs.usage_unit || ''}`.toLowerCase())}" class="inventory-catalog-item bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 hover:border-indigo-500 transition-all shadow-sm group">
-              <div class="flex justify-between items-start mb-4">
-                <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-                </div>
-                <div class="text-right">
-                  <span class="text-xs font-black uppercase tracking-widest text-slate-400">Current Stock</span>
-                  <div class="text-2xl font-black text-slate-950 dark:text-white">${Number(Number(rs.current_stock).toFixed(3))} <span class="text-sm font-bold text-slate-400">${rs.unit}</span></div>
-                  ${rs.usage_unit ? `<div class="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">= ${Number((rs.current_stock * rs.conversion_factor).toFixed(2))} ${rs.usage_unit}</div>` : ''}
-                </div>
-              </div>
-              <div class="flex items-center justify-between gap-3 mb-2"><h4 class="text-lg font-black text-slate-900 dark:text-white">${escapeWasteValue(rs.name)}</h4><span class="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[9px] font-black text-slate-500">${escapeWasteValue(rs.ingredient_code || `ING-${String(rs.id).padStart(5, '0')}`)}</span></div>
-              <p class="text-xs text-slate-500 italic mb-2">Min. stock alert level: ${rs.min_stock_level} ${rs.unit}</p>
-              ${rs.usage_unit ? `<p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-4">1 ${rs.unit} = ${rs.conversion_factor} ${rs.usage_unit}</p>` : '<div class="mb-4"></div>'}
-              
-              <div class="flex gap-2">
-                ${currentUserHasPermission('raw_stock.adjust') ? `<button onclick="showUpdateRawStockModal(${rs.id})" class="flex-1 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-indigo-50 hover:text-indigo-600 transition-all">Restock</button>
-                <button onclick="showEditRawStockModal(${rs.id})" class="flex-1 py-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 transition-all">Edit</button>` : ''}
-                <button onclick="viewRawStockHistory(${rs.id})" class="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-indigo-600 transition-all">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </button>
-              </div>
-            </div>
-          `).join('')}
-          ${rawStocks.length === 0 ? '<div class="col-span-full py-20 text-center text-slate-500 italic">No ingredients found. Start by adding one!</div>' : ''}
+        <div class="overflow-x-auto rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <table class="w-full min-w-[900px] text-left">
+            <thead class="bg-slate-50 dark:bg-slate-800/70 text-[10px] font-black uppercase tracking-widest text-slate-500">
+              <tr><th class="px-5 py-4">ID</th><th class="px-5 py-4">Ingredient</th><th class="px-5 py-4">Current Stock</th><th class="px-5 py-4">Minimum</th><th class="px-5 py-4">Batches</th><th class="px-5 py-4">Nearest Expiry</th><th class="px-5 py-4 text-right">Actions</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              ${rawStocks.map(rs => {
+                const activeBatches = (rs.batches || []).filter(batch => Number(batch.quantity) > 0);
+                const nearestExpiry = activeBatches.map(batch => batch.expiry_date ? String(batch.expiry_date).slice(0, 10) : '').filter(Boolean).sort()[0] || '';
+                return `<tr data-inventory-search="${escapeWasteValue(`${rs.ingredient_code || ''} ${rs.name} ${rs.unit} ${rs.usage_unit || ''}`.toLowerCase())}" class="inventory-catalog-item hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                  <td class="px-5 py-4"><span class="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[10px] font-black text-slate-500">${escapeWasteValue(rs.ingredient_code || `ING-${String(rs.id).padStart(5, '0')}`)}</span></td>
+                  <td class="px-5 py-4"><strong class="block text-sm text-slate-900 dark:text-white">${escapeWasteValue(rs.name)}</strong>${rs.usage_unit ? `<small class="text-slate-400">1 ${escapeWasteValue(rs.unit)} = ${Number(rs.conversion_factor)} ${escapeWasteValue(rs.usage_unit)}</small>` : ''}</td>
+                  <td class="px-5 py-4"><strong class="text-sm ${Number(rs.current_stock) <= Number(rs.min_stock_level) ? 'text-rose-600' : 'text-emerald-600'}">${Number(Number(rs.current_stock).toFixed(3))} ${escapeWasteValue(rs.unit)}</strong>${rs.usage_unit ? `<small class="block text-slate-400">${Number((rs.current_stock * rs.conversion_factor).toFixed(2))} ${escapeWasteValue(rs.usage_unit)}</small>` : ''}</td>
+                  <td class="px-5 py-4 text-sm font-bold text-slate-600 dark:text-slate-300">${Number(rs.min_stock_level)} ${escapeWasteValue(rs.unit)}</td>
+                  <td class="px-5 py-4"><span class="inline-flex min-w-8 justify-center rounded-full bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1 text-xs font-black text-indigo-700 dark:text-indigo-300">${activeBatches.length}</span></td>
+                  <td class="px-5 py-4 text-sm font-bold ${nearestExpiry && nearestExpiry <= new Date().toISOString().slice(0, 10) ? 'text-rose-600' : 'text-slate-600 dark:text-slate-300'}">${nearestExpiry ? escapeWasteValue(nearestExpiry) : 'Not set'}</td>
+                  <td class="px-5 py-4"><div class="flex justify-end gap-2">${currentUserHasPermission('raw_stock.adjust') ? `<button onclick="showUpdateRawStockModal(${rs.id})" class="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold hover:text-indigo-600">Restock</button><button onclick="showEditRawStockModal(${rs.id})" class="px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-xs font-bold">Edit</button>` : ''}<button onclick="viewRawStockBatches(${rs.id})" class="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-500 hover:text-indigo-600" aria-label="View ${escapeWasteValue(rs.name)} batch details">View</button></div></td>
+                </tr>`;
+              }).join('')}
+              ${rawStocks.length === 0 ? '<tr><td colspan="7" class="px-5 py-16 text-center text-slate-500 italic">No ingredients found. Start by adding one!</td></tr>' : ''}
+            </tbody>
+          </table>
         </div></section>
 
         <section id="inventory-stock-section"><div class="mb-4"><h4 class="text-xl font-black text-slate-900 dark:text-white">Finished Stock Products</h4><p class="text-xs text-slate-500">Purchase stock here, then publish individual variants to Menu.</p></div>
@@ -435,6 +445,10 @@ function showAddRawStockModal() {
             <input id="rs-cost" type="number" value="0" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:border-indigo-500 transition-all outline-none text-sm font-bold" />
           </div>
         </div>
+        <div>
+          <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Expiry Date (Optional)</label>
+          <input id="rs-expiry" type="date" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:border-indigo-500 transition-all outline-none text-sm font-bold" />
+        </div>
       </div>
       <div class="flex gap-3 mt-8">
         <button onclick="this.closest('.fixed').remove()" class="flex-1 py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-sm font-bold hover:bg-slate-200 transition-all">Cancel</button>
@@ -479,6 +493,7 @@ function showAddRawStockModal() {
       min_stock_level: parseFloat($c("rs-min").value),
       initial_stock: parseFloat($c("rs-initial").value),
       buying_price: parseFloat($c("rs-cost").value)
+      ,expiry_date: $c("rs-expiry").value || null
       ,code_mode: $c("rs-code-mode").value
       ,ingredient_code: $c("rs-code").value.trim()
     };
@@ -521,6 +536,10 @@ function showUpdateRawStockModal(id) {
           <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Buying Price</label>
           <input id="rs-price" type="number" placeholder="Current Cost" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:border-indigo-500 transition-all outline-none text-sm font-bold" />
         </div>
+        <div>
+          <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Expiry Date (Optional)</label>
+          <input id="rs-restock-expiry" type="date" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:border-indigo-500 transition-all outline-none text-sm font-bold" />
+        </div>
       </div>
       <div class="flex gap-3 mt-8">
         <button onclick="this.closest('.fixed').remove()" class="flex-1 py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-sm font-bold hover:bg-slate-200 transition-all">Cancel</button>
@@ -533,9 +552,10 @@ function showUpdateRawStockModal(id) {
   document.getElementById("update-rs").onclick = async () => {
     const delta = parseFloat($c("rs-delta").value);
     const buying_price = parseFloat($c("rs-price").value);
+    const expiry_date = $c("rs-restock-expiry").value || null;
     if (!delta || delta <= 0) return toast("Quantity required", "error");
     try {
-      await api(`/api/raw-stock/${id}/stock`, "PATCH", { delta, buying_price });
+      await api(`/api/raw-stock/${id}/stock`, "PATCH", { delta, buying_price, expiry_date });
       toast("Stock updated!");
       modal.remove();
       renderRawStock();
@@ -563,6 +583,9 @@ function showEditRawStockModal(id) {
         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Conversion Factor</label><input id="ers-factor" type="number" min="0.000001" step="0.001" value="${Number(stock.conversion_factor || 1)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Minimum Stock</label><input id="ers-min" type="number" min="0" step="0.001" value="${Number(stock.min_stock_level || 0)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
         <div class="sm:col-span-2"><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Current Cost Price (${escapeWasteValue(stock.unit)})</label><input id="ers-cost" type="number" min="0" step="0.01" value="${Number(stock.buying_price || 0)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
+        <div class="sm:col-span-2"><div class="flex items-center justify-between mb-2"><label class="text-[10px] font-black text-slate-400 uppercase">Batch Expiry Dates</label><span class="text-[10px] text-slate-400">Optional</span></div>
+          <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700"><table class="w-full min-w-[520px] text-left text-xs"><thead class="bg-slate-50 dark:bg-slate-800 text-slate-500"><tr><th class="px-3 py-2">Batch</th><th class="px-3 py-2">Remaining</th><th class="px-3 py-2">Buying Price</th><th class="px-3 py-2">Expiry</th></tr></thead><tbody class="divide-y divide-slate-100 dark:divide-slate-800">${(stock.batches || []).map(batch => `<tr><td class="px-3 py-2 font-bold">#${Number(batch.id)}</td><td class="px-3 py-2">${Number(Number(batch.quantity).toFixed(3))} ${escapeWasteValue(stock.unit)}</td><td class="px-3 py-2">Rs. ${Number(batch.buying_price || 0).toLocaleString()}</td><td class="px-3 py-2"><input data-batch-expiry="${Number(batch.id)}" type="date" value="${batch.expiry_date ? escapeWasteValue(String(batch.expiry_date).slice(0, 10)) : ''}" class="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 font-bold" /></td></tr>`).join('') || '<tr><td colspan="4" class="px-3 py-6 text-center text-slate-400">No active stock batches.</td></tr>'}</tbody></table></div>
+        </div>
       </div>
       <div class="flex gap-3 mt-8"><button onclick="this.closest('.fixed').remove()" class="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold">Cancel</button><button id="save-ers" class="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold">Save Changes</button></div>
     </div>`;
@@ -573,7 +596,8 @@ function showEditRawStockModal(id) {
     const payload = {
       name: $c('ers-name').value.trim(), ingredient_code: $c('ers-code').value.trim(), code_mode: $c('ers-code-mode').value,
       unit: $c('ers-unit').value, usage_unit: $c('ers-usage-unit').value,
-      conversion_factor: Number($c('ers-factor').value), min_stock_level: Number($c('ers-min').value), buying_price: Number($c('ers-cost').value)
+      conversion_factor: Number($c('ers-factor').value), min_stock_level: Number($c('ers-min').value), buying_price: Number($c('ers-cost').value),
+      batch_expiries: Array.from(modal.querySelectorAll('[data-batch-expiry]')).map(input => ({ id: Number(input.dataset.batchExpiry), expiry_date: input.value || null }))
     };
     if (!payload.name) return toast('Ingredient name is required', 'error');
     saveButton.disabled = true;
@@ -1684,7 +1708,19 @@ async function deleteRecipe(id) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function viewRawStockHistory(id) {
-  // Simple history alert for now
-  toast("Stock history feature coming soon in audit logs", "success");
+function viewRawStockBatches(id) {
+  const stock = (window._rawStocksList || []).find(item => Number(item.id) === Number(id));
+  if (!stock) return toast('Ingredient not found', 'error');
+  const batches = (stock.batches || []).filter(batch => Number(batch.quantity) > 0);
+  const totalStockValue = batches.reduce((total, batch) => total + (Number(batch.quantity) * Number(batch.buying_price || 0)), 0);
+  const formatStockValue = value => Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm';
+  modal.innerHTML = `<div class="bg-white dark:bg-slate-900 w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-[2rem] p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800">
+    <div class="flex items-start justify-between gap-4 mb-6"><div><p class="text-[10px] font-black uppercase tracking-widest text-indigo-500">Stock batches</p><h3 class="text-2xl font-black text-slate-950 dark:text-white">${escapeWasteValue(stock.name)}</h3><p class="text-sm text-slate-500 mt-1">${batches.length} active batch${batches.length === 1 ? '' : 'es'} · ${Number(Number(stock.current_stock).toFixed(3))} ${escapeWasteValue(stock.unit)} total stock</p></div><button onclick="this.closest('.fixed').remove()" class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 font-black" aria-label="Close batch details">×</button></div>
+    <div class="mb-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 px-5 py-4"><span class="block text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Total Current Stock Value</span><strong class="block mt-1 text-2xl font-black text-emerald-700 dark:text-emerald-300">Rs. ${formatStockValue(totalStockValue)}</strong></div>
+    <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800"><table class="w-full min-w-[760px] text-left"><thead class="bg-slate-50 dark:bg-slate-800 text-[10px] font-black uppercase tracking-widest text-slate-500"><tr><th class="px-4 py-3">Batch</th><th class="px-4 py-3">Remaining</th><th class="px-4 py-3">Buying Price</th><th class="px-4 py-3">Stock Value</th><th class="px-4 py-3">Received</th><th class="px-4 py-3">Expiry</th></tr></thead><tbody class="divide-y divide-slate-100 dark:divide-slate-800">${batches.map(batch => `<tr><td class="px-4 py-3 font-black text-slate-700 dark:text-slate-200">#${Number(batch.id)}</td><td class="px-4 py-3 font-bold">${Number(Number(batch.quantity).toFixed(3))} ${escapeWasteValue(stock.unit)}</td><td class="px-4 py-3">Rs. ${formatStockValue(batch.buying_price)}</td><td class="px-4 py-3 font-black text-emerald-700 dark:text-emerald-300">Rs. ${formatStockValue(Number(batch.quantity) * Number(batch.buying_price || 0))}</td><td class="px-4 py-3 text-slate-500">${batch.created_at ? escapeWasteValue(String(batch.created_at).slice(0, 10)) : '—'}</td><td class="px-4 py-3 font-bold ${batch.expiry_date && String(batch.expiry_date).slice(0, 10) <= new Date().toISOString().slice(0, 10) ? 'text-rose-600' : 'text-slate-600 dark:text-slate-300'}">${batch.expiry_date ? escapeWasteValue(String(batch.expiry_date).slice(0, 10)) : 'Not set'}</td></tr>`).join('') || '<tr><td colspan="6" class="px-4 py-12 text-center text-slate-400">No active stock batches.</td></tr>'}</tbody></table></div>
+    <div class="mt-6 flex justify-end"><button onclick="this.closest('.fixed').remove()" class="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">Close</button></div>
+  </div>`;
+  document.body.appendChild(modal);
 }

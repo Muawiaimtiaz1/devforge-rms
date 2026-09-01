@@ -15,6 +15,27 @@ function automaticIngredientCode(id) {
     return `ING-${String(id).padStart(5, '0')}`;
 }
 
+function optionalExpiryDate(value) {
+    if (value === undefined || value === null || String(value).trim() === '') return null;
+    const date = String(value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Expiry date must use YYYY-MM-DD format.');
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) throw new Error('Expiry date is invalid.');
+    return date;
+}
+
+function batchExpiryUpdates(value) {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.length > 100) throw new Error('Batch expiry updates must be a list of up to 100 batches.');
+    const seen = new Set();
+    return value.map(item => {
+        const id = Number(item?.id);
+        if (!Number.isInteger(id) || id <= 0 || seen.has(id)) throw new Error('Each batch expiry update requires a unique valid batch ID.');
+        seen.add(id);
+        return { id, expiry_date: optionalExpiryDate(item.expiry_date) };
+    });
+}
+
 // GET /api/raw-stock
 router.get('/', requireAuth, async (req, res) => {
     const isPostgres = usePostgres();
@@ -42,6 +63,7 @@ router.get('/', requireAuth, async (req, res) => {
                         'id', rsb.id,
                         'buying_price', rsb.buying_price,
                         'quantity', rsb.quantity,
+                        'expiry_date', rsb.expiry_date,
                         'created_at', rsb.created_at
                     )
                 )
@@ -61,6 +83,7 @@ router.get('/', requireAuth, async (req, res) => {
                         'id', rsb.id,
                         'buying_price', rsb.buying_price,
                         'quantity', rsb.quantity,
+                        'expiry_date', rsb.expiry_date,
                         'created_at', rsb.created_at
                     )
                 )
@@ -120,11 +143,12 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/raw-stock
 router.post('/', requireAuth, async (req, res) => {
-    const { name, unit, usage_unit, conversion_factor, min_stock_level, initial_stock, buying_price, ingredient_code, code_mode } = req.body;
+    const { name, unit, usage_unit, conversion_factor, min_stock_level, initial_stock, buying_price, ingredient_code, code_mode, expiry_date } = req.body;
     const shopId = req.session.user.shop_id;
     if (!name || !unit) return res.status(400).json({ error: 'Name and unit are required' });
 
     try {
+        const expiry = optionalExpiryDate(expiry_date);
         let stockId;
         if (usePostgres()) {
             stockId = await getPostgres().withTransaction(async (client) => {
@@ -140,7 +164,7 @@ router.post('/', requireAuth, async (req, res) => {
                 const sid = rows[0].id;
                 if (!requestedCode) await client.query('UPDATE raw_stocks SET ingredient_code = $1 WHERE id = $2 AND shop_id = $3', [automaticIngredientCode(sid), sid, shopId]);
                 if (initial_stock > 0) {
-                    await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES ($1, $2, $3, $4)', [sid, shopId, buying_price || 0, initial_stock]);
+                    await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES ($1, $2, $3, $4, $5)', [sid, shopId, buying_price || 0, initial_stock, expiry]);
                 }
                 return sid;
             });
@@ -156,7 +180,7 @@ router.post('/', requireAuth, async (req, res) => {
                 const sid = result.lastInsertRowid;
                 if (!requestedCode) getSqlite().prepare('UPDATE raw_stocks SET ingredient_code = ? WHERE id = ? AND shop_id = ?').run(automaticIngredientCode(sid), sid, shopId);
                 if (initial_stock > 0) {
-                    getSqlite().prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES (?, ?, ?, ?)').run(sid, shopId, buying_price || 0, initial_stock);
+                    getSqlite().prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES (?, ?, ?, ?, ?)').run(sid, shopId, buying_price || 0, initial_stock, expiry);
                 }
                 return sid;
             })();
@@ -174,7 +198,7 @@ router.post('/', requireAuth, async (req, res) => {
 router.patch('/:id/details', requireAuth, async (req, res) => {
     const stockId = parseInt(req.params.id, 10);
     const shopId = req.session.user.shop_id;
-    const { name, unit, usage_unit, conversion_factor, min_stock_level, buying_price, ingredient_code, code_mode } = req.body;
+    const { name, unit, usage_unit, conversion_factor, min_stock_level, buying_price, ingredient_code, code_mode, batch_expiries } = req.body;
     if (!Number.isInteger(stockId) || !name?.trim() || !unit?.trim()) return res.status(400).json({ error: 'Valid ingredient, name and unit are required.' });
     const factor = Number(conversion_factor);
     const minimum = Number(min_stock_level);
@@ -184,6 +208,7 @@ router.patch('/:id/details', requireAuth, async (req, res) => {
     }
 
     try {
+        const expiryUpdates = batchExpiryUpdates(batch_expiries);
         const requestedCode = code_mode === 'auto' ? automaticIngredientCode(stockId) : ingredientCode(ingredient_code);
         if (!requestedCode) throw new Error('Ingredient ID is required.');
         if (usePostgres()) {
@@ -200,6 +225,10 @@ router.patch('/:id/details', requireAuth, async (req, res) => {
                 if (!priceUpdate.rowCount) {
                     await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES ($1, $2, $3, 0)', [stockId, shopId, price]);
                 }
+                for (const batch of expiryUpdates) {
+                    const expiryUpdate = await client.query('UPDATE raw_stock_batches SET expiry_date = $1 WHERE id = $2 AND raw_stock_id = $3 AND shop_id = $4', [batch.expiry_date, batch.id, stockId, shopId]);
+                    if (!expiryUpdate.rowCount) throw new Error('One or more ingredient batches were not found.');
+                }
             });
         } else {
             getSqlite().transaction(() => {
@@ -210,6 +239,10 @@ router.patch('/:id/details', requireAuth, async (req, res) => {
                 const latest = getSqlite().prepare('SELECT id FROM raw_stock_batches WHERE raw_stock_id = ? AND shop_id = ? ORDER BY id DESC LIMIT 1').get(stockId, shopId);
                 if (latest) getSqlite().prepare('UPDATE raw_stock_batches SET buying_price = ? WHERE id = ?').run(price, latest.id);
                 else getSqlite().prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES (?, ?, ?, 0)').run(stockId, shopId, price);
+                for (const batch of expiryUpdates) {
+                    const expiryUpdate = getSqlite().prepare('UPDATE raw_stock_batches SET expiry_date = ? WHERE id = ? AND raw_stock_id = ? AND shop_id = ?').run(batch.expiry_date, batch.id, stockId, shopId);
+                    if (!expiryUpdate.changes) throw new Error('One or more ingredient batches were not found.');
+                }
             })();
         }
         res.json({ ok: true, ingredient_code: requestedCode });
@@ -221,12 +254,13 @@ router.patch('/:id/details', requireAuth, async (req, res) => {
 
 // PATCH /api/raw-stock/:id/stock
 router.patch('/:id/stock', requireAuth, async (req, res) => {
-    const { delta, buying_price } = req.body;
+    const { delta, buying_price, expiry_date } = req.body;
     const stockId = parseInt(req.params.id);
     const shopId = req.session.user.shop_id;
     const isPostgres = usePostgres();
 
     try {
+        const expiry = optionalExpiryDate(expiry_date);
         const performUpdate = async (client) => {
             let stock;
             if (isPostgres) {
@@ -241,8 +275,8 @@ router.patch('/:id/stock', requireAuth, async (req, res) => {
             const price = parseFloat(buying_price || 0);
 
             if (diff > 0) {
-                if (isPostgres) await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES ($1, $2, $3, $4)', [stockId, shopId, price, diff]);
-                else client.prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity) VALUES (?, ?, ?, ?)').run(stockId, shopId, price, diff);
+                if (isPostgres) await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES ($1, $2, $3, $4, $5)', [stockId, shopId, price, diff, expiry]);
+                else client.prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES (?, ?, ?, ?, ?)').run(stockId, shopId, price, diff, expiry);
             } else if (diff < 0) {
                 let toRemove = Math.abs(diff);
                 let batches;
