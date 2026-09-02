@@ -1,4 +1,5 @@
 const db = require('../db/knex');
+const { usageToStockQuantity } = require('../src/modules/inventory/restock-units');
 
 function toNumber(value, fallback = 0) {
   const n = Number(value);
@@ -256,27 +257,34 @@ class WasteService {
     const raw = await trx('raw_stocks').where({ id: event.raw_stock_id, shop_id: shopId }).first();
     if (!raw) throw new Error('Raw ingredient not found.');
 
+    const acceptedUnits = [raw.unit, raw.usage_unit].filter(Boolean);
+    if (event.unit && !acceptedUnits.includes(event.unit)) throw new Error('Waste unit does not match the selected ingredient.');
+    const usesUsageUnit = raw.usage_unit && event.unit === raw.usage_unit;
+    const stockQuantity = usesUsageUnit
+      ? usageToStockQuantity(event.quantity, raw.conversion_factor)
+      : event.quantity;
+
     if (event.stock_action === 'already_deducted' || event.stock_action === 'no_stock') {
       return {
         costAmount: 0,
         unit: raw.unit,
-        snapshot: { source_name: raw.name, unit: raw.unit, stock_action: event.stock_action },
-        lines: [{ item_type: 'raw_ingredient', raw_stock_id: raw.id, batch_id: event.batch_id, quantity: event.quantity, unit: raw.unit, cost_amount: 0 }]
+        snapshot: { source_name: raw.name, unit: event.unit || raw.unit, stock_unit: raw.unit, stock_quantity: stockQuantity, stock_action: event.stock_action },
+        lines: [{ item_type: 'raw_ingredient', raw_stock_id: raw.id, batch_id: event.batch_id, quantity: stockQuantity, unit: raw.unit, cost_amount: 0 }]
       };
     }
 
-    if (toNumber(raw.current_stock) < event.quantity) throw new Error(`Not enough stock of ${raw.name}.`);
-    const { lines, totalCost } = await this.deductRawBatches(trx, shopId, raw, event.quantity, event.batch_id);
-    await trx('raw_stocks').where({ id: raw.id }).update({ current_stock: db.raw('current_stock - ?', [event.quantity]) });
+    if (toNumber(raw.current_stock) < stockQuantity) throw new Error(`Not enough stock of ${raw.name}.`);
+    const { lines, totalCost } = await this.deductRawBatches(trx, shopId, raw, stockQuantity, event.batch_id);
+    await trx('raw_stocks').where({ id: raw.id, shop_id: shopId }).update({ current_stock: db.raw('current_stock - ?', [stockQuantity]) });
     await trx('raw_stock_waste').insert({
       raw_stock_id: raw.id,
       shop_id: shopId,
       user_id: userId,
-      quantity: event.quantity,
+      quantity: stockQuantity,
       reason: event.reason || event.reason_code || 'Waste recorded'
     });
 
-    return { costAmount: totalCost, unit: raw.unit, snapshot: { source_name: raw.name, unit: raw.unit }, lines };
+    return { costAmount: totalCost, unit: event.unit || raw.unit, snapshot: { source_name: raw.name, unit: event.unit || raw.unit, stock_unit: raw.unit, stock_quantity: stockQuantity }, lines };
   }
 
   async deductRawBatches(trx, shopId, raw, quantity, batchId) {

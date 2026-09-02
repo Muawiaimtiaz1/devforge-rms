@@ -4,6 +4,7 @@ const notificationService = require('./NotificationService');
 const pushNotificationService = require('./PushNotificationService');
 const infrastructureService = require('./InfrastructureService');
 const cashDrawerService = require('./CashDrawerService');
+const inventoryCostingService = require('../src/modules/inventory/inventory-costing.service');
 const { effectiveKitchenStatuses } = require('../utils/kitchen-status');
 const { z } = require('zod');
 
@@ -241,8 +242,15 @@ class SalesService {
     for (const requirement of requirements) {
       const stock = await trx('raw_stocks').where({ id: Number(requirement.raw_stock_id), shop_id: shopId }).first();
       if (!stock) continue;
-      const latestBatch = await trx('raw_stock_batches').where({ raw_stock_id: stock.id, shop_id: shopId }).orderBy('created_at', 'desc').first();
-      total += (Number(requirement.quantity || 0) / Number(stock.conversion_factor || 1)) * Number(latestBatch?.buying_price || 0);
+      let remaining = Number(requirement.quantity || 0) / Number(stock.conversion_factor || 1);
+      const batches = await trx('raw_stock_batches').where({ raw_stock_id: stock.id, shop_id: shopId }).andWhere('quantity', '>', 0)
+        .orderBy([{ column: 'created_at', order: 'asc' }, { column: 'id', order: 'asc' }]);
+      for (const batch of batches) {
+        if (remaining <= 0.000001) break;
+        const take = Math.min(remaining, Number(batch.quantity));
+        total += take * Number(batch.buying_price || 0);
+        remaining -= take;
+      }
     }
     return total;
   }
@@ -258,22 +266,23 @@ class SalesService {
     }
   }
 
-  async deductIngredientRequirements(trx, requirements, quantity, shopId) {
+  async deductIngredientRequirements(trx, requirements, quantity, shopId, consumption = {}) {
     const totals = new Map();
     for (const req of requirements) totals.set(req.raw_stock_id, (totals.get(req.raw_stock_id) || 0) + Number(req.quantity || 0) * quantity);
+    let totalCost = 0;
     for (const [rawStockId, usageQuantity] of totals) {
       const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).first();
+      if (!stock) throw new Error('An ingredient configured for this product no longer exists.');
+      if (!Number.isFinite(Number(stock.conversion_factor)) || Number(stock.conversion_factor) <= 0) throw new Error(`Ingredient "${stock.name}" has an invalid conversion factor.`);
       const totalNeeded = usageQuantity / Number(stock.conversion_factor || 1);
-      let remaining = totalNeeded;
-      const batches = await trx('raw_stock_batches').where({ raw_stock_id: rawStockId, shop_id: shopId }).andWhere('quantity', '>', 0).orderBy('created_at', 'asc');
-      for (const batch of batches) {
-        if (remaining <= 0) break;
-        const take = Math.min(remaining, Number(batch.quantity));
-        await trx('raw_stock_batches').where({ id: batch.id }).update({ quantity: db.raw('quantity - ?', [take]) });
-        remaining -= take;
-      }
-      await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).update({ current_stock: db.raw('current_stock - ?', [totalNeeded]) });
+      const result = await inventoryCostingService.consumeRawFifo(trx, {
+        shopId, rawStockId, quantity: totalNeeded,
+        saleId: consumption.saleId,
+        saleItemId: consumption.saleItemId
+      });
+      totalCost += result.totalCost;
     }
+    return Number(totalCost.toFixed(2));
   }
 
   getSnapshotRequirements(item) {
@@ -945,12 +954,14 @@ class SalesService {
             continue;
           }
           if (item.ingredient_requirements) {
-            await trx('sale_items').insert({
+            const [saleItemRow] = await trx('sale_items').insert({
               sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
-              quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: item.cost_price || 0,
+              quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: 0,
               special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
-            });
-            await this.deductIngredientRequirements(trx, item.ingredient_requirements, item.quantity, shopId);
+            }).returning('id');
+            const saleItemId = typeof saleItemRow === 'object' ? saleItemRow.id : saleItemRow;
+            const actualCost = await this.deductIngredientRequirements(trx, item.ingredient_requirements, item.quantity, shopId, { saleId, saleItemId });
+            await trx('sale_items').where({ id: saleItemId, sale_id: saleId }).update({ buying_price_at_sale: Number((actualCost / item.quantity).toFixed(2)) });
             continue;
           }
           // Recipe Stock Deduction
@@ -960,34 +971,19 @@ class SalesService {
           const activeLinks = links.filter(l => !l.variant_name || variantNames.includes(l.variant_name));
 
           if (activeLinks.length > 0) {
-            await trx('sale_items').insert({
+            const [saleItemRow] = await trx('sale_items').insert({
               sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
-              quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: item.product.buying_price || 0,
+              quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: 0,
               special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
-            });
+            }).returning('id');
+            const saleItemId = typeof saleItemRow === 'object' ? saleItemRow.id : saleItemRow;
+            let actualCost = 0;
 
             for (const link of activeLinks) {
               const ingredients = await trx('recipe_ingredients').where({ recipe_id: link.recipe_id });
-              for (const ing of ingredients) {
-                const rs = await trx('raw_stocks').where({ id: ing.raw_stock_id }).first();
-                const factor = rs.conversion_factor || 1;
-                const totalNeeded = (ing.quantity * item.quantity) / factor;
-
-                let remaining = totalNeeded;
-                const batches = await trx('raw_stock_batches')
-                  .where({ raw_stock_id: ing.raw_stock_id, shop_id: shopId })
-                  .andWhere('quantity', '>', 0)
-                  .orderBy('created_at', 'asc');
-
-                for (const b of batches) {
-                  if (remaining <= 0) break;
-                  const take = Math.min(remaining, b.quantity);
-                  await trx('raw_stock_batches').where({ id: b.id }).update({ quantity: db.raw('quantity - ?', [take]) });
-                  remaining -= take;
-                }
-                await trx('raw_stocks').where({ id: ing.raw_stock_id }).update({ current_stock: db.raw('current_stock - ?', [totalNeeded]) });
-              }
+              actualCost += await this.deductIngredientRequirements(trx, ingredients, item.quantity, shopId, { saleId, saleItemId });
             }
+            await trx('sale_items').where({ id: saleItemId, sale_id: saleId }).update({ buying_price_at_sale: Number((actualCost / item.quantity).toFixed(2)) });
           } else {
             // Packaged product stock deduction (FIFO)
             const batches = await trx('product_batches')
@@ -1242,6 +1238,8 @@ class SalesService {
       // 2. Restore Stock for Old Items
       for (const item of oldItems) {
         if (item.product_id) {
+          const restoredFromAllocations = await inventoryCostingService.restoreSaleItem(trx, { shopId, saleItemId: item.id });
+          if (restoredFromAllocations) continue;
           if (item.stock_variant_id) {
             await trx('product_stock_variants').where({ id: item.stock_variant_id }).increment('stock', item.quantity);
             await trx('products').where({ id: item.product_id }).increment('stock', item.quantity);
@@ -1417,12 +1415,14 @@ class SalesService {
              continue;
            }
            if (item.ingredient_requirements) {
-             await trx('sale_items').insert({
+             const [saleItemRow] = await trx('sale_items').insert({
                sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
-               quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: item.cost_price || 0,
+               quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: 0,
                special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
-             });
-             await this.deductIngredientRequirements(trx, item.ingredient_requirements, item.quantity, shopId);
+             }).returning('id');
+             const saleItemId = typeof saleItemRow === 'object' ? saleItemRow.id : saleItemRow;
+             const actualCost = await this.deductIngredientRequirements(trx, item.ingredient_requirements, item.quantity, shopId, { saleId, saleItemId });
+             await trx('sale_items').where({ id: saleItemId, sale_id: saleId }).update({ buying_price_at_sale: Number((actualCost / item.quantity).toFixed(2)) });
              continue;
            }
            const variantNames = item.variants_json ? JSON.parse(item.variants_json).map(v => v.name || v) : [];
@@ -1430,29 +1430,19 @@ class SalesService {
            const activeLinks = links.filter(l => !l.variant_name || variantNames.includes(l.variant_name));
 
            if (activeLinks.length > 0) {
-             await trx('sale_items').insert({
+             const [saleItemRow] = await trx('sale_items').insert({
                sale_id: saleId, product_id: item.product.id, parent_id: item.parent_id || null,
-               quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: item.product.buying_price || 0,
+               quantity: item.quantity, price_at_sale: priceAtSale, buying_price_at_sale: 0,
                special_instructions: item.special_instructions, variants_json: item.variants_json, addons_json: item.addons_json
-             });
+             }).returning('id');
+             const saleItemId = typeof saleItemRow === 'object' ? saleItemRow.id : saleItemRow;
+             let actualCost = 0;
 
              for (const link of activeLinks) {
                const ingredients = await trx('recipe_ingredients').where({ recipe_id: link.recipe_id });
-               for (const ing of ingredients) {
-                 const rs = await trx('raw_stocks').where({ id: ing.raw_stock_id }).first();
-                 const factor = rs.conversion_factor || 1;
-                 const totalNeeded = (ing.quantity * item.quantity) / factor;
-                 let remaining = totalNeeded;
-                 const batches = await trx('raw_stock_batches').where({ raw_stock_id: ing.raw_stock_id, shop_id: shopId }).andWhere('quantity', '>', 0).orderBy('created_at', 'asc');
-                 for (const b of batches) {
-                   if (remaining <= 0) break;
-                   const take = Math.min(remaining, b.quantity);
-                   await trx('raw_stock_batches').where({ id: b.id }).update({ quantity: db.raw('quantity - ?', [take]) });
-                   remaining -= take;
-                 }
-                 await trx('raw_stocks').where({ id: ing.raw_stock_id }).update({ current_stock: db.raw('current_stock - ?', [totalNeeded]) });
-               }
+               actualCost += await this.deductIngredientRequirements(trx, ingredients, item.quantity, shopId, { saleId, saleItemId });
              }
+             await trx('sale_items').where({ id: saleItemId, sale_id: saleId }).update({ buying_price_at_sale: Number((actualCost / item.quantity).toFixed(2)) });
            } else {
              const batches = await trx('product_batches').where({ product_id: item.product.id, shop_id: shopId }).andWhere('quantity', '>', 0).orderBy('created_at', 'asc');
              for (const b of batches) {

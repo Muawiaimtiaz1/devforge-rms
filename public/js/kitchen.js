@@ -1092,7 +1092,11 @@ function buildWasteSourceOptions(context, sourceType) {
   const recentReturns = Array.isArray(context.recentReturns) ? context.recentReturns : [];
 
   if (sourceType === "raw_ingredient") {
-    return rawStocks.map((item) => buildWasteOption(`raw:${item.id}`, `${item.name} (${Number(item.current_stock || 0)} ${item.unit || "unit"})`, { unit: item.unit || "unit" }));
+    return rawStocks.map((item) => {
+      const usageUnit = item.usage_unit || item.unit || "unit";
+      const available = Number(item.current_stock || 0) * Number(item.conversion_factor || 1);
+      return buildWasteOption(`raw:${item.id}`, `${item.name} (${Number(available.toFixed(3))} ${usageUnit})`, { unit: usageUnit });
+    });
   }
 
   if (sourceType === "product") {
@@ -1223,7 +1227,7 @@ async function renderWasteManagement() {
     const tableRows = wasteRows.map((row) => {
       const sourceType = wasteSourceLabel(row.source_type || "product");
       const tone = row.source_type === "order" ? "blue" : row.source_type === "return" ? "amber" : row.recovery_status === "recoverable" ? "emerald" : "rose";
-      const quantity = `${Number(row.quantity || 0).toFixed(2)}${row.unit ? ` ${escapeWasteValue(row.unit)}` : ""}`;
+      const quantity = `${Number(Number(row.quantity || 0).toFixed(3))}${row.unit ? ` ${escapeWasteValue(row.unit)}` : ""}`;
       return `
         <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.01]">
           <td class="px-6 py-4 text-xs font-bold text-slate-900 dark:text-white">${formatWasteDateTime(row.created_at)}</td>
@@ -1430,6 +1434,7 @@ async function showWasteLogModal(prefill = {}) {
       await api("/api/waste", "POST", {
         source_type: sourceType,
         quantity: qty,
+        unit: document.getElementById("waste-unit").textContent,
         stock_action: $c("waste-stock-action").value,
         reason_code: $c("waste-reason-code").value,
         recovery_status: $c("waste-recovery-status").value,

@@ -13,6 +13,7 @@ const { ensureDocumentsSchema } = require('../src/modules/documents/documents.mi
 const { ensureStaffActivitySchema } = require('../src/modules/staff-activity/staff-activity.migration');
 const { ensureReleaseHardeningSchema } = require('../src/modules/release-hardening/release-hardening.migration');
 const { ensureNotificationPreferencesSchema } = require('../src/modules/notification-preferences/notification-preferences.migration');
+const { ensureInventoryCostingSchema } = require('../src/modules/inventory/inventory-costing.migration');
 
 async function initPostgres() {
   if (process.env.DB_CLIENT !== "postgres") return;
@@ -80,6 +81,7 @@ async function initPostgres() {
     await ensureStaffActivitySchema(query);
     await ensureReleaseHardeningSchema(query);
     await ensureNotificationPreferencesSchema(query);
+    await ensureInventoryCostingSchema(query);
 
     // 2. Check if any user exists (to ensure we have an admin)
     const userCheck = await query("SELECT id FROM users LIMIT 1");

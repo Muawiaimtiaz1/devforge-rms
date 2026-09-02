@@ -2,6 +2,7 @@ const express = require('express');
 const { getSqlite, getPostgres, usePostgres } = require('../db/runtime');
 const { requireAuth } = require('../middleware/auth');
 const wasteService = require('../services/WasteService');
+const { normalizeUsageRestock } = require('../src/modules/inventory/restock-units');
 const router = express.Router();
 
 function ingredientCode(value) {
@@ -254,7 +255,7 @@ router.patch('/:id/details', requireAuth, async (req, res) => {
 
 // PATCH /api/raw-stock/:id/stock
 router.patch('/:id/stock', requireAuth, async (req, res) => {
-    const { delta, buying_price, expiry_date } = req.body;
+    const { delta, buying_price, quantity_usage_unit, total_cost, expiry_date } = req.body;
     const stockId = parseInt(req.params.id);
     const shopId = req.session.user.shop_id;
     const isPostgres = usePostgres();
@@ -264,15 +265,21 @@ router.patch('/:id/stock', requireAuth, async (req, res) => {
         const performUpdate = async (client) => {
             let stock;
             if (isPostgres) {
-                const { rows } = await client.query('SELECT current_stock FROM raw_stocks WHERE id = $1 AND shop_id = $2', [stockId, shopId]);
+                const { rows } = await client.query('SELECT current_stock, unit, usage_unit, conversion_factor FROM raw_stocks WHERE id = $1 AND shop_id = $2 FOR UPDATE', [stockId, shopId]);
                 stock = rows[0];
             } else {
-                stock = client.prepare('SELECT current_stock FROM raw_stocks WHERE id = ? AND shop_id = ?').get(stockId, shopId);
+                stock = client.prepare('SELECT current_stock, unit, usage_unit, conversion_factor FROM raw_stocks WHERE id = ? AND shop_id = ?').get(stockId, shopId);
             }
             if (!stock) throw new Error('Ingredient not found');
 
-            const diff = parseFloat(delta || 0);
-            const price = parseFloat(buying_price || 0);
+            const usesSmallUnitInput = quantity_usage_unit !== undefined || total_cost !== undefined;
+            const normalized = usesSmallUnitInput
+                ? normalizeUsageRestock({ quantityUsageUnit: quantity_usage_unit, totalCost: total_cost, conversionFactor: stock.conversion_factor })
+                : null;
+            const diff = normalized ? normalized.quantity : parseFloat(delta || 0);
+            const price = normalized ? normalized.buyingPrice : parseFloat(buying_price || 0);
+            if (!Number.isFinite(diff) || diff === 0) throw new Error('Stock quantity must be a non-zero number.');
+            if (!Number.isFinite(price) || price < 0) throw new Error('Buying price cannot be negative.');
 
             if (diff > 0) {
                 if (isPostgres) await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES ($1, $2, $3, $4, $5)', [stockId, shopId, price, diff, expiry]);
