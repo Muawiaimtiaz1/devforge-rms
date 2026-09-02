@@ -117,6 +117,10 @@ function Lobby() {
   return (
     <main className="react-lobby">
       <header className="lobby-topbar">
+        <a className="lobby-brand-logo" href="/app/lobby" aria-label="Orbit OS home">
+          <img className="theme-logo-light" src="/icons/logo-light.png" alt="Orbit OS" />
+          <img className="theme-logo-dark" src="/icons/logo-dark.png" alt="Orbit OS" />
+        </a>
         <div className="lobby-controls">
           <div className="lobby-user-copy"><strong>{user.name || user.username}</strong><span>{user.role}</span></div>
           {modules.some((module) => module.id === 'notifications') && <button className="header-icon-button notification-button" title="Notifications" onClick={() => openModule(modules.find((module) => module.id === 'notifications'))}>

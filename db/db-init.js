@@ -65,10 +65,12 @@ async function initPostgres() {
         sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
         kitchen_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         status TEXT NOT NULL DEFAULT 'pending',
+        queue_kind TEXT NOT NULL DEFAULT 'new',
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (sale_id, kitchen_id)
       )
     `);
+    await query("ALTER TABLE kitchen_order_statuses ADD COLUMN IF NOT EXISTS queue_kind TEXT NOT NULL DEFAULT 'new'");
     await query("CREATE INDEX IF NOT EXISTS idx_kitchen_order_statuses_shop_id ON kitchen_order_statuses(shop_id)");
     await ensureStaffProfileSchema(query);
     await ensureStaffAccessSchema(query);

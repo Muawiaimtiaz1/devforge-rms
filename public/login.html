@@ -115,10 +115,10 @@
 <body
   class="min-h-screen flex items-center justify-center font-sans antialiased text-slate-900 dark:text-slate-100 overflow-x-hidden md:overflow-hidden relative selection:bg-indigo-500/30">
 
-  <div id="app-launch-screen" role="status" aria-label="DevForge OS is starting">
+  <div id="app-launch-screen" role="status" aria-label="Orbit OS is starting">
     <div class="app-launch__content">
-      <div class="app-launch__icon-wrap"><img src="/icons/icon-192.png" alt="" class="app-launch__icon" /></div>
-      <div class="app-launch__brand">DevForge <span>OS</span></div>
+      <div class="app-launch__icon-wrap orbit-logo-tile"><img src="/icons/logo-light.png" alt="" class="app-launch__icon block dark:hidden" /><img src="/icons/logo-dark.png" alt="" class="app-launch__icon hidden dark:block" /></div>
+      <div class="app-launch__brand">ORBIT <span>OS</span></div>
       <div class="app-launch__tagline">Restaurant management, refined</div>
       <div class="app-launch__progress" aria-hidden="true"></div>
     </div>
@@ -150,9 +150,12 @@
       class="w-full md:w-5/12 px-6 pt-14 pb-3 md:p-12 border-b-0 md:border-r border-slate-200/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden bg-transparent md:bg-gradient-to-br md:from-white/40 md:to-white/10 dark:md:from-slate-900/40 dark:md:to-slate-900/10 backdrop-blur-sm md:rounded-l-[2rem] z-10">
 
       <div class="relative z-10 flex flex-col md:flex-row items-center gap-3 md:gap-4 mb-3 md:mb-0 text-center md:text-left">
-        <img src="/icons/icon-192.png" alt="DevForge OS Logo" class="h-20 w-20 md:h-16 md:w-16 rounded-[1.4rem] shadow-2xl shadow-violet-950/50" />
+        <span class="orbit-logo-tile h-20 w-20 md:h-16 md:w-16 shrink-0 inline-flex items-center justify-center">
+          <img src="/icons/logo-light.png" alt="Orbit OS logo" class="h-full w-full object-contain block dark:hidden" />
+          <img src="/icons/logo-dark.png" alt="Orbit OS logo" class="h-full w-full object-contain hidden dark:block" />
+        </span>
         <span class="text-2xl font-black tracking-tighter text-slate-900 dark:text-slate-900 md:dark:text-white uppercase">
-          DevForge<span class="text-indigo-600 dark:text-indigo-400"> OS</span>
+          ORBIT<span class="text-indigo-600 dark:text-indigo-400"> OS</span>
         </span>
       </div>
 

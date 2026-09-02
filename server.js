@@ -207,6 +207,10 @@ function sendNoStorePage(res, fileName) {
 }
 
 app.get("/", (req, res) => {
+  res.redirect(302, "/app/login");
+});
+
+app.get("/legacy-login", (req, res) => {
   sendNoStorePage(res, "login.html");
 });
 

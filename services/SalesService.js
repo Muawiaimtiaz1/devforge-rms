@@ -6,6 +6,7 @@ const infrastructureService = require('./InfrastructureService');
 const cashDrawerService = require('./CashDrawerService');
 const inventoryCostingService = require('../src/modules/inventory/inventory-costing.service');
 const { effectiveKitchenStatuses } = require('../utils/kitchen-status');
+const { classifyAffectedKitchenQueues } = require('../utils/kitchen-queue');
 const { z } = require('zod');
 
 // Validation Schemas
@@ -1511,6 +1512,7 @@ class SalesService {
         itemChanges,
         shopId,
       );
+      const affectedKitchenQueues = classifyAffectedKitchenQueues(oldKitchenIds, affectedKitchenIds);
 
       // Reopen only the kitchens that received an item change. Other kitchens
       // keep their completed status and do not see the order as new again.
@@ -1521,15 +1523,17 @@ class SalesService {
           kitchen_completed_at: null,
           served_at: null,
         });
-        for (const kitchenId of affectedKitchenIds) {
+        for (const { kitchenId, queueKind } of affectedKitchenQueues) {
           await trx('kitchen_order_statuses').insert({
             sale_id: saleId,
             shop_id: shopId,
             kitchen_id: kitchenId,
             status: 'pending',
+            queue_kind: queueKind,
             updated_at: trx.fn.now(),
           }).onConflict(['sale_id', 'kitchen_id']).merge({
             status: 'pending',
+            queue_kind: queueKind,
             updated_at: trx.fn.now(),
           });
         }

@@ -781,6 +781,7 @@ CREATE TABLE IF NOT EXISTS kitchen_order_statuses (
   sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
   kitchen_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'pending',
+  queue_kind TEXT NOT NULL DEFAULT 'new',
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (sale_id, kitchen_id)
 );

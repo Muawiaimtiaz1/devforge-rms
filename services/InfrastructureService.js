@@ -37,9 +37,13 @@ async function ensureKitchenWorkflowSchema() {
         table.integer('sale_id').notNullable().references('id').inTable('sales').onDelete('CASCADE');
         table.integer('kitchen_id').notNullable().references('id').inTable('users').onDelete('CASCADE');
         table.string('status').notNullable().defaultTo('pending');
+        table.string('queue_kind').notNullable().defaultTo('new');
         table.timestamp('updated_at').defaultTo(db.fn.now());
         table.unique(['sale_id', 'kitchen_id']);
       });
+    }
+    if (!(await db.schema.hasColumn('kitchen_order_statuses', 'queue_kind'))) {
+      await db.schema.alterTable('kitchen_order_statuses', table => table.string('queue_kind').notNullable().defaultTo('new'));
     }
     const hasUpdatedAt = await db.schema.hasColumn('sales', 'updated_at');
     await db('sales')
@@ -251,8 +255,10 @@ class InfrastructureService {
     if (kitchenUserId) {
       query.leftJoin('kitchen_order_statuses as selected_kos', function () {
         this.on('selected_kos.sale_id', '=', 's.id')
+          .andOn('selected_kos.shop_id', '=', 's.shop_id')
           .andOn('selected_kos.kitchen_id', '=', db.raw('?', [kitchenUserId]));
       });
+      query.select('selected_kos.queue_kind as kitchen_queue_kind');
       effectiveStatusSql = `CASE
         WHEN s.order_status IN ('ready', 'served', 'completed') THEN s.order_status
         WHEN selected_kos.status = 'completed' THEN 'ready'
@@ -261,22 +267,24 @@ class InfrastructureService {
     }
 
     if (view === 'new') {
-      query.whereRaw(`${effectiveStatusSql} = ?`, ['pending'])
-        .whereNotExists(function () {
-          this.select(db.raw('1'))
-            .from('kitchen_order_updates as new_kou')
-            .whereRaw('new_kou.sale_id = s.id')
-            .whereRaw('new_kou.shop_id = s.shop_id');
-        });
+      query.whereRaw(`${effectiveStatusSql} = ?`, ['pending']);
+      if (kitchenUserId) query.whereRaw("COALESCE(selected_kos.queue_kind, 'new') = 'new'");
+      else query.whereNotExists(function () {
+        this.select(db.raw('1'))
+          .from('kitchen_order_updates as new_kou')
+          .whereRaw('new_kou.sale_id = s.id')
+          .whereRaw('new_kou.shop_id = s.shop_id');
+      });
     }
     else if (view === 'updated') {
-      query.whereRaw(`${effectiveStatusSql} = ?`, ['pending'])
-        .whereExists(function () {
-          this.select(db.raw('1'))
-            .from('kitchen_order_updates as updated_kou')
-            .whereRaw('updated_kou.sale_id = s.id')
-            .whereRaw('updated_kou.shop_id = s.shop_id');
-        });
+      query.whereRaw(`${effectiveStatusSql} = ?`, ['pending']);
+      if (kitchenUserId) query.where('selected_kos.queue_kind', 'updated');
+      else query.whereExists(function () {
+        this.select(db.raw('1'))
+          .from('kitchen_order_updates as updated_kou')
+          .whereRaw('updated_kou.sale_id = s.id')
+          .whereRaw('updated_kou.shop_id = s.shop_id');
+      });
     }
     else if (view === 'preparing') query.whereRaw(`${effectiveStatusSql} = ?`, ['preparing']);
     else if (view === 'completed') {
@@ -384,7 +392,7 @@ class InfrastructureService {
       }
 
       if (kitchenUserId && routedKitchenIds.includes(Number(kitchenUserId))) {
-        const kitchenStatus = await db('kitchen_order_statuses').where({ sale_id: order.id, kitchen_id: kitchenUserId }).first();
+        const kitchenStatus = await db('kitchen_order_statuses').where({ shop_id: shopId, sale_id: order.id, kitchen_id: kitchenUserId }).first();
         if (kitchenStatus && !['served', 'completed'].includes(order.order_status)) {
           order.order_status = kitchenStatus.status === 'completed' ? 'ready' : kitchenStatus.status;
         }
@@ -409,6 +417,7 @@ class InfrastructureService {
       } catch (_) {
         order.kitchen_changes = [];
       }
+      if (kitchenUserId && order.kitchen_queue_kind !== 'updated') order.kitchen_changes = [];
       if (kitchenUserId && visibleItems.length === 0 && !(view === 'updated' && order.kitchen_changes.length)) continue;
       if (view === 'updated' && order.kitchen_changes.length === 0) continue;
       visibleOrders.push(order);
