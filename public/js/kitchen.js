@@ -432,7 +432,7 @@ function showAddRawStockModal() {
           </div>
           <div>
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Conv. Factor (1 Large = ? Small)</label>
-            <input id="rs-factor" type="number" value="1000" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:border-indigo-500 transition-all outline-none text-sm font-bold" />
+            <input id="rs-factor" type="number" min="1" step="1" value="1000" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-transparent focus:border-indigo-500 transition-all outline-none text-sm font-bold" />
           </div>
         </div>
         <div class="grid grid-cols-2 gap-4">
@@ -580,7 +580,7 @@ function showEditRawStockModal(id) {
         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Ingredient ID</label><input id="ers-code" value="${escapeWasteValue(stock.ingredient_code || `ING-${String(stock.id).padStart(5, '0')}`)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold uppercase" /></div>
         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Purchase Unit</label><select id="ers-unit" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold">${unitOptions.map(unit => `<option value="${unit}" ${stock.unit === unit ? 'selected' : ''}>${unit}</option>`).join('')}</select></div>
         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Usage Unit</label><select id="ers-usage-unit" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold">${usageOptions.map(unit => `<option value="${unit}" ${stock.usage_unit === unit ? 'selected' : ''}>${unit}</option>`).join('')}</select></div>
-        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Conversion Factor</label><input id="ers-factor" type="number" min="0.000001" step="0.001" value="${Number(stock.conversion_factor || 1)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
+        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Conversion Factor</label><input id="ers-factor" type="number" min="1" step="1" value="${Number(stock.conversion_factor || 1)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Minimum Stock</label><input id="ers-min" type="number" min="0" step="0.001" value="${Number(stock.min_stock_level || 0)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
         <div class="sm:col-span-2"><label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Current Cost Price (${escapeWasteValue(stock.unit)})</label><input id="ers-cost" type="number" min="0" step="0.01" value="${Number(stock.buying_price || 0)}" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
         <div class="sm:col-span-2"><div class="flex items-center justify-between mb-2"><label class="text-[10px] font-black text-slate-400 uppercase">Batch Expiry Dates</label><span class="text-[10px] text-slate-400">Optional</span></div>
