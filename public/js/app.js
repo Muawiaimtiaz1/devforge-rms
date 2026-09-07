@@ -4751,6 +4751,10 @@ async function renderPOS() {
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M12 5v14m7-7H5"/></svg>
                 New Order
               </button>` : ''}
+              ${currentUserHasPermission('orders.take_payment') ? `<button onclick="openRecordTipModal()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M12 6v12m4-9.5c0-1.38-1.79-2.5-4-2.5S8 7.12 8 8.5s1.79 2.5 4 2.5 4 1.12 4 2.5-1.79 2.5-4 2.5-4-1.12-4-2.5"/></svg>
+                Record Tip
+              </button>` : ''}
               <div class="relative">
                 <input type="text" id="pos-orders-search" oninput="renderPOSOrders()" placeholder="Search Order ID..." class="px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold focus:outline-none focus:border-indigo-500 w-40 transition-all" />
                 <svg class="w-3.5 h-3.5 absolute right-3 top-2.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -5623,6 +5627,7 @@ async function viewOrderItems(id, readOnly = false) {
     openModal(`Order #${sale.order_number || id} - Details`, `
       <div class="space-y-4">
         ${orderInfoHtml}
+        ${Number(sale.tip_amount || 0) > 0 ? `<div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 font-bold text-emerald-700 dark:text-emerald-300">Tip received: Rs. ${Number(sale.tip_amount).toFixed(2)}</div>` : ""}
         ${kitchenStatusesHtml}
         <div class="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[60vh] overflow-y-auto">
           ${itemsHtml}
@@ -5860,6 +5865,140 @@ async function completeOrderFromPOS(id, skipConfirm = false) {
   }
 }
 
+let _tipOrderOptions = [];
+let _tipSelectedOrder = null;
+let _tipOrderSearchTimer = null;
+
+function openRecordTipModal() {
+  if (!currentUserHasPermission('orders.take_payment')) return toast('Payment permission is required to record tips.', 'error');
+  _tipOrderOptions = [];
+  _tipSelectedOrder = null;
+  openModal('Record Tip', `
+    <div class="space-y-5">
+      <div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+        <h4 class="text-sm font-black text-emerald-800 dark:text-emerald-300">Completed paid orders</h4>
+        <p class="mt-1 text-xs font-medium text-emerald-700/70 dark:text-emerald-400/70">Search today's completed orders that do not already have a tip.</p>
+      </div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+        <div class="relative">
+          <label for="tip-order-search" class="mb-1.5 block text-xs font-bold text-slate-500">Order, table, or customer</label>
+          <input id="tip-order-search" type="search" autocomplete="off" placeholder="Search completed orders…" oninput="scheduleTipOrderSearch()" onfocus="renderTipOrderOptions()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+          <div id="tip-order-options" class="absolute z-[140] mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
+        </div>
+        <div>
+          <label for="tip-table-filter" class="mb-1.5 block text-xs font-bold text-slate-500">Table</label>
+          <select id="tip-table-filter" onchange="loadTipOrderOptions()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="">All tables</option></select>
+        </div>
+      </div>
+      <div id="tip-order-summary" class="rounded-2xl border border-dashed border-slate-300 px-4 py-7 text-center text-sm font-medium text-slate-400 dark:border-slate-700">Select a completed paid order</div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label for="tip-amount" class="mb-1.5 block text-xs font-bold text-slate-500">Tip received</label>
+          <div class="relative"><span class="absolute left-4 top-3 text-sm font-black text-slate-400">Rs.</span><input id="tip-amount" type="number" min="0.01" step="0.01" inputmode="decimal" oninput="updateRecordTipButton()" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-lg font-black text-emerald-600 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-emerald-400" /></div>
+        </div>
+        <div>
+          <label for="tip-payment-method" class="mb-1.5 block text-xs font-bold text-slate-500">Tip payment method</label>
+          <select id="tip-payment-method" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="cash">Cash</option><option value="card">Card</option><option value="online">Online</option></select>
+        </div>
+      </div>
+      <button id="record-tip-submit" type="button" onclick="submitRecordedTip()" disabled class="w-full rounded-xl bg-emerald-600 py-3.5 text-sm font-black text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">Confirm Record Tip</button>
+    </div>
+  `, 'max-w-lg');
+  loadTipOrderOptions(true);
+}
+
+function scheduleTipOrderSearch() {
+  clearTimeout(_tipOrderSearchTimer);
+  _tipSelectedOrder = null;
+  updateRecordTipSelection();
+  _tipOrderSearchTimer = setTimeout(() => loadTipOrderOptions(), 250);
+}
+
+async function loadTipOrderOptions(loadTables = false) {
+  const search = document.getElementById('tip-order-search')?.value.trim() || '';
+  const tableId = document.getElementById('tip-table-filter')?.value || '';
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (tableId) params.set('table_id', tableId);
+  const options = document.getElementById('tip-order-options');
+  if (options) { options.classList.remove('hidden'); options.innerHTML = '<div class="px-4 py-5 text-center text-xs font-bold text-slate-400">Loading completed orders…</div>'; }
+  try {
+    const data = await api(`/api/tips/options?${params}`);
+    _tipOrderOptions = Array.isArray(data.orders) ? data.orders : [];
+    if (loadTables) {
+      const table = document.getElementById('tip-table-filter');
+      if (table) table.innerHTML = '<option value="">All tables</option>' + (data.tables || []).map(item => `<option value="${Number(item.id)}">Table ${escapeOrderValue(item.table_number)}</option>`).join('');
+    }
+    renderTipOrderOptions();
+  } catch (error) {
+    if (options) options.innerHTML = `<div class="px-4 py-5 text-center text-xs font-bold text-rose-500">${escapeOrderValue(error.message)}</div>`;
+  }
+}
+
+function tipOrderContext(order) {
+  if (order.order_type === 'dine_in') return `Table ${escapeOrderValue(order.table_number || 'N/A')}`;
+  if (order.order_type === 'delivery') return `Delivery${order.customer_name ? ` · ${escapeOrderValue(order.customer_name)}` : ''}`;
+  return `Takeaway${order.customer_name ? ` · ${escapeOrderValue(order.customer_name)}` : ''}`;
+}
+
+function renderTipOrderOptions() {
+  const options = document.getElementById('tip-order-options');
+  if (!options) return;
+  options.classList.remove('hidden');
+  options.innerHTML = _tipOrderOptions.length ? _tipOrderOptions.map(order => `
+    <button type="button" onclick="selectTipOrder(${Number(order.id)})" class="w-full border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-emerald-50 dark:border-slate-800 dark:hover:bg-emerald-950/30">
+      <span class="flex items-center justify-between gap-3"><strong class="text-sm text-slate-900 dark:text-white">Order #${escapeOrderValue(order.order_number || order.id)}</strong><strong class="text-sm text-emerald-600 dark:text-emerald-400">${formatRegisterMoney(order.total)}</strong></span>
+      <span class="mt-1 block text-xs font-medium text-slate-500">${tipOrderContext(order)}</span>
+    </button>`).join('') : '<div class="px-4 py-8 text-center text-xs font-bold text-slate-400">No eligible completed paid orders found today.</div>';
+}
+
+function selectTipOrder(id) {
+  _tipSelectedOrder = _tipOrderOptions.find(order => Number(order.id) === Number(id)) || null;
+  const search = document.getElementById('tip-order-search');
+  if (search && _tipSelectedOrder) search.value = `Order #${_tipSelectedOrder.order_number || _tipSelectedOrder.id} · ${_tipSelectedOrder.order_type === 'dine_in' ? `Table ${_tipSelectedOrder.table_number || 'N/A'}` : _tipSelectedOrder.order_type}`;
+  document.getElementById('tip-order-options')?.classList.add('hidden');
+  updateRecordTipSelection();
+  document.getElementById('tip-amount')?.focus();
+}
+
+function updateRecordTipSelection() {
+  const summary = document.getElementById('tip-order-summary');
+  if (summary) summary.innerHTML = _tipSelectedOrder ? `
+    <div class="flex items-start justify-between gap-4 text-left"><div><div class="text-xs font-black uppercase tracking-wider text-emerald-600">Order #${escapeOrderValue(_tipSelectedOrder.order_number || _tipSelectedOrder.id)}</div><div class="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">${tipOrderContext(_tipSelectedOrder)}</div><div class="mt-1 text-xs text-slate-500">Bill paid by ${escapeOrderValue(_tipSelectedOrder.payment_method || 'cash')}</div></div><div class="text-right"><div class="text-xs font-bold text-slate-400">Bill total</div><div class="mt-1 text-xl font-black text-slate-900 dark:text-white">${formatRegisterMoney(_tipSelectedOrder.total)}</div></div></div>` : 'Select a completed paid order';
+  updateRecordTipButton();
+}
+
+function updateRecordTipButton() {
+  const amount = Number(document.getElementById('tip-amount')?.value || 0);
+  const button = document.getElementById('record-tip-submit');
+  if (button) button.disabled = !_tipSelectedOrder || !Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001;
+}
+
+async function submitRecordedTip() {
+  if (!_tipSelectedOrder) return toast('Select a completed paid order.', 'error');
+  const amount = Number(document.getElementById('tip-amount')?.value || 0);
+  if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001) return toast('Enter a valid tip with at most two decimal places.', 'error');
+  if (!(await ensureOpenShiftForPayment())) return;
+  const button = document.getElementById('record-tip-submit');
+  if (button) { button.disabled = true; button.textContent = 'Recording Tip…'; }
+  try {
+    await api(`/api/tips/${_tipSelectedOrder.id}`, 'POST', { amount, payment_method: document.getElementById('tip-payment-method')?.value || 'cash' });
+    closeModal();
+    toast(`Tip of ${formatRegisterMoney(amount)} recorded for order #${_tipSelectedOrder.order_number || _tipSelectedOrder.id}.`, 'success');
+    renderPOSOrders();
+  } catch (error) {
+    toast(error.message || 'Could not record the tip.', 'error');
+    if (button) { button.disabled = false; button.textContent = 'Confirm Record Tip'; }
+  }
+}
+
+function tipSummaryRows(summary) {
+  return '<div class="rounded-xl border border-emerald-200 p-4 text-sm dark:border-emerald-900">' +
+    '<div class="flex justify-between font-bold"><span>Tips Collected</span><span>' + formatRegisterMoney(summary.total_tips) + '</span></div>' +
+    '<div class="mt-2 text-xs text-slate-500">Cash ' + formatRegisterMoney(summary.cash_tips) +
+    ' | Card ' + formatRegisterMoney(summary.card_tips) + ' | Online ' + formatRegisterMoney(summary.online_tips) + '</div></div>';
+}
+
 async function showOrderCompleteModal(id) {
   if (!currentUserHasPermission('orders.take_payment') || !currentUserHasPermission('orders.complete')) {
     return toast('Payment and complete permissions are required for this action.', 'error');
@@ -5894,6 +6033,12 @@ async function showOrderCompleteModal(id) {
           <div id="op-phone-suggestions" class="hidden absolute z-[130] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
         </div>
       </div>
+      <div>
+        <label for="op-tip" class="block text-xs font-bold text-slate-500 mb-1">Tip Received</label>
+        <input id="op-tip" type="number" min="0" step="0.01" value="${Number(s.tip_amount || 0)}" ${Number(s.tip_amount || 0) > 0 ? 'readonly' : ''}
+          oninput="updateCompleteOrderSummary(${total})" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold" />
+        <p class="mt-1 text-xs text-slate-500">Enter the tip included in Amount Received. Any remaining extra money is change.</p>
+      </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
@@ -5902,7 +6047,7 @@ async function showOrderCompleteModal(id) {
             class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-bold text-xl text-emerald-600" />
           <div class="grid grid-cols-2 gap-2 mt-2">
             <button type="button" onclick="$c('op-received').value='0';updateCompleteOrderSummary(${total})" class="py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-black">Pay 0</button>
-            <button type="button" onclick="$c('op-received').value='${Number(total)}';updateCompleteOrderSummary(${total})" class="py-2 rounded-lg bg-emerald-600 text-white text-xs font-black">Pay Full</button>
+            <button type="button" onclick="$c('op-received').value=(${Number(total)} + Number($c('op-tip').value || 0)).toFixed(2);updateCompleteOrderSummary(${total})" class="py-2 rounded-lg bg-emerald-600 text-white text-xs font-black">Pay Full</button>
           </div>
         </div>
         <div>
@@ -5999,7 +6144,8 @@ function updateCompleteOrderSummary(total) {
   if (!receivedInp) return;
 
   const received = parseFloat(receivedInp.value) || 0;
-  const diff = received - total;
+  const tip = Number(document.getElementById('op-tip')?.value || 0);
+  const diff = (Math.round(received * 100) - Math.round(total * 100) - Math.round(tip * 100)) / 100;
 
   const dueRow = document.getElementById('oc-due-row');
   const dueVal = document.getElementById('oc-due');
@@ -6029,6 +6175,13 @@ async function updateAndCompleteOrder(id) {
   const customerName = nameEl.value.trim();
   const customerPhone = $c('op-phone').value.trim();
   const amountReceived = Math.max(parseFloat($c('op-received').value) || 0, 0);
+  const tipAmount = Number($c('op-tip')?.value || 0);
+  if (!Number.isFinite(tipAmount) || tipAmount < 0 || Math.abs(tipAmount * 100 - Math.round(tipAmount * 100)) > 0.00001) {
+    return toast('Enter a valid tip with at most two decimal places.', 'error');
+  }
+  if (Math.round(amountReceived * 100) < Math.round(Number(s.total || 0) * 100) + Math.round(tipAmount * 100) && tipAmount > 0) {
+    return toast('Amount received must cover the bill and tip.', 'error');
+  }
   const previousReceived = Number(s.amount_received || 0);
   const total = Number(s.total || 0);
   const fullyPaid = amountReceived >= total - 0.01;
@@ -6039,12 +6192,13 @@ async function updateAndCompleteOrder(id) {
     return toast('Customer name and phone are required when a balance remains unpaid', 'error');
   }
 
-  if (amountReceived > previousReceived + 0.01 && !(await ensureOpenShiftForPayment())) return;
+  if ((amountReceived > previousReceived + 0.01 || tipAmount > Number(s.tip_amount || 0)) && !(await ensureOpenShiftForPayment())) return;
 
   const data = {
     customer_id: window._completeOrderSelectedCustomer?.id || null,
     customer_name: customerName,
     customer_phone: customerPhone,
+    tip_amount: tipAmount,
     payment_method: $c('op-method')?.value || s.payment_method || 'cash'
   };
   if (Math.abs(amountReceived - previousReceived) > 0.01) data.amount_received = amountReceived;
@@ -7754,7 +7908,9 @@ async function printBill(saleId, isUnpaid = false) {
   };
   const method = methodMap[sale.payment_method] || sale.payment_method?.toUpperCase() || "Cash";
   const received = Math.max(0, Number(sale.amount_received || 0));
-  const remaining = grandTotal - received;
+  const tip = Number(sale.tip_amount || 0);
+  const standaloneTip = sale.tip_collection_mode === 'standalone';
+  const remaining = standaloneTip ? grandTotal - received : grandTotal + tip - received;
   const balanceDue = Math.max(remaining, 0);
   const receiptTitle = isUnpaid ? "Unpaid Bill" : "Customer Bill";
 
@@ -7944,9 +8100,11 @@ async function printBill(saleId, isUnpaid = false) {
         </div>
       ` : `
         <div><strong>Method:</strong> ${method}</div>
-        <div><strong>Received:</strong> Rs. ${received.toFixed(0)}</div>
+        ${tip > 0 ? `<div><strong>Tip received (${escapeOrderValue(sale.tip_payment_method || sale.payment_method || 'cash')}):</strong> Rs. ${tip.toFixed(2)}</div>` : ""}
+        <div><strong>Received:</strong> Rs. ${received.toFixed(2)}</div>
+        ${standaloneTip && tip > 0 ? `<div><strong>Total collected:</strong> Rs. ${(Math.min(received, grandTotal) + tip).toFixed(2)}</div>` : ""}
         ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> Rs. ${remaining.toFixed(0)}</div>` : ""}
-        ${remaining < 0 ? `<div class="bold"><strong>Change:</strong> Rs. ${Math.abs(remaining).toFixed(0)}</div>` : ""}
+        ${remaining <= 0 ? `<div class="bold"><strong>Change:</strong> Rs. ${Math.abs(remaining).toFixed(2)}</div>` : ""}
       `}
     </div>
 
@@ -8426,7 +8584,7 @@ function _renderSalesTable() {
              </div>
           </td>
           <td class="px-5 py-4 text-slate-700 dark:text-slate-200 font-bold">Rs. ${parseFloat(s.total || 0).toFixed(0)}</td>
-          <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">Rs. ${parseFloat(s.amount_received || 0).toFixed(0)}</td>
+          <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">Rs. ${parseFloat(s.amount_received || 0).toFixed(0)}${Number(s.tip_amount || 0) > 0 ? `<div class="text-xs text-slate-500">Tip: Rs. ${Number(s.tip_amount).toFixed(2)}</div>` : ""}</td>
           <td class="px-5 py-4">${salesPaymentMethodBadge(s.payment_method)}</td>
           <td class="px-5 py-4 font-black">
              ${isPending ? `<span class="text-rose-600 dark:text-rose-400">Rs. ${parseFloat(due).toFixed(0)}</span>` : `<span class="text-slate-400 dark:text-slate-600 font-normal">None</span>`}
@@ -11906,6 +12064,10 @@ async function renderRegister() {
         ${renderRegisterMetric("Expected Cash", summary.expected_balance, "emerald")}
         ${renderRegisterMetric("Expected Total", summary.expected_total, "indigo")}
         ${renderRegisterMetric("Opening Cash", summary.opening_balance, "indigo")}
+        ${renderRegisterMetric("Tips Collected", summary.total_tips, "emerald")}
+        ${renderRegisterMetric("Cash Tips", summary.cash_tips, "emerald")}
+        ${renderRegisterMetric("Card Tips", summary.card_tips, "emerald")}
+        ${renderRegisterMetric("Online Tips", summary.online_tips, "emerald")}
         ${renderRegisterMetric("Cash Sales", summary.net_cash_sales, "emerald")}
         ${renderRegisterMetric("Due Collections", summary.debt_collections, "blue")}
         ${renderRegisterMetric("Card Sales", summary.net_card_sales, "slate")}
@@ -12132,6 +12294,7 @@ async function openShiftSummaryModal() {
                 <span>Net Cash Sales</span>
                 <span>Rs. ${summary.net_cash_sales.toFixed(2)}</span>
             </div>
+            ${tipSummaryRows(summary)}
             ${summary.cash_drops > 0 ? `
             <div class="flex items-center justify-between p-4 rounded-xl bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-300 font-bold text-sm">
                 <span>Cash Drops (Manager)</span>
@@ -12384,6 +12547,7 @@ function openShiftClosedReport(summary, shiftId) {
       </div>
       <div class="space-y-2 text-sm font-bold">
         <div class="flex justify-between"><span>Opening Cash</span><span>Rs. ${Number(summary.opening_balance || 0).toFixed(2)}</span></div>
+        ${tipSummaryRows(summary)}
         <div class="flex justify-between"><span>Cash Sales</span><span>Rs. ${Number(summary.net_cash_sales || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Card Sales</span><span>Rs. ${Number(summary.net_card_sales || 0).toFixed(2)}</span></div>
         <div class="flex justify-between"><span>Online Sales</span><span>Rs. ${Number(summary.net_online_sales || 0).toFixed(2)}</span></div>
@@ -13331,7 +13495,8 @@ async function viewShiftAuditFlow(shiftId) {
     });
 
     timelineHtml += `</div></div>`;
-    document.getElementById("modal-body").innerHTML = timelineHtml;
+    const tipSummary = await api('/api/shifts/summary/' + shiftId);
+    document.getElementById("modal-body").innerHTML = tipSummaryRows(tipSummary) + timelineHtml;
   } catch (err) {
     document.getElementById("modal-body").innerHTML = `<div class="p-20 text-center text-rose-500 font-bold">Error: ${err.message}</div>`;
   }

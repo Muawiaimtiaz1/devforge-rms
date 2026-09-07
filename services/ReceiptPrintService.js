@@ -27,7 +27,7 @@ function parseJson(value, fallback) {
 }
 
 function formatMoney(value) {
-  return Number(value || 0).toFixed(0);
+  return Number(value || 0).toFixed(2);
 }
 
 function receiptTimeZone(value) {
@@ -175,9 +175,12 @@ function renderCustomerReceipt(details, options) {
   const taxPct = Number(sale.tax_percentage || 0);
   const taxAmt = (subtotal - discount) * (taxPct / 100);
   const received = Math.max(0, Number(sale.amount_received || 0));
-  const remaining = grandTotal - received;
+  const tip = Number(sale.tip_amount || 0);
+  const standaloneTip = sale.tip_collection_mode === 'standalone';
+  const remaining = standaloneTip ? grandTotal - received : grandTotal + tip - received;
   const methodMap = { cash: "Cash", card: "Card", online: "Online Transfer" };
   const method = methodMap[sale.payment_method] || String(sale.payment_method || "Cash").toUpperCase();
+  const tipMethod = methodMap[sale.tip_payment_method] || String(sale.tip_payment_method || sale.payment_method || "Cash").toUpperCase();
 
   return `
     <div class="receipt">
@@ -242,9 +245,11 @@ function renderCustomerReceipt(details, options) {
           </div>
         ` : `
           <div><strong>Method:</strong> ${escapeHtml(method)}</div>
+          ${tip > 0 ? `<div><strong>Tip received (${escapeHtml(tipMethod)}):</strong> Rs. ${tip.toFixed(2)}</div>` : ""}
           <div><strong>Received:</strong> Rs. ${formatMoney(received)}</div>
+          ${standaloneTip && tip > 0 ? `<div><strong>Total collected:</strong> Rs. ${formatMoney(Math.min(received, grandTotal) + tip)}</div>` : ""}
           ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> Rs. ${formatMoney(remaining)}</div>` : ""}
-          ${remaining < 0 ? `<div class="bold"><strong>Change:</strong> Rs. ${formatMoney(Math.abs(remaining))}</div>` : ""}
+          ${remaining <= 0 ? `<div class="bold"><strong>Change:</strong> Rs. ${formatMoney(Math.abs(remaining))}</div>` : ""}
         `}
       </div>
 

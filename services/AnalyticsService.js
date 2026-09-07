@@ -1,5 +1,6 @@
 const db = require('../db/knex');
 const brandService = require('./BrandService');
+const tipsService = require('../src/modules/tips/tips.service');
 
 class AnalyticsService {
   /**
@@ -747,6 +748,7 @@ class AnalyticsService {
         received_sales: Number(row.received_sales || 0),
         orders: Number(row.orders || 0)
       }));
+      const tips = await tipsService.summary({ shopId, bounds });
       const totalPaymentsReceived = staffPerformance.reduce((sum, row) => sum + row.received_sales, 0);
 
       return {
@@ -801,6 +803,8 @@ class AnalyticsService {
         recentSales,
         staffPerformance,
         totalPaymentsReceived,
+        totalTipsCollected: tips.total_tips,
+        tipsBreakdown: tips,
         totalProducts: parseInt(totalProductsCount ? totalProductsCount.val : 0),
         totalRevenue: adjustedRevenue,
         totalPendingDues: Number(kpi.total_pending_dues || 0),

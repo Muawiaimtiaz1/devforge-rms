@@ -1,7 +1,8 @@
 const { requirePermission } = require('./middleware');
 
 const RESOURCE_MODULE = {
-  sales: 'orders', delivery: 'delivery', kds: 'kitchen_orders', products: 'products',
+  tips: 'orders',
+  sales: 'orders', tips: 'orders', delivery: 'delivery', kds: 'kitchen_orders', products: 'products',
   'product-categories': 'products', 'raw-stock': 'raw_stock', recipes: 'recipes', brands: 'brands',
   customers: 'customers', expenses: 'expenses', 'expense-categories': 'expenses', tables: 'tables',
   analytics: 'analytics', ai: 'analytics', shifts: 'register', 'shop-settings': 'settings', printers: 'settings',
@@ -18,8 +19,12 @@ const RESOURCE_MODULE = {
 function actionFor(req, resource) {
   const method = req.method;
   const path = req.path;
+  if (resource === 'tips') return 'take_payment';
+  if (resource === 'tips') return 'take_payment';
   if (resource === 'sales') {
     if (method === 'POST' && /\/return$/.test(path)) return 'return';
+    if (/\/tip$/.test(path) || /\/tip-options$/.test(path)) return 'take_payment';
+    if (/\/tip$/.test(path) || /\/tip-options$/.test(path)) return 'take_payment';
     if (method === 'PATCH' && /\/pay$/.test(path)) return 'take_payment';
     if (method === 'POST') return 'create';
     if (method === 'GET') return 'view';

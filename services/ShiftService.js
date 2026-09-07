@@ -1,4 +1,5 @@
 const db = require('../db/knex');
+const tipsService = require('../src/modules/tips/tips.service');
 const activityLog = require('./ActivityLogService');
 const cashDropNotificationService = require('./CashDropNotificationService');
 
@@ -111,7 +112,8 @@ class ShiftService {
   /**
    * Calculate the expected balance for a shift based on transactions.
    */
-  async calculateShiftSummary(shiftId, shopId) {
+  async calculateShiftSummary(shiftId, shopId, connection = db) {
+    const db = connection;
     const shift = await db('shifts').where({ id: shiftId, shop_id: shopId }).first();
     if (!shift) throw new Error('Shift not found');
 
@@ -137,7 +139,7 @@ class ShiftService {
         ), 0) as total
       `))
       .first();
-    
+
     const cashSales = toMoney(salesTotal?.total);
 
     // Total Card Sales (for reporting)
@@ -155,7 +157,7 @@ class ShiftService {
         ), 0) as total
       `))
       .first();
-    
+
     const cardSales = toMoney(cardTotal?.total);
 
     const onlineTotal = await db('sales as s')
@@ -175,7 +177,7 @@ class ShiftService {
       .where({ shift_id: shiftId, shop_id: shopId, type: 'payment', payment_method: 'cash' })
       .sum('amount as total')
       .first();
-    
+
     const cashCollections = toMoney(debtCollectionsCount?.total);
 
     const cardCollectionsRow = await db('customer_ledger')
@@ -193,7 +195,7 @@ class ShiftService {
     const expensesTotal = await db('expenses')
       .where({ shift_id: shiftId, shop_id: shopId })
       .sum('amount as total');
-    
+
     const cashExpenses = firstTotal(expensesTotal);
 
     const refundRows = await db('returns')
@@ -233,14 +235,16 @@ class ShiftService {
     const verifiedHandovers = await db('cash_handovers')
       .where({ shift_id: shiftId, shop_id: shopId, status: 'verified' })
       .sum('amount as total');
-    
+
     const confirmedHandovers = firstTotal(verifiedHandovers);
 
-    const expectedBalance = (toMoney(shift.opening_balance) + cashSales + cashCollections) - (cashRefunds + currentDrops + confirmedHandovers);
-    const expectedTotal = (cashSales + cardSales + onlineSales + cashCollections + cardCollections + onlineCollections)
+    const tips = await tipsService.summary({ shopId, shiftId }, db);
+    const expectedBalance = (toMoney(shift.opening_balance) + cashSales + cashCollections + tips.cash_tips) - (cashRefunds + currentDrops + confirmedHandovers);
+    const expectedTotal = (cashSales + cardSales + onlineSales + cashCollections + cardCollections + onlineCollections + tips.total_tips)
       - (totalRefunds + cashExpenses + currentDrops + confirmedHandovers);
 
     return {
+      ...tips,
       opening_balance: toMoney(shift.opening_balance),
       net_cash_sales: cashSales,
       net_card_sales: cardSales,
@@ -273,31 +277,35 @@ class ShiftService {
     }
     await this.syncLegacyOpenCashDrops(shopId);
 
-    const shift = await db('shifts').where({ id: shiftId, shop_id: shopId }).first();
-    if (!shift) throw new Error('Shift not found');
-    if (shift.status !== 'open') throw new Error('Shift is already closed');
+    const { summary, pendingVerificationTotal, hasPendingVerifications, expectedAtClose, discrepancy } = await db.transaction(async trx => {
+      const shift = await trx('shifts').where({ id: shiftId, shop_id: shopId }).forUpdate().first();
+      if (!shift) throw new Error('Shift not found');
+      if (shift.status !== 'open') throw new Error('Shift is already closed');
 
-    const summary = await this.calculateShiftSummary(shiftId, shopId);
-    const pendingVerificationTotal = toMoney(summary.pending_cash_drops) + toMoney(summary.pending_cash_handovers);
-    const hasPendingVerifications = summary.pending_cash_drop_count > 0 || summary.pending_cash_handover_count > 0;
-    const expectedAtClose = summary.expected_balance - pendingVerificationTotal;
+      const summary = await this.calculateShiftSummary(shiftId, shopId, trx);
+      const pendingVerificationTotal = toMoney(summary.pending_cash_drops) + toMoney(summary.pending_cash_handovers);
+      const hasPendingVerifications = summary.pending_cash_drop_count > 0 || summary.pending_cash_handover_count > 0;
+      const expectedAtClose = summary.expected_balance - pendingVerificationTotal;
 
-    const discrepancy = toMoney(actualBalance) - expectedAtClose;
-    
-    await db('shifts')
-      .where({ id: shiftId, shop_id: shopId })
-      .update({
-        closing_balance: toMoney(actualBalance),
-        expected_balance: expectedAtClose,
-        net_cash_sales: summary.net_cash_sales,
-        net_card_sales: summary.net_card_sales,
-        total_expenses: summary.total_expenses,
-        status: 'closed',
-        end_time: db.fn.now(),
-        note: note,
-        closed_by_user_id: closedByUserId,
-        shortage_reason: shortage_reason
-      });
+      const discrepancy = toMoney(actualBalance) - expectedAtClose;
+
+      await trx('shifts')
+        .where({ id: shiftId, shop_id: shopId })
+        .update({
+          closing_balance: toMoney(actualBalance),
+          expected_balance: expectedAtClose,
+          net_cash_sales: summary.net_cash_sales,
+          net_card_sales: summary.net_card_sales,
+          total_expenses: summary.total_expenses,
+          status: 'closed',
+          end_time: db.fn.now(),
+          note: note,
+          closed_by_user_id: closedByUserId,
+          shortage_reason: shortage_reason
+        });
+
+      return { summary, pendingVerificationTotal, hasPendingVerifications, expectedAtClose, discrepancy };
+    });
 
     await activityLog.log(shopId, closedByUserId, 'SHIFT_CLOSE', {
       shift_id: shiftId,
@@ -768,10 +776,19 @@ class ShiftService {
       });
     }
     receivedLedger.forEach(addPayment);
+    const tipPayments = await tipsService.payments(shopId, shiftId);
+    for (const tip of tipPayments) {
+      const amount = Number(tip.amount_cents) / 100;
+      addPayment({ ...tip, amount, payment_method: null });
+      const order = orders.get(Number(tip.sale_id));
+      order.tip_amount = amount;
+      order.tip_payment_method = tip.tip_payment_method;
+      order.bill_payment_method = order.bill_payment_method || tip.bill_payment_method;
+    }
 
     let rows = [...orders.values()].map(row => ({
       ...row,
-      payment_method: row.payment_methods.size > 1 ? 'mixed' : ([...row.payment_methods][0] || 'cash'),
+      payment_method: row.bill_payment_method || (row.payment_methods.size > 1 ? 'mixed' : ([...row.payment_methods][0] || 'cash')),
       payment_methods: undefined,
       payment_amount: Number(row.payment_amount.toFixed(2))
     }));
@@ -789,7 +806,7 @@ class ShiftService {
     const page = Math.min(Math.max(Number(filters.page) || 1, 1), totalPages);
     return {
       shift,
-      summary: { total_orders: shiftTotalOrders, total_amount: shiftTotalAmount },
+      summary: { total_orders: shiftTotalOrders, total_amount: shiftTotalAmount, total_tips: tipPayments.reduce((sum, tip) => sum + Number(tip.amount_cents), 0) / 100 },
       items: rows.slice((page - 1) * pageSize, page * pageSize),
       pagination: { page, page_size: pageSize, total: totalOrders, total_pages: totalPages }
     };
@@ -849,7 +866,7 @@ class ShiftService {
     const [summary, sales, expenses, returns, ledgerEntries, handovers, cashDrops] = await Promise.all([
       this.calculateShiftSummary(shiftId, shopId),
       db('sales as s')
-        .select('s.id', 's.created_at', 's.customer_name', 's.customer_phone', 's.total', 's.amount_received', 's.payment_method', 's.order_type', 's.order_status')
+        .select('s.id', 's.created_at', 's.customer_name', 's.customer_phone', 's.total', 's.amount_received', 's.tip_amount', 's.payment_method', 's.order_type', 's.order_status')
         .where({ 's.shift_id': shiftId, 's.shop_id': shopId })
         .orderBy('s.created_at', 'asc'),
       db('expenses as e')

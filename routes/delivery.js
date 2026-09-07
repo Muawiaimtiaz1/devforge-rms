@@ -62,8 +62,9 @@ router.patch('/:id/status', requireDelivery, async (req, res) => {
   const update = { order_status: status, updated_at: db.fn.now() };
   if (status === 'completed' && Object.prototype.hasOwnProperty.call(req.body, 'money_received')) {
     const received = req.body.money_received === true;
+  if (!received && Number(sale.tip_amount || 0) > 0) return res.status(409).json({ error: 'An order with a collected tip cannot be marked unpaid.' });
     const alreadyAttributed = Number(sale.amount_received || 0) > 0.01 && sale.payment_receiver_id;
-    update.amount_received = received ? Number(sale.total || 0) : 0;
+    update.amount_received = received ? Math.max(Number(sale.amount_received || 0), Number(sale.total || 0) + Number(sale.tip_amount || 0)) : 0;
     if (received && !alreadyAttributed) {
       const activeShift = await getAcceptingShift(shopId, userId);
       update.shift_id = activeShift.id;
@@ -88,9 +89,10 @@ router.patch('/:id/payment', requireDelivery, async (req, res) => {
   if (!sale) return res.status(404).json({ error: 'Delivery order not found.' });
 
   const received = req.body.money_received === true;
+    if (!received && Number(sale.tip_amount || 0) > 0) return res.status(409).json({ error: 'An order with a collected tip cannot be marked unpaid.' });
   const alreadyAttributed = Number(sale.amount_received || 0) > 0.01 && sale.payment_receiver_id;
   const update = {
-    amount_received: received ? Number(sale.total || 0) : 0,
+    amount_received: received ? Math.max(Number(sale.amount_received || 0), Number(sale.total || 0) + Number(sale.tip_amount || 0)) : 0,
     updated_at: db.fn.now()
   };
   if (received && !alreadyAttributed) {

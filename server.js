@@ -156,6 +156,7 @@ app.use((req, res, next) => {
 
 const { enforceApiPermissions } = require('./authorization/api-policy');
 app.use(enforceApiPermissions);
+app.use('/api/tips', require('./src/modules/tips/tips.routes'));
 
 // API Routes
 app.use("/api/auth", require("./routes/auth"));
@@ -315,6 +316,7 @@ if (require.main === module) {
     } else {
       require("./db/db");
     }
+    await require('./src/modules/tips/tips.migration').ensureTipsSchema(require('./db/knex'));
     await require('./authorization/service').ensureAuthorizationSchema();
     await require('./services/PushNotificationService').ensureSchema();
     startServer();

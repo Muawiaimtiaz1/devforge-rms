@@ -39,6 +39,10 @@ function renderShiftReceiptPage(details, options = {}) {
     ${row('Cash sales', `Rs. ${money(summary.net_cash_sales)}`)}
     ${row('Card sales', `Rs. ${money(summary.net_card_sales)}`)}
     ${row('Online sales', `Rs. ${money(summary.net_online_sales)}`)}
+    ${row('Tips collected', `Rs. ${money(summary.total_tips)}`)}
+    ${row('Cash tips', `Rs. ${money(summary.cash_tips)}`)}
+    ${row('Card tips', `Rs. ${money(summary.card_tips)}`)}
+    ${row('Online tips', `Rs. ${money(summary.online_tips)}`)}
     ${row('Cash due collections', `Rs. ${money(summary.debt_collections)}`)}
     ${row('Card due collections', `Rs. ${money(summary.card_collections)}`)}
     ${row('Online due collections', `Rs. ${money(summary.online_collections)}`)}

@@ -4,6 +4,15 @@ const { requireAuth } = require("../middleware/auth");
 const publishOrderChange = require('../utils/publish-order-change');
 const router = express.Router();
 
+// A tip is a payment even when the bill's received amount did not change.
+router.use(requireAuth, (req, res, next) => {
+  if (req.method !== 'GET' && Number(req.body?.tip_amount || 0) !== 0 &&
+      req.session?.user?.role !== 'superadmin' && !(req.permissions || []).includes('orders.take_payment')) {
+    return res.status(403).json({ error: 'Payment permission is required to collect tips.' });
+  }
+  next();
+});
+
 // POST /api/sales — create a sale (checkout)
 router.post("/", requireAuth, async (req, res) => {
   const result = await salesService.createSale(req.body, req.session.user.shop_id, req.session.user.id);

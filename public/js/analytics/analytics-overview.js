@@ -6,6 +6,7 @@ function renderOverviewTab(data) {
 
   const k = data.kpi;
   const s = data.summary;
+  const tips = data.tipsBreakdown || {};
 
   // Formatting helpers
   const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val);
@@ -342,6 +343,7 @@ function renderOverviewTab(data) {
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1">
           ${renderSummaryCard("Total Discounts", formatCurrency(s.totalDiscounts), `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>`, `↗ 5.3% ${compLabel}`, "blue", "Promotional incentives and order price reductions", "Sum of sale-level discounts on completed orders in the selected period. Returns do not change this discount total.")}
+          ${renderSummaryCard("Tips Collected", formatCurrency(data.totalTipsCollected || 0), "", "Cash " + formatCurrency(tips.cash_tips || 0) + " | Card " + formatCurrency(tips.card_tips || 0) + " | Online " + formatCurrency(tips.online_tips || 0), "emerald", "Shop-wide tips collected during this period", "Tips use collection time and remain separate from revenue, tax, and partner profit. Brand filters do not allocate tips.")}
           ${renderSummaryCard("Total Returns", formatNum(s.totalReturns), `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>`, `↗ 3.1% ${compLabel}`, "rose", "Items returned to inventory from completed orders", "Count of return invoices created in the selected period. One return invoice can contain multiple returned items.")}
           ${renderSummaryCard("Refunds", formatCurrency(s.totalRefunds), `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>`, `↗ 2.4% ${compLabel}`, "amber", "Direct financial reimbursements processed", "Total refund amount from return invoices created in the selected period. This is subtracted from net revenue.")}
           ${renderSummaryCard("Shop Profit", formatCurrency(Number(s.shopProfit ?? s.grossProfit ?? 0)), `<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>`, `↗ 11.3% ${compLabel}`, "emerald", "Revenue minus COGS and damage/loss", "Shop Profit = revenue - COGS - damage/loss. Partner shares add up to this amount.")}

@@ -1,4 +1,5 @@
 const db = require('../db/knex');
+const tipsService = require('../src/modules/tips/tips.service');
 const customerService = require('./CustomerService');
 const notificationService = require('./NotificationService');
 const pushNotificationService = require('./PushNotificationService');
@@ -26,6 +27,7 @@ const checkoutSchema = z.object({
   tax_percentage: z.number().nonnegative().default(0),
   payment_method: z.string().default("cash"),
   amount_received: z.number().nonnegative().default(0),
+  tip_amount: z.number().nonnegative().optional(),
   customer_name: z.string().nullable().optional(),
   customer_phone: z.string().nullable().optional(),
   customer_id: z.number().int().nullable().optional(),
@@ -917,6 +919,8 @@ class SalesService {
         })
         .returning('id');
       const saleId = typeof saleIdObj === 'object' ? saleIdObj.id : saleIdObj;
+      await tipsService.collect(trx, { saleId, shopId, userId, amount: data.tip_amount,
+        total: grandTotal, received: data.amount_received, paymentMethod: data.payment_method });
 
       // Keep occupancy derived from active dine-in orders. A sale can be
       // created directly as completed, in which case the table must remain
@@ -1212,7 +1216,7 @@ class SalesService {
     const data = checkoutSchema.parse(payload);
     
     const result = await db.transaction(async (trx) => {
-      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
+      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
       if (!sale) throw new Error("Sale not found");
       if (sale.order_status === 'completed') throw new Error("Cannot edit a completed order");
 
@@ -1381,6 +1385,9 @@ class SalesService {
         payment_received_at: data.order_type === 'delivery' ? (data.money_received ? trx.fn.now() : null) : sale.payment_received_at,
         updated_at: trx.fn.now()
       });
+
+      await tipsService.collect(trx, { saleId, shopId, userId, amount: data.tip_amount,
+        total: grandTotal, received: data.amount_received, paymentMethod: data.payment_method });
 
       // Editing may complete the order, change its table, or change it away
       // from dine-in. Recalculate both the former and current table so neither
@@ -1689,7 +1696,7 @@ class SalesService {
 
   async payDue(saleId, shopId, userId, amount, paymentMethod = 'cash', note) {
     return await db.transaction(async (trx) => {
-      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
+      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
       if (!sale) throw new Error("Sale not found");
 
       const finalAmount = amount !== undefined ? parseFloat(amount) : Number(sale.total || 0);
@@ -1732,8 +1739,9 @@ class SalesService {
 
   async updateInquiryBill(saleId, shopId, data = {}) {
     return db.transaction(async (trx) => {
-      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
+      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
       if (!sale) throw new Error('Sale not found');
+      if (Number(sale.tip_amount || 0) > 0) throw Object.assign(new Error('A paid bill with a collected tip cannot be changed through inquiry options.'), { status: 409 });
       const discount = Math.max(Number(data.discount) || 0, 0);
       const taxPercentage = Math.max(Number(data.tax_percentage) || 0, 0);
       const items = await trx('sale_items').where({ sale_id: saleId });
@@ -1752,9 +1760,9 @@ class SalesService {
     });
   }
 
-  async updateDetails(saleId, shopId, { customer_id, customer_name, customer_phone, delivery_address, rider_id, payment_method, amount_received, discount, tax_percentage }, userId = null) {
+  async updateDetails(saleId, shopId, { customer_id, customer_name, customer_phone, delivery_address, rider_id, payment_method, amount_received, discount, tax_percentage, tip_amount }, userId = null) {
     return await db.transaction(async (trx) => {
-      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
+      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
       if (!sale) throw new Error("Sale not found");
 
       const updateData = {
@@ -1777,10 +1785,11 @@ class SalesService {
       if (customer_name !== undefined || customer_phone !== undefined) shouldSyncSaleLedger = true;
       if (delivery_address !== undefined) updateData.delivery_address = delivery_address;
       if (rider_id !== undefined) updateData.rider_id = rider_id ? parseInt(rider_id, 10) : null;
-      if (payment_method !== undefined) updateData.payment_method = payment_method;
+      const tipOnlyCollection = Number(tip_amount || 0) > 0 && Number(sale.amount_received || 0) >= Number(sale.total) - 0.01;
+      if (payment_method !== undefined && !tipOnlyCollection) updateData.payment_method = payment_method;
       if (amount_received !== undefined) {
         updateData.amount_received = amount_received;
-        if (Number(amount_received) > Number(sale.amount_received || 0) + 0.01) {
+        if (Math.min(Number(amount_received), Number(sale.total)) > Math.min(Number(sale.amount_received || 0), Number(sale.total)) + 0.01) {
           updateData.payment_receiver_id = userId;
           updateData.payment_received_at = trx.fn.now();
         }
@@ -1790,7 +1799,7 @@ class SalesService {
             .where({ shop_id: shopId, user_id: userId, status: 'open' })
             .first();
           if (activeShift) {
-            updateData.shift_id = activeShift.id;
+            if (Number(sale.amount_received || 0) < Number(sale.total) - 0.01) updateData.shift_id = activeShift.id;
             paymentShiftId = activeShift.id;
           }
           else throw new Error('You must open a register shift to collect payments.');
@@ -1811,6 +1820,10 @@ class SalesService {
         updateData.tax_percentage = newTaxPct;
         updateData.total = grandTotal;
       }
+
+      await tipsService.collect(trx, { saleId, shopId, userId, amount: tip_amount,
+        total: updateData.total ?? sale.total, received: updateData.amount_received ?? sale.amount_received,
+        paymentMethod: payment_method ?? sale.payment_method });
 
       if (shouldSyncSaleLedger) {
         const oldSaleLedgerEntries = await trx('customer_ledger')
@@ -1877,6 +1890,16 @@ class SalesService {
 
     if (!sale) return null;
 
+    const tipRecord = await db('sale_tips')
+      .where({ shop_id: shopId, sale_id: saleId })
+      .select('payment_method', 'collection_mode', 'collected_at')
+      .first();
+    if (tipRecord) {
+      sale.tip_payment_method = tipRecord.payment_method;
+      sale.tip_collection_mode = tipRecord.collection_mode;
+      sale.tip_collected_at = tipRecord.collected_at;
+    }
+
     const items = await db('sale_items as si')
       .select('si.*', db.raw('COALESCE(p.name, si.custom_name) as product_name'), 'p.category as product_category', 'b.name as brand_name')
       .select(db.raw(`(
@@ -1920,7 +1943,7 @@ class SalesService {
 
   async processReturn(saleId, shopId, userId, { items, reason, payment_method }) {
     return await db.transaction(async (trx) => {
-      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).first();
+      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
       if (!sale) throw new Error("Sale not found");
 
       const totalRefund = items.reduce((s, it) => s + (it.refund_price * it.quantity), 0);
