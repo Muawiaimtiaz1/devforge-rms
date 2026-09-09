@@ -1,0 +1,23 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html.analytics-document { font-size: 18px; }
+.analytics-page { font-family: Inter, sans-serif; line-height: 1.5; }
+.analytics-page *, .analytics-page ::before, .analytics-page ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: #e5e7eb; }
+.analytics-page h1,.analytics-page h2,.analytics-page h3,.analytics-page h4,.analytics-page h5,.analytics-page h6,.analytics-page p { margin: 0; font-size: inherit; font-weight: inherit; }
+.analytics-page button,.analytics-page input,.analytics-page select { font: inherit; color: inherit; margin: 0; padding: 0; }
+.analytics-page button { background: transparent; cursor: pointer; }
+.analytics-page a { color: inherit; text-decoration: inherit; }
+.analytics-page svg,.analytics-page img { display: block; vertical-align: middle; }
+.analytics-page img { max-width: 100%; height: auto; }
+.analytics-page table { text-indent: 0; border-color: inherit; border-collapse: collapse; }
+.analytics-page .dropdown-item { display: flex; align-items: center; gap: .75rem; padding: .8rem 1rem; font-size: .875rem; font-weight: 500; color: #475569; transition: all .15s ease; text-align: left; }
+.analytics-page .dropdown-item:hover { background: #f1f5f9; }
+.dark .analytics-page .dropdown-item:hover { background: #1e293b; }
+.analytics-page #profile-dropdown { opacity: 0; transform: translateY(10px) scale(.95); pointer-events: none; transition: all .2s cubic-bezier(.4,0,.2,1); }
+.analytics-page #profile-dropdown.active { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+.dark .analytics-page .dropdown-item { color: #94a3b8; }
+@media print { .analytics-page * { visibility: hidden; } }
+

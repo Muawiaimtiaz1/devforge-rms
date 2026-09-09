@@ -9,7 +9,10 @@ const router = express.Router();
 router.get('/options', requireAuth, async (req, res) => {
   const result = await tipsService.listEligibleOrders(req.session.user.shop_id, req.session.user, {
     search: req.query.search,
-    tableId: req.query.table_id
+    tableId: req.query.table_id,
+    period: req.query.period,
+    from: req.query.from,
+    to: req.query.to
   });
   res.json(result);
 });

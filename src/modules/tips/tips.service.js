@@ -1,4 +1,5 @@
 const db = require('../../../db/knex');
+const { getTipOrderDateRange } = require('./tips-date-range');
 
 function invalid(message, status = 400) {
   return Object.assign(new Error(message), { status });
@@ -52,22 +53,17 @@ function applyOrderVisibility(query, user) {
 async function listEligibleOrders(shopId, user, filters = {}) {
   const search = String(filters.search || '').trim().slice(0, 80);
   const tableId = Number(filters.tableId) || null;
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit'
-  }).formatToParts(new Date()).map(part => [part.type, part.value]));
-  const today = `${parts.year}-${parts.month}-${parts.day}`;
-  const start = new Date(`${today}T00:00:00+05:00`).toISOString();
-  const end = new Date(`${today}T23:59:59.999+05:00`).toISOString();
-  const completedAt = db.raw('COALESCE(s.payment_received_at, s.updated_at, s.created_at)');
-  const completedRange = db.client.config.client === 'pg'
-    ? [start, end]
-    : [start.replace('T', ' ').slice(0, 19), end.replace('T', ' ').slice(0, 19)];
+  const range = getTipOrderDateRange(filters);
+  const isPostgres = db.client.config.client === 'pg';
+  const completedAt = db.raw(isPostgres ? 'COALESCE(s.payment_received_at, s.updated_at, s.created_at)' : 'datetime(COALESCE(s.payment_received_at, s.updated_at, s.created_at))');
+  const timestamp = value => isPostgres ? value : value.replace('T', ' ').slice(0, 19);
   const query = db('sales as s')
     .leftJoin('tables as t', 's.table_id', 't.id')
     .leftJoin('sale_tips as tip', function () { this.on('tip.sale_id', 's.id').andOn('tip.shop_id', 's.shop_id'); })
     .where({ 's.shop_id': shopId, 's.order_status': 'completed' })
     .whereRaw('COALESCE(s.amount_received, 0) >= COALESCE(s.total, 0) - 0.01')
-    .whereNull('tip.id').whereBetween(completedAt, completedRange)
+    .whereNull('tip.id')
+    .modify(q => { if (range) q.where(completedAt, '>=', timestamp(range.start)).andWhere(completedAt, '<', timestamp(range.end)); })
     .modify(q => {
       applyOrderVisibility(q, user);
       if (tableId) q.where('s.table_id', tableId);

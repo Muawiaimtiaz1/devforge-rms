@@ -5868,26 +5868,47 @@ async function completeOrderFromPOS(id, skipConfirm = false) {
 let _tipOrderOptions = [];
 let _tipSelectedOrder = null;
 let _tipOrderSearchTimer = null;
+let _tipOrderRequestId = 0;
+let _tipOrderDropdownOpen = false;
+let _tipOrderDropdownEvents = null;
 
 function openRecordTipModal() {
   if (!currentUserHasPermission('orders.take_payment')) return toast('Payment permission is required to record tips.', 'error');
   _tipOrderOptions = [];
   _tipSelectedOrder = null;
+  _tipOrderDropdownOpen = false;
   openModal('Record Tip', `
     <div class="space-y-5">
       <div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
         <h4 class="text-sm font-black text-emerald-800 dark:text-emerald-300">Completed paid orders</h4>
-        <p class="mt-1 text-xs font-medium text-emerald-700/70 dark:text-emerald-400/70">Search today's completed orders that do not already have a tip.</p>
+        <p class="mt-1 text-xs font-medium text-emerald-700/70 dark:text-emerald-400/70">Search completed paid orders without a tip within the selected dates.</p>
       </div>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
         <div class="relative">
           <label for="tip-order-search" class="mb-1.5 block text-xs font-bold text-slate-500">Order, table, or customer</label>
-          <input id="tip-order-search" type="search" autocomplete="off" placeholder="Search completed orders…" oninput="scheduleTipOrderSearch()" onfocus="renderTipOrderOptions()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+          <input id="tip-order-search" type="search" autocomplete="off" placeholder="Search completed orders…" oninput="scheduleTipOrderSearch()" onfocus="openTipOrderOptions()" onclick="openTipOrderOptions()" aria-expanded="false" aria-controls="tip-order-options" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
           <div id="tip-order-options" class="absolute z-[140] mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
         </div>
         <div>
           <label for="tip-table-filter" class="mb-1.5 block text-xs font-bold text-slate-500">Table</label>
-          <select id="tip-table-filter" onchange="loadTipOrderOptions()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="">All tables</option></select>
+          <select id="tip-table-filter" onchange="changeTipOrderFilters()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="">All tables</option></select>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label for="tip-date-filter" class="mb-1.5 block text-xs font-bold text-slate-500">Date</label>
+          <select id="tip-date-filter" onchange="changeTipOrderDateFilter()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+            <option value="today" selected>Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="2days">Today + Yesterday</option>
+            <option value="all">All Time</option>
+            <option value="custom">Custom Range</option>
+          </select>
+        </div>
+        <div id="tip-custom-dates" class="hidden grid grid-cols-2 gap-3">
+          <div><label for="tip-date-from" class="mb-1.5 block text-xs font-bold text-slate-500">From</label><input id="tip-date-from" type="date" onchange="changeTipOrderDateFilter()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></div>
+          <div><label for="tip-date-to" class="mb-1.5 block text-xs font-bold text-slate-500">To</label><input id="tip-date-to" type="date" onchange="changeTipOrderDateFilter()" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></div>
         </div>
       </div>
       <div id="tip-order-summary" class="rounded-2xl border border-dashed border-slate-300 px-4 py-7 text-center text-sm font-medium text-slate-400 dark:border-slate-700">Select a completed paid order</div>
@@ -5904,33 +5925,111 @@ function openRecordTipModal() {
       <button id="record-tip-submit" type="button" onclick="submitRecordedTip()" disabled class="w-full rounded-xl bg-emerald-600 py-3.5 text-sm font-black text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">Confirm Record Tip</button>
     </div>
   `, 'max-w-lg');
+  bindTipOrderDropdown();
   loadTipOrderOptions(true);
+}
+
+
+
+function closeTipOrderOptions() {
+  _tipOrderDropdownOpen = false;
+  document.getElementById('tip-order-options')?.classList.add('hidden');
+  document.getElementById('tip-order-search')?.setAttribute('aria-expanded', 'false');
+}
+
+function openTipOrderOptions() {
+  _tipOrderDropdownOpen = true;
+  const options = document.getElementById('tip-order-options');
+  if (options && !options.innerHTML) renderTipOrderOptions();
+  options?.classList.remove('hidden');
+  document.getElementById('tip-order-search')?.setAttribute('aria-expanded', 'true');
+}
+
+function bindTipOrderDropdown() {
+  _tipOrderDropdownEvents?.abort();
+  _tipOrderDropdownEvents = new AbortController();
+  const signal = _tipOrderDropdownEvents.signal;
+  const dismissOutside = event => {
+    const search = document.getElementById('tip-order-search');
+    if (!search?.parentElement.contains(event.target)) closeTipOrderOptions();
+  };
+  document.addEventListener('pointerdown', dismissOutside, { signal });
+  document.addEventListener('focusin', dismissOutside, { signal });
+  document.getElementById('tip-order-search')?.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && _tipOrderDropdownOpen) {
+      closeTipOrderOptions();
+      event.stopPropagation();
+    }
+  }, { signal });
+}
+
+function changeTipOrderDateFilter() {
+  const custom = document.getElementById('tip-date-filter')?.value === 'custom';
+  document.getElementById('tip-custom-dates')?.classList.toggle('hidden', !custom);
+  if (custom) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(part => [part.type, part.value]));
+    const today = parts.year + '-' + parts.month + '-' + parts.day;
+    const from = document.getElementById('tip-date-from');
+    const to = document.getElementById('tip-date-to');
+    if (!from.value) from.value = today;
+    if (!to.value) to.value = today;
+  }
+  changeTipOrderFilters();
+}
+
+function changeTipOrderFilters() {
+  closeTipOrderOptions();
+  clearTimeout(_tipOrderSearchTimer);
+  if (_tipSelectedOrder) {
+    const input = document.getElementById('tip-order-search');
+    if (input) input.value = '';
+  }
+  _tipSelectedOrder = null;
+  _tipOrderOptions = [];
+  updateRecordTipSelection();
+  loadTipOrderOptions();
 }
 
 function scheduleTipOrderSearch() {
   clearTimeout(_tipOrderSearchTimer);
+  ++_tipOrderRequestId;
+  _tipOrderOptions = [];
   _tipSelectedOrder = null;
   updateRecordTipSelection();
   _tipOrderSearchTimer = setTimeout(() => loadTipOrderOptions(), 250);
 }
 
 async function loadTipOrderOptions(loadTables = false) {
+  const requestId = ++_tipOrderRequestId;
   const search = document.getElementById('tip-order-search')?.value.trim() || '';
   const tableId = document.getElementById('tip-table-filter')?.value || '';
   const params = new URLSearchParams();
   if (search) params.set('search', search);
   if (tableId) params.set('table_id', tableId);
+  const period = document.getElementById('tip-date-filter')?.value || 'today';
+  params.set('period', period);
+  if (period === 'custom') {
+    params.set('from', document.getElementById('tip-date-from')?.value || '');
+    params.set('to', document.getElementById('tip-date-to')?.value || '');
+  }
+  _tipOrderOptions = [];
   const options = document.getElementById('tip-order-options');
-  if (options) { options.classList.remove('hidden'); options.innerHTML = '<div class="px-4 py-5 text-center text-xs font-bold text-slate-400">Loading completed orders…</div>'; }
+  if (period === 'custom' && (!params.get('from') || !params.get('to') || params.get('from') > params.get('to'))) {
+    if (options) { options.classList.toggle('hidden', !_tipOrderDropdownOpen); options.textContent = 'Choose a valid date range: From must be on or before To.'; }
+    return;
+  }
+  if (options) { options.classList.toggle('hidden', !_tipOrderDropdownOpen); options.innerHTML = '<div class="px-4 py-5 text-center text-xs font-bold text-slate-400">Loading completed orders…</div>'; }
   try {
     const data = await api(`/api/tips/options?${params}`);
+    if (requestId !== _tipOrderRequestId || !document.getElementById('tip-order-search')) return;
     _tipOrderOptions = Array.isArray(data.orders) ? data.orders : [];
-    if (loadTables) {
+    if (loadTables || document.getElementById('tip-table-filter')?.options.length === 1) {
       const table = document.getElementById('tip-table-filter');
       if (table) table.innerHTML = '<option value="">All tables</option>' + (data.tables || []).map(item => `<option value="${Number(item.id)}">Table ${escapeOrderValue(item.table_number)}</option>`).join('');
     }
     renderTipOrderOptions();
   } catch (error) {
+    if (requestId !== _tipOrderRequestId) return;
     if (options) options.innerHTML = `<div class="px-4 py-5 text-center text-xs font-bold text-rose-500">${escapeOrderValue(error.message)}</div>`;
   }
 }
@@ -5944,19 +6043,19 @@ function tipOrderContext(order) {
 function renderTipOrderOptions() {
   const options = document.getElementById('tip-order-options');
   if (!options) return;
-  options.classList.remove('hidden');
+  options.classList.toggle('hidden', !_tipOrderDropdownOpen);
   options.innerHTML = _tipOrderOptions.length ? _tipOrderOptions.map(order => `
     <button type="button" onclick="selectTipOrder(${Number(order.id)})" class="w-full border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-emerald-50 dark:border-slate-800 dark:hover:bg-emerald-950/30">
       <span class="flex items-center justify-between gap-3"><strong class="text-sm text-slate-900 dark:text-white">Order #${escapeOrderValue(order.order_number || order.id)}</strong><strong class="text-sm text-emerald-600 dark:text-emerald-400">${formatRegisterMoney(order.total)}</strong></span>
       <span class="mt-1 block text-xs font-medium text-slate-500">${tipOrderContext(order)}</span>
-    </button>`).join('') : '<div class="px-4 py-8 text-center text-xs font-bold text-slate-400">No eligible completed paid orders found today.</div>';
+    </button>`).join('') : '<div class="px-4 py-8 text-center text-xs font-bold text-slate-400">No eligible completed paid orders found for the selected dates.</div>';
 }
 
 function selectTipOrder(id) {
   _tipSelectedOrder = _tipOrderOptions.find(order => Number(order.id) === Number(id)) || null;
   const search = document.getElementById('tip-order-search');
   if (search && _tipSelectedOrder) search.value = `Order #${_tipSelectedOrder.order_number || _tipSelectedOrder.id} · ${_tipSelectedOrder.order_type === 'dine_in' ? `Table ${_tipSelectedOrder.table_number || 'N/A'}` : _tipSelectedOrder.order_type}`;
-  document.getElementById('tip-order-options')?.classList.add('hidden');
+  closeTipOrderOptions();
   updateRecordTipSelection();
   document.getElementById('tip-amount')?.focus();
 }
@@ -10168,13 +10267,13 @@ function renderLobby() {
 }
 
 function openLobbyPanel(panelId) {
-  if (panelId !== 'users') return navigate(panelId);
+  if (!['users', 'analytics'].includes(panelId)) return navigate(panelId);
 
   const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
   const reactOrigin = isLocalDevelopment
     ? `${window.location.protocol}//${window.location.hostname}:5173`
     : window.location.origin;
-  window.location.assign(`${reactOrigin}/app/staff`);
+  window.location.assign(reactOrigin + (panelId === "analytics" ? "/app/analytics" : "/app/staff"));
 }
 
 // ─── NOTIFICATIONS ───────────────────────────────────────────────────────────

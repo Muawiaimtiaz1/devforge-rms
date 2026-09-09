@@ -74,8 +74,8 @@ async function getLobby(user, resolvedPermissions) {
     },
     modules: allowed.map(module => ({
       ...module,
-      frontend: ['dashboard', 'users', 'raw-stock', 'notifications', 'notification-inbox'].includes(module.id) ? 'react' : 'legacy',
-      target: module.id === 'dashboard' ? '/app/dashboard' : module.id === 'users' ? '/app/staff' : module.id === 'raw-stock' ? '/app/inventory' : module.id === 'notifications' ? '/app/notifications' : module.id === 'notification-inbox' ? '/app/notification-inbox' : `/dashboard#${module.id}`,
+      frontend: ['dashboard', 'users', 'raw-stock', 'notifications', 'notification-inbox', 'analytics'].includes(module.id) ? 'react' : 'legacy',
+      target: module.id === 'analytics' ? '/app/analytics' : module.id === 'dashboard' ? '/app/dashboard' : module.id === 'users' ? '/app/staff' : module.id === 'raw-stock' ? '/app/inventory' : module.id === 'notifications' ? '/app/notifications' : module.id === 'notification-inbox' ? '/app/notification-inbox' : `/dashboard#${module.id}`,
     })),
   };
 }
