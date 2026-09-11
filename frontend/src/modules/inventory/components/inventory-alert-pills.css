@@ -1,0 +1,9 @@
+.inventory-alert-pills{display:flex;flex-wrap:wrap;gap:8px}
+.inventory-alert-pills button{padding:7px 11px;display:inline-flex;align-items:center;gap:6px;color:#64748b;border:1px solid #e2e8f0;border-radius:999px;background:#fff;cursor:pointer;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
+.inventory-alert-pills button:hover,.inventory-alert-pills button.has-alert{color:#b45309;border-color:#fcd34d;background:#fffbeb}
+.inventory-alert-pills button.urgent{color:#be123c;border-color:#fecdd3;background:#fff1f2}
+.inventory-alert-pills button.active{color:#fff;border-color:#4f46e5;background:#4f46e5;box-shadow:0 5px 12px rgba(79,70,229,.2)}
+.inventory-alert-pills button.active.urgent{border-color:#e11d48;background:#e11d48}
+.inventory-alert-pills button.clear-filter{color:#475569;border-style:dashed;background:#f8fafc}
+.inventory-alert-pills button.clear-filter:hover{color:#0f172a;border-color:#94a3b8;background:#f1f5f9}
+.inventory-alert-pills button b{min-width:18px;height:18px;padding:0 5px;display:grid;place-items:center;color:inherit;border-radius:999px;background:rgba(255,255,255,.25);font-size:10px}

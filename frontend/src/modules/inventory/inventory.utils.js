@@ -38,7 +38,7 @@ export function expiryWarnings(stocks) {
       quantity: Number(batch.quantity),
       daysLeft: Math.ceil((Date.parse(`${dateOnly(batch.expiry_date)}T00:00:00Z`) - todayUtc) / 86400000),
     })))
-    .filter((item) => Number.isFinite(item.daysLeft) && item.daysLeft <= 4)
+    .filter((item) => Number.isFinite(item.daysLeft) && item.daysLeft <= 3)
     .sort((a, b) => a.daysLeft - b.daysLeft)
 }
 

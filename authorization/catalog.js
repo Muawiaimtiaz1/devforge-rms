@@ -1,6 +1,7 @@
 const MODULES = {
   dashboard: ['view'],
   orders: ['view', 'create', 'update', 'remove_items', 'complete', 'take_payment', 'return'],
+  sales: ['view', 'take_payment', 'return'],
   delivery: ['view', 'update_status', 'take_payment'],
   kitchen_orders: ['view', 'update_status', 'complete'],
   products: ['view', 'create', 'update', 'delete', 'adjust_stock', 'manage_damage'],
@@ -42,17 +43,17 @@ const ALL_PERMISSION_KEYS = PERMISSIONS.map((permission) => permission.key);
 const STANDARD_ROLES = {
   'Restaurant Admin': ALL_PERMISSION_KEYS.filter(key => !key.startsWith('platform_')),
   Manager: ALL_PERMISSION_KEYS.filter(key => !key.startsWith('platform_') && !key.startsWith('roles.') && !key.startsWith('users.') && !['payroll.configure','payroll.approve','payroll.finalize'].includes(key)),
-  Cashier: ['dashboard.view', 'orders.view', 'orders.create', 'orders.update', 'orders.complete', 'orders.take_payment', 'customers.view', 'customers.create', 'register.view', 'register.open', 'register.close', 'register.cash_drop', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
-  Waiter: ['dashboard.view', 'orders.view', 'orders.create', 'customers.view', 'tables.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
+  Cashier: ['dashboard.view', 'orders.view', 'orders.create', 'orders.update', 'orders.complete', 'orders.take_payment', 'sales.view', 'sales.take_payment', 'customers.view', 'customers.create', 'register.view', 'register.open', 'register.close', 'register.cash_drop', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
+  Waiter: ['dashboard.view', 'orders.view', 'orders.create', 'sales.view', 'customers.view', 'tables.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
   Kitchen: ['kitchen_orders.view', 'kitchen_orders.update_status', 'kitchen_orders.complete', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
   Rider: ['delivery.view', 'delivery.update_status', 'delivery.take_payment', 'orders.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
-  Receptionist: ['dashboard.view', 'orders.view', 'orders.create', 'customers.view', 'customers.create', 'register.view', 'register.open', 'register.close', 'register.cash_drop', 'register.handover', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
+  Receptionist: ['dashboard.view', 'orders.view', 'orders.create', 'sales.view', 'sales.take_payment', 'customers.view', 'customers.create', 'register.view', 'register.open', 'register.close', 'register.cash_drop', 'register.handover', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
   'Inventory Staff': ['products.view', 'products.adjust_stock', 'raw_stock.view', 'raw_stock.create', 'raw_stock.adjust', 'raw_stock.record_waste', 'recipes.view', 'waste.view', 'waste.create', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
-  Accountant: ['dashboard.view', 'orders.view', 'expenses.view', 'expenses.create', 'expenses.update', 'expenses.export', 'analytics.view', 'activity_logs.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'payroll.view', 'payroll.configure', 'payroll.run', 'payroll.review', 'payroll.approve', 'payroll.finalize', 'documents.view', 'documents.download', 'staff_activity.view'],
+  Accountant: ['dashboard.view', 'orders.view', 'sales.view', 'expenses.view', 'expenses.create', 'expenses.update', 'expenses.export', 'analytics.view', 'activity_logs.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'payroll.view', 'payroll.configure', 'payroll.run', 'payroll.review', 'payroll.approve', 'payroll.finalize', 'documents.view', 'documents.download', 'staff_activity.view'],
 };
 
 const PANEL_MODULES = {
-  dashboard: ['dashboard'], pos: ['orders'], 'sales-history': ['orders'], delivery: ['delivery'],
+  dashboard: ['dashboard'], pos: ['orders'], 'sales-history': ['sales'], delivery: ['delivery'],
   kds: ['kitchen_orders'], products: ['products'], brands: ['brands'], 'raw-stock': ['raw_stock'],
   'waste-management': ['waste'], 'raw-stock': ['raw_stock', 'recipes'], customers: ['customers'], expenses: ['expenses'], tables: ['tables'],
   analytics: ['analytics'], register: ['register'], logs: ['activity_logs'], settings: ['settings'],

@@ -638,7 +638,7 @@ function isPanelAllowedForCurrentUser(panelId) {
   }
   if (currentUser.role === "superadmin") return PLATFORM_OWNER_PANELS.includes(panelId);
   const permissionModules = {
-    dashboard: ['dashboard'], pos: ['orders'], delivery: ['delivery'], 'sales-history': ['orders'],
+    dashboard: ['dashboard'], pos: ['orders'], delivery: ['delivery'], 'sales-history': ['sales'],
     customers: ['customers'], products: ['products'], brands: ['brands'], 'raw-stock': ['raw_stock', 'recipes'],
     'waste-management': ['waste'], kds: ['kitchen_orders'], expenses: ['expenses'], tables: ['tables'],
     analytics: ['analytics'], register: ['register'], logs: ['activity_logs'], settings: ['settings'],
@@ -5527,7 +5527,7 @@ async function viewOrderItems(id, readOnly = false) {
   showAppLoader('Opening order details', `Loading order #${id}...`);
   try {
     const [data, assignableUsers] = await Promise.all([
-      api(`/api/sales/${id}/bill`),
+      api(`/api/sales/${id}/bill${readOnly ? '?view=sales_panel' : ''}`),
       readOnly ? Promise.resolve([]) : api('/api/users/assignable').catch(() => [])
     ]);
     if (!data || !data.sale) return toast("Order not found", "error");
@@ -8219,7 +8219,7 @@ async function printBill(saleId, isUnpaid = false) {
 
 async function returnSaleItems(saleId) {
   try {
-    const data = await api(`/api/sales/${saleId}/bill`);
+    const data = await api(`/api/sales/${saleId}/bill?view=sales_panel`);
     const { sale, items } = data;
 
     const itemsHtml = items
@@ -8338,7 +8338,7 @@ async function submitSaleReturn(saleId) {
   if (payment_method === "cash" && !(await ensureOpenShiftForPayment())) return;
 
   try {
-    const res = await api(`/api/sales/${saleId}/return`, "POST", {
+    const res = await api(`/api/sales/${saleId}/return?view=sales_panel`, "POST", {
       items: returns,
       reason,
       payment_method,
@@ -8367,7 +8367,7 @@ async function submitSaleReturn(saleId) {
 }
 
 async function printReturnReceipt(returnId) {
-  const data = await api(`/api/sales/returns/${returnId}/receipt`);
+  const data = await api(`/api/sales/returns/${returnId}/receipt?view=sales_panel`);
   const { return: ret, items, sale, user, shop } = data;
 
   // Build receipt header based on settings
@@ -8698,13 +8698,13 @@ function _renderSalesTable() {
                 View
               </button>
               ${s.customer_id && !_salesPendingFilter ? `<button onclick="viewCustomerLedger(${s.customer_id})" class="p-1.5 rounded bg-indigo-100 dark:bg-indigo-500/10 hover:bg-indigo-200 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 transition-colors" title="Open Customer Account"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg></button>` : ""}
-              ${isPending ? `<button onclick="markSalePaid(${s.id}, ${s.total}, ${s.amount_received})" class="p-1.5 rounded bg-amber-100 dark:bg-amber-500/10 hover:bg-amber-200 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 transition-colors" title="Collect Payment / Update Dues"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>` : ""}
+              ${isPending && currentUserHasPermission('sales.take_payment') ? `<button onclick="markSalePaid(${s.id}, ${s.total}, ${s.amount_received})" class="p-1.5 rounded bg-amber-100 dark:bg-amber-500/10 hover:bg-amber-200 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 transition-colors" title="Collect Payment / Update Dues"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>` : ""}
               <button onclick="showSaleDuesDetails(${s.id})" class="p-1.5 rounded bg-blue-100 dark:bg-blue-500/10 hover:bg-blue-200 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-400 transition-colors" title="View Due Details & History">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               </button>
-              <button onclick="returnSaleItems(${s.id})" class="p-1.5 rounded bg-rose-100 dark:bg-rose-500/10 hover:bg-rose-200 dark:hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 transition-colors" title="Return Items">
+              ${currentUserHasPermission('sales.return') ? `<button onclick="returnSaleItems(${s.id})" class="p-1.5 rounded bg-rose-100 dark:bg-rose-500/10 hover:bg-rose-200 dark:hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 transition-colors" title="Return Items">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 15L12 19M12 19L8 15M12 19V9C12 5.68629 14.6863 3 18 3" /></svg>
-              </button>
+              </button>` : ""}
               <button onclick="showReceiptPrintMenu(${s.id})" class="p-1.5 rounded bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 transition-colors" title="Print Receipt">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
               </button>
@@ -8824,7 +8824,7 @@ async function doMarkSalePaid(saleId, currentReceived) {
 
   const totalRecvd = currentReceived + adding;
   const note = noteInput ? noteInput.value.trim() : "";
-  const r = await api(`/api/sales/${saleId}/pay`, "PATCH", {
+  const r = await api(`/api/sales/${saleId}/pay?view=sales_panel`, "PATCH", {
     amount: totalRecvd,
     payment_method: methodInput?.value || "cash",
     note,
@@ -8838,7 +8838,7 @@ async function doMarkSalePaid(saleId, currentReceived) {
 
 async function showSaleDuesDetails(saleId) {
   try {
-    const data = await api(`/api/sales/${saleId}/bill`);
+    const data = await api(`/api/sales/${saleId}/bill?view=sales_panel`);
     const { sale, payments } = data;
     const totalDue = Number(sale.total || 0);
     const amountReceived = Number(sale.amount_received || 0);

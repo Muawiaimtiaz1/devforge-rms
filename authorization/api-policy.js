@@ -100,6 +100,12 @@ function enforceApiPermissions(req, res, next) {
   const resource = req.path.split('/')[2];
   const module = RESOURCE_MODULE[resource];
   if (!module) return next();
+  // Sales history is permissioned separately from live POS/order operations.
+  // Its client marks requests explicitly so shared sales endpoints remain usable
+  // by the POS under orders.* permissions.
+  if (resource === 'sales' && req.query?.view === 'sales_panel') {
+    return requirePermission(`sales.${actionFor(req, resource)}`)(req, res, next);
+  }
   // My Inbox is intrinsic to every authenticated shop user. Only requests
   // explicitly scoped to the private inbox bypass optional notification-panel
   // permissions; platform communication continues through notifications.*.

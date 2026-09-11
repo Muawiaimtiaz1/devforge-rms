@@ -745,6 +745,12 @@ class SalesService {
    */
   async createSale(payload, shopId, userId) {
     const data = checkoutSchema.parse(payload);
+    if (!data.waiter_id) {
+      const creator = await db('users').where({ id: userId, shop_id: shopId }).first('role');
+      if (['waiter', 'order_taker'].includes(String(creator?.role || '').toLowerCase())) {
+        data.waiter_id = userId;
+      }
+    }
     if (data.client_request_id) {
       const existing = await db('sales')
         .where({ shop_id: shopId, client_request_id: data.client_request_id })
@@ -1587,7 +1593,8 @@ class SalesService {
 
   async getSales(shopId, currentUser = null) {
     const query = db('sales as s')
-      .select('s.*', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'w.name as waiter_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select('s.*', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select(db.raw("COALESCE(w.name, CASE WHEN LOWER(u.role) IN ('waiter', 'order_taker') THEN COALESCE(u.name, u.username) END) as waiter_name"))
       .select(db.raw('(SELECT SUM(quantity) FROM return_items WHERE return_id IN (SELECT id FROM returns WHERE sale_id = s.id)) as items_returned'))
       .leftJoin('users as u', 's.user_id', 'u.id')
       .leftJoin('users as pr', 's.payment_receiver_id', 'pr.id')
@@ -1685,7 +1692,8 @@ class SalesService {
     }
 
     const rows = await query.clone()
-      .select('s.*', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'w.name as waiter_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select('s.*', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select(db.raw("COALESCE(w.name, CASE WHEN LOWER(u.role) IN ('waiter', 'order_taker') THEN COALESCE(u.name, u.username) END) as waiter_name"))
       .select(db.raw('(SELECT SUM(quantity) FROM return_items WHERE return_id IN (SELECT id FROM returns WHERE sale_id = s.id)) as items_returned'))
       .orderBy('s.created_at', 'desc')
       .limit(pageSize)
@@ -1880,7 +1888,9 @@ class SalesService {
 
   async getBill(saleId, shopId) {
     const sale = await db('sales as s')
-      .select('s.*', 'w.name as waiter_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select('s.*', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select(db.raw("COALESCE(w.name, CASE WHEN LOWER(u.role) IN ('waiter', 'order_taker') THEN COALESCE(u.name, u.username) END) as waiter_name"))
+      .leftJoin('users as u', 's.user_id', 'u.id')
       .leftJoin('users as w', 's.waiter_id', 'w.id')
       .leftJoin('users as r', 's.rider_id', 'r.id')
       .leftJoin('users as k', 's.kitchen_id', 'k.id')

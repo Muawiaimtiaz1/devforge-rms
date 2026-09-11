@@ -58,14 +58,37 @@ async function ensureAuthorizationSchema() {
       await db.schema.alterTable('users', (table) => table.boolean('use_custom_permissions').notNullable().defaultTo(false));
     }
 
+    const salesPermissionsAlreadyExist = await db('permissions').where('key', 'sales.view').first('id');
     await db('permissions')
       .insert(PERMISSIONS)
       .onConflict('key')
       .merge(['module', 'action', 'label']);
+    if (!salesPermissionsAlreadyExist) await backfillSalesPermissions();
     await migrateLegacyUsers();
     await seedStandardRoles();
   })().catch((error) => { initialization = null; throw error; });
   return initialization;
+}
+
+async function backfillSalesPermissions() {
+  const mappings = [
+    ['orders.view', 'sales.view'],
+    ['orders.take_payment', 'sales.take_payment'],
+    ['orders.return', 'sales.return'],
+  ];
+  for (const [sourceKey, targetKey] of mappings) {
+    const [source, target] = await Promise.all([
+      db('permissions').where({ key: sourceKey }).first('id'),
+      db('permissions').where({ key: targetKey }).first('id'),
+    ]);
+    if (!source || !target) continue;
+    const roleIds = await db('role_permissions').where({ permission_id: source.id }).select('role_id');
+    await insertIgnoreInChunks(
+      'role_permissions',
+      roleIds.map(({ role_id }) => ({ role_id, permission_id: target.id })),
+      ['role_id', 'permission_id'],
+    );
+  }
 }
 
 async function seedStandardRoles() {

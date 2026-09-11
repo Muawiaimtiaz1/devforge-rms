@@ -12,6 +12,7 @@ function dateKey(value) {
 }
 
 class ExpiryNotificationService {
+  // Item-level expiry-${expired ? 'expired' : 'near'} alerts were replaced by daily summaries.
   async syncForUser(user, permissions = []) {
     const shopId = Number(user?.shop_id);
     const canViewIngredients = permissions.includes('raw_stock.view');
@@ -27,8 +28,10 @@ class ExpiryNotificationService {
   async syncExpiry(user, shopId) {
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
+    const reportDate = dateKey(today);
     const warningEnd = new Date(today);
-    warningEnd.setUTCDate(warningEnd.getUTCDate() + 4);
+    // The previous window used getUTCDate() + 4; alerts now begin three days before expiry.
+    warningEnd.setUTCDate(warningEnd.getUTCDate() + 3);
 
     const batches = await db('raw_stock_batches as b')
       .join('raw_stocks as rs', 'rs.id', 'b.raw_stock_id')
@@ -40,27 +43,23 @@ class ExpiryNotificationService {
       .where('b.expiry_date', '<=', dateKey(warningEnd))
       .select('b.id', 'b.quantity', 'b.expiry_date', 'rs.name', 'rs.unit');
 
-    const alerts = batches.flatMap((batch) => {
+    const alertTypes = new Set(batches.flatMap((batch) => {
       const expiryDate = dateKey(batch.expiry_date);
       if (!expiryDate) return [];
       const daysLeft = Math.round((Date.parse(`${expiryDate}T00:00:00Z`) - today.getTime()) / 86400000);
-      const expired = daysLeft < 0;
-      const timing = expired
-        ? `expired ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} ago`
-        : daysLeft === 0 ? 'expires today' : `expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
-      return [{
-        alert_key: expired ? 'inventory.expired' : 'inventory.expiry_near',
-        action_url: `/app/inventory?alert=expiry-${expired ? 'expired' : 'near'}&batch=${batch.id}&expiry=${expiryDate}`,
-        title: expired ? `${batch.name} has expired` : `${batch.name} is near expiry`,
-        message: `${Number(batch.quantity)} ${batch.unit} of ${batch.name} ${timing}.`,
-        priority: expired || daysLeft <= 1 ? 'urgent' : 'high',
-        due_at: `${expiryDate}T00:00:00.000Z`,
-      }];
-    });
+      return [daysLeft < 0 ? 'expired' : 'near'];
+    }));
     const [nearSelection, expiredSelection] = await Promise.all([
       preferenceService.selection(shopId, 'inventory.expiry_near'),
       preferenceService.selection(shopId, 'inventory.expired'),
     ]);
+    const alerts = [...alertTypes].map((type) => type === 'expired' ? {
+      alert_key: 'inventory.expired', action_url: `/app/inventory?alert=expiry-expired&report_date=${reportDate}`,
+      title: 'Inventory expiry alert', message: 'Check your inventory for expired items.', priority: 'urgent',
+    } : {
+      alert_key: 'inventory.expiry_near', action_url: `/app/inventory?alert=expiry-near&report_date=${reportDate}`,
+      title: 'Inventory expiry warning', message: 'Check your inventory for items near expiry.', priority: 'high',
+    });
     const filteredAlerts = alerts.filter((alert) => {
       const selected = alert.alert_key === 'inventory.expired' ? expiredSelection : nearSelection;
       return selected === null || selected.map(Number).includes(Number(user.id));
@@ -72,7 +71,7 @@ class ExpiryNotificationService {
   }
 
   async syncOutOfStock(user, shopId, access) {
-    const alerts = [];
+    const alertTypes = new Set();
     if (access.canViewIngredients) {
       const ingredients = await db('raw_stocks')
         .where({ shop_id: shopId, is_deleted: 0 })
@@ -80,15 +79,7 @@ class ExpiryNotificationService {
         .select('id', 'name', 'unit', 'current_stock', 'min_stock_level');
       ingredients.forEach((item) => {
         const out = Number(item.current_stock) <= 0;
-        alerts.push({
-          alert_key: out ? 'inventory.out_of_stock' : 'inventory.low_stock',
-          action_url: `/app/inventory?alert=${out ? 'out-of-stock' : 'low-stock'}&ingredient=${item.id}`,
-          title: `${item.name} is ${out ? 'out of stock' : 'running low'}`,
-          message: out
-            ? `${item.name} has 0 ${item.unit || 'units'} remaining. Restock it before it is required by another order.`
-            : `${item.name} has ${Number(item.current_stock)} ${item.unit || 'units'} remaining; the minimum level is ${Number(item.min_stock_level)}.`,
-          priority: out ? 'urgent' : 'high',
-        });
+        alertTypes.add(out ? 'out' : 'low');
       });
     }
 
@@ -104,15 +95,7 @@ class ExpiryNotificationService {
         .select('variant.id', 'variant.product_id', 'variant.name as variant_name', 'variant.stock', 'variant.min_stock_level', 'product.name as product_name');
       variants.forEach((variant) => {
         const out = Number(variant.stock) <= 0;
-        alerts.push({
-          alert_key: out ? 'inventory.out_of_stock' : 'inventory.low_stock',
-          action_url: `/app/inventory?alert=${out ? 'out-of-stock' : 'low-stock'}&product=${variant.product_id}&variant=${variant.id}`,
-          title: `${variant.product_name} is ${out ? 'out of stock' : 'running low'}`,
-          message: out
-            ? `${variant.product_name} - ${variant.variant_name} has 0 units remaining.`
-            : `${variant.product_name} - ${variant.variant_name} has ${Number(variant.stock)} remaining; the minimum level is ${Number(variant.min_stock_level)}.`,
-          priority: out ? 'urgent' : 'high',
-        });
+        alertTypes.add(out ? 'out' : 'low');
       });
     }
 
@@ -120,6 +103,14 @@ class ExpiryNotificationService {
       preferenceService.selection(shopId, 'inventory.low_stock'),
       preferenceService.selection(shopId, 'inventory.out_of_stock'),
     ]);
+    const reportDate = dateKey(new Date());
+    const alerts = [...alertTypes].map((type) => type === 'out' ? {
+      alert_key: 'inventory.out_of_stock', action_url: `/app/inventory?alert=out-of-stock&report_date=${reportDate}`,
+      title: 'Inventory stock alert', message: 'Check your inventory for out-of-stock items.', priority: 'urgent',
+    } : {
+      alert_key: 'inventory.low_stock', action_url: `/app/inventory?alert=low-stock&report_date=${reportDate}`,
+      title: 'Inventory stock warning', message: 'Check your inventory for items that are near out of stock.', priority: 'high',
+    });
     const filteredAlerts = alerts.filter((alert) => {
       const selected = alert.alert_key === 'inventory.out_of_stock' ? outSelection : lowSelection;
       return selected === null || selected.map(Number).includes(Number(user.id));

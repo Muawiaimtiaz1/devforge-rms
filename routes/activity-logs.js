@@ -245,12 +245,12 @@ router.get('/sales', requireAuth, async (req, res) => {
         's.*',
         'u.name as served_by_name',
         'u.username as served_by_username',
-        'w.name as waiter_name',
         'r.name as rider_name',
         'k.name as kitchen_name',
         't.table_number',
         'shops.name as shop_name'
       )
+      .select(db.raw("COALESCE(w.name, CASE WHEN LOWER(u.role) IN ('waiter', 'order_taker') THEN COALESCE(u.name, u.username) END) as waiter_name"))
       .leftJoin('users as u', 's.user_id', 'u.id')
       .leftJoin('users as w', 's.waiter_id', 'w.id')
       .leftJoin('users as r', 's.rider_id', 'r.id')
