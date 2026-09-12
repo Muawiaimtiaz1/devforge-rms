@@ -30,6 +30,12 @@ function formatMoney(value) {
   return Number(value || 0).toFixed(2);
 }
 
+// Catalog/product prices are configured as whole rupees. Calculated receipt
+// amounts keep two decimals so percentage discounts and taxes remain exact.
+function formatProductMoney(value) {
+  return Number(value || 0).toFixed(0);
+}
+
 function receiptTimeZone(value) {
   const candidate = String(value || process.env.APP_TIME_ZONE || "Asia/Karachi").trim();
   if (!candidate) return undefined;
@@ -217,8 +223,8 @@ function renderCustomerReceipt(details, options) {
             <tr>
               <td>${escapeHtml(itemName(item))}</td>
               <td class="text-center">${escapeHtml(item.quantity)}</td>
-              <td class="text-right">${formatMoney(item.price_at_sale)}</td>
-              <td class="text-right">${formatMoney(Number(item.quantity || 0) * Number(item.price_at_sale || 0))}</td>
+              <td class="text-right">${formatProductMoney(item.price_at_sale)}</td>
+              <td class="text-right">${formatProductMoney(Number(item.quantity || 0) * Number(item.price_at_sale || 0))}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -227,7 +233,7 @@ function renderCustomerReceipt(details, options) {
       <hr class="divider" />
 
       <div class="text-right">
-        <div>Subtotal: Rs. ${formatMoney(subtotal)}</div>
+        <div>Subtotal: Rs. ${formatProductMoney(subtotal)}</div>
         ${discount > 0 ? `<div>Discount: -Rs. ${formatMoney(discount)}</div>` : ""}
         ${taxPct > 0 ? `<div>Tax (${escapeHtml(taxPct)}%): Rs. ${formatMoney(taxAmt)}</div>` : ""}
         <div class="bold total-row" style="margin-top: 4px;">GRAND TOTAL: Rs. ${formatMoney(grandTotal)}</div>

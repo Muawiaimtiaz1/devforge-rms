@@ -8170,7 +8170,7 @@ async function printBill(saleId, isUnpaid = false) {
           <tr>
             <td>${i.product_name}</td>
             <td class="text-center">${i.quantity}</td>
-            <td class="text-right">${i.price_at_sale}</td>
+            <td class="text-right">${Number(i.price_at_sale || 0).toFixed(0)}</td>
             <td class="text-right">${(i.quantity * i.price_at_sale).toFixed(0)}</td>
           </tr>
         `,
@@ -8183,9 +8183,9 @@ async function printBill(saleId, isUnpaid = false) {
 
     <div class="text-right">
       <div>Subtotal: Rs. ${subtotal.toFixed(0)}</div>
-      ${discount > 0 ? `<div>Discount: -Rs. ${discount.toFixed(0)}</div>` : ""}
-      ${taxPct > 0 ? `<div>Tax (${taxPct}%): Rs. ${taxAmt.toFixed(0)}</div>` : ""}
-      <div class="bold total-row" style="margin-top: 4px;">GRAND TOTAL: Rs. ${grandTotal.toFixed(0)}</div>
+      ${discount > 0 ? `<div>Discount: -Rs. ${discount.toFixed(2)}</div>` : ""}
+      ${taxPct > 0 ? `<div>Tax (${taxPct}%): Rs. ${taxAmt.toFixed(2)}</div>` : ""}
+      <div class="bold total-row" style="margin-top: 4px;">GRAND TOTAL: Rs. ${grandTotal.toFixed(2)}</div>
     </div>
 
     <hr class="divider" />
@@ -8194,15 +8194,15 @@ async function printBill(saleId, isUnpaid = false) {
       ${isUnpaid ? `
         <div style="text-align: center; border: 1px dashed #111827; padding: 5px; margin-top: 5px; font-weight: bold;">
           *** UNPAID BILL ***<br>
-          Total: Rs. ${grandTotal.toFixed(0)}<br>
-          Balance Due: Rs. ${balanceDue.toFixed(0)}
+          Total: Rs. ${grandTotal.toFixed(2)}<br>
+          Balance Due: Rs. ${balanceDue.toFixed(2)}
         </div>
       ` : `
         <div><strong>Method:</strong> ${method}</div>
         ${tip > 0 ? `<div><strong>Tip received (${escapeOrderValue(sale.tip_payment_method || sale.payment_method || 'cash')}):</strong> Rs. ${tip.toFixed(2)}</div>` : ""}
         <div><strong>Received:</strong> Rs. ${received.toFixed(2)}</div>
         ${standaloneTip && tip > 0 ? `<div><strong>Total collected:</strong> Rs. ${(Math.min(received, grandTotal) + tip).toFixed(2)}</div>` : ""}
-        ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> Rs. ${remaining.toFixed(0)}</div>` : ""}
+        ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> Rs. ${remaining.toFixed(2)}</div>` : ""}
         ${remaining <= 0 ? `<div class="bold"><strong>Change:</strong> Rs. ${Math.abs(remaining).toFixed(2)}</div>` : ""}
       `}
     </div>
