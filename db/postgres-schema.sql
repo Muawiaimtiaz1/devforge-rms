@@ -797,6 +797,20 @@ CREATE INDEX IF NOT EXISTS idx_notification_alert_recipients_user ON notificatio
 
 CREATE INDEX IF NOT EXISTS idx_kitchen_order_updates_shop_id ON kitchen_order_updates(shop_id);
 
+-- Additive v2 queue state. Keep kitchen_order_updates intact for rollback and
+-- legacy readers while pending edits are isolated per routed kitchen.
+CREATE TABLE IF NOT EXISTS kitchen_order_pending_updates (
+  shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  kitchen_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  changes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (sale_id, kitchen_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_kitchen_pending_updates_shop
+  ON kitchen_order_pending_updates(shop_id, kitchen_id, updated_at);
+
 CREATE TABLE IF NOT EXISTS kitchen_order_statuses (
   id SERIAL PRIMARY KEY,
   shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,

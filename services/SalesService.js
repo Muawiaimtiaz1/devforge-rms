@@ -8,6 +8,7 @@ const cashDrawerService = require('./CashDrawerService');
 const inventoryCostingService = require('../src/modules/inventory/inventory-costing.service');
 const { effectiveKitchenStatuses } = require('../utils/kitchen-status');
 const { classifyAffectedKitchenQueues } = require('../utils/kitchen-queue');
+const { mergeKitchenChanges } = require('../utils/kitchen-pending-changes');
 const { z } = require('zod');
 
 // Validation Schemas
@@ -1185,15 +1186,15 @@ class SalesService {
     return [...kitchenIds];
   }
 
-  async getAffectedKitchenIdsForItemChanges(dbInstance, sale, items, shopId) {
-    if (!items.length) return [];
+  async getKitchenChangeGroups(dbInstance, sale, items, shopId) {
+    if (!items.length) return new Map();
 
     const { resolvePrinterRoute } = await this.getPrinterRouting(dbInstance, shopId);
     const [categoryRouteMap, kitchenRoute] = await Promise.all([
       this.getCategoryPrintRouteMap(dbInstance, shopId, resolvePrinterRoute),
       this.resolveKitchenRoute(dbInstance, sale, shopId, resolvePrinterRoute),
     ]);
-    const kitchenIds = new Set();
+    const changesByKitchen = new Map();
 
     for (const item of items) {
       const category = this.getItemCategory(item);
@@ -1207,15 +1208,27 @@ class SalesService {
       const routedKitchenIds = [...new Set([...categoryKitchenIds, ...printerRouteKitchenIds])];
 
       if (routedKitchenIds.length) {
-        routedKitchenIds.forEach(kitchenId => kitchenIds.add(kitchenId));
+        routedKitchenIds.forEach(kitchenId => {
+          if (!changesByKitchen.has(kitchenId)) changesByKitchen.set(kitchenId, []);
+          changesByKitchen.get(kitchenId).push(item);
+        });
       } else if (sale?.kitchen_id) {
         // Orders without category-to-kitchen routing still belong to their
         // explicitly assigned fallback kitchen.
-        kitchenIds.add(Number(sale.kitchen_id));
+        const fallbackKitchenId = Number(sale.kitchen_id);
+        if (Number.isInteger(fallbackKitchenId)) {
+          if (!changesByKitchen.has(fallbackKitchenId)) changesByKitchen.set(fallbackKitchenId, []);
+          changesByKitchen.get(fallbackKitchenId).push(item);
+        }
       }
     }
 
-    return [...kitchenIds].filter(Number.isInteger);
+    return changesByKitchen;
+  }
+
+  async getAffectedKitchenIdsForItemChanges(dbInstance, sale, items, shopId) {
+    const changesByKitchen = await this.getKitchenChangeGroups(dbInstance, sale, items, shopId);
+    return [...changesByKitchen.keys()];
   }
 
   async updateSaleItems(saleId, payload, shopId, userId, options = {}) {
@@ -1519,12 +1532,13 @@ class SalesService {
         this.getKitchenIdsForItems(trx, updatedSaleForRouting, resolvedItems, shopId),
       ]);
 
-      const affectedKitchenIds = await this.getAffectedKitchenIdsForItemChanges(
+      const kitchenChangeGroups = await this.getKitchenChangeGroups(
         trx,
         updatedSaleForRouting,
-        itemChanges,
+        kitchenChanges,
         shopId,
       );
+      const affectedKitchenIds = [...kitchenChangeGroups.keys()];
       const affectedKitchenQueues = classifyAffectedKitchenQueues(oldKitchenIds, affectedKitchenIds);
 
       // Reopen only the kitchens that received an item change. Other kitchens
@@ -1551,6 +1565,32 @@ class SalesService {
           });
         }
       }
+      // Additive per-kitchen pending changes. Never overwrite another
+      // kitchen's unacknowledged edit when a later order edit is routed.
+      for (const [kitchenId, changes] of kitchenChangeGroups) {
+        const existingPending = await trx('kitchen_order_pending_updates')
+          .where({ sale_id: saleId, shop_id: shopId, kitchen_id: kitchenId })
+          .forUpdate()
+          .first('changes_json');
+        const mergedChanges = mergeKitchenChanges(existingPending?.changes_json, changes);
+        if (!mergedChanges.length) {
+          await trx('kitchen_order_pending_updates').where({ sale_id: saleId, shop_id: shopId, kitchen_id: kitchenId }).del();
+          continue;
+        }
+        await trx('kitchen_order_pending_updates').insert({
+          sale_id: saleId,
+          shop_id: shopId,
+          kitchen_id: kitchenId,
+          changes_json: JSON.stringify(mergedChanges),
+          updated_at: trx.fn.now(),
+        }).onConflict(['sale_id', 'kitchen_id']).merge({
+          shop_id: shopId,
+          changes_json: JSON.stringify(mergedChanges),
+          updated_at: trx.fn.now(),
+        });
+      }
+      // Preserve the legacy shared row for rollback compatibility. New KDS
+      // reads prefer the isolated per-kitchen record above.
       await trx('kitchen_order_updates').insert({
         sale_id: saleId,
         shop_id: shopId,

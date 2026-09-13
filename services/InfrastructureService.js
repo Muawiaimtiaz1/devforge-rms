@@ -226,6 +226,26 @@ class InfrastructureService {
   async listActiveKitchenOrders(shopId, kitchenUserId = null, options = {}) {
     await ensureKitchenWorkflowSchema();
     const view = ['new', 'updated', 'preparing', 'completed'].includes(options.view) ? options.view : 'all';
+    const kitchenChangesSql = kitchenUserId ? db.raw(`COALESCE(
+      (SELECT kpu.changes_json FROM kitchen_order_pending_updates kpu
+       WHERE kpu.sale_id = s.id AND kpu.shop_id = s.shop_id AND kpu.kitchen_id = ? LIMIT 1),
+      (SELECT kou.changes_json FROM kitchen_order_updates kou
+       WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id ORDER BY kou.updated_at DESC LIMIT 1)
+    ) as kitchen_changes`, [kitchenUserId]) : db.raw(`(
+      SELECT kou.changes_json FROM kitchen_order_updates kou
+      WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id
+      ORDER BY kou.updated_at DESC LIMIT 1
+    ) as kitchen_changes`);
+    const kitchenUpdatedAtSql = kitchenUserId ? db.raw(`COALESCE(
+      (SELECT kpu.updated_at FROM kitchen_order_pending_updates kpu
+       WHERE kpu.sale_id = s.id AND kpu.shop_id = s.shop_id AND kpu.kitchen_id = ? LIMIT 1),
+      (SELECT kou.updated_at FROM kitchen_order_updates kou
+       WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id ORDER BY kou.updated_at DESC LIMIT 1)
+    ) as kitchen_updated_at`, [kitchenUserId]) : db.raw(`(
+      SELECT kou.updated_at FROM kitchen_order_updates kou
+      WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id
+      ORDER BY kou.updated_at DESC LIMIT 1
+    ) as kitchen_updated_at`);
     const query = db('sales as s')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .leftJoin('users as u', 's.waiter_id', 'u.id')
@@ -235,20 +255,8 @@ class InfrastructureService {
         's.id', 's.order_number', 's.user_id as punched_by_user_id', 's.kitchen_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
         's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',
         't.table_number', 'u.name as waiter_name', 'cb.name as punched_by_name', 'cb.username as punched_by_username',
-        db.raw(`(
-          SELECT kou.changes_json
-          FROM kitchen_order_updates kou
-          WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id
-          ORDER BY kou.updated_at DESC
-          LIMIT 1
-        ) as kitchen_changes`),
-        db.raw(`(
-          SELECT kou.updated_at
-          FROM kitchen_order_updates kou
-          WHERE kou.sale_id = s.id AND kou.shop_id = s.shop_id
-          ORDER BY kou.updated_at DESC
-          LIMIT 1
-        ) as kitchen_updated_at`)
+        kitchenChangesSql,
+        kitchenUpdatedAtSql
       );
 
     let effectiveStatusSql = 's.order_status';
@@ -419,7 +427,9 @@ class InfrastructureService {
       }
       if (kitchenUserId && order.kitchen_queue_kind !== 'updated') order.kitchen_changes = [];
       if (kitchenUserId && visibleItems.length === 0 && !(view === 'updated' && order.kitchen_changes.length)) continue;
-      if (view === 'updated' && order.kitchen_changes.length === 0) continue;
+      // Never hide a routed pending portion because a legacy, malformed or
+      // already-compacted change record is empty. The KDS will safely show the
+      // kitchen's full routed items instead.
       visibleOrders.push(order);
     }
 
@@ -438,6 +448,11 @@ class InfrastructureService {
     if (routedKitchenStatus && ['pending', 'preparing', 'ready'].includes(status)) {
       const portionStatus = status === 'ready' ? 'completed' : status;
       await db('kitchen_order_statuses').where({ id: routedKitchenStatus.id }).update({ status: portionStatus, updated_at: db.fn.now() });
+      if (['preparing', 'ready'].includes(status)) {
+        await db('kitchen_order_pending_updates')
+          .where({ sale_id: saleId, kitchen_id: userId, shop_id: shopId })
+          .del();
+      }
       const portions = await db('kitchen_order_statuses').where({ sale_id: saleId, shop_id: shopId });
       if (status === 'preparing') {
         await db('sales').where({ id: saleId, shop_id: shopId }).where('order_status', 'pending').update({ order_status: 'preparing', preparing_at: db.fn.now() });
