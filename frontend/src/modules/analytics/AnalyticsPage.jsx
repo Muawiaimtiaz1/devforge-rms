@@ -103,15 +103,14 @@ export default function AnalyticsPage() {
   return <div className="analytics-page min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200 transition-colors duration-300">
     {session && <AnalyticsTopbar user={session} />}
     <main className="pt-20 min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-300">
-      <div className="container mx-auto px-6 pb-20">
-        <header className="flex items-center justify-between mb-8"><h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Analytics & Reports</h2><div className="h-px flex-1 bg-slate-200 dark:bg-slate-800 mx-8" /></header>
+      <div className="container mx-auto px-3 sm:px-6 pb-20 overflow-x-hidden">
         {authError ? <div role="alert" className="p-6 text-rose-600"><p>{authError}</p><a href="/app/lobby">Return to shop lobby</a></div> :
-          <AnalyticsFrame customDateLimits={customDateLimits} activeAnalyticsTab={tab} analyticsPeriod={filters.period} analyticsCustomFrom={filters.from} analyticsCustomTo={filters.to} analyticsBrandId={data && !data.selectedBrandId ? '' : filters.brandId} brands={brands} drawerOpen={drawerOpen} toggleAnalyticsSidebar={() => setDrawerOpen(value => !value)} switchAnalyticsTab={tab => { setTab(tab); setDrawerOpen(false) }} onPeriodChange={changePeriod} onDateChange={changeDate} onPartnerChange={brandId => setFilters(previous => ({ ...previous, brandId }))} notify={setToast}>
+          <AnalyticsFrame pageHeader={<header className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3"><h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Analytics & Reports</h2><div className="hidden sm:block h-px flex-1 bg-slate-200 dark:bg-slate-800 mx-5 lg:mx-8" />{data?.dataAsOf && <div className="sm:text-right text-[10px] font-bold text-slate-500"><div>As of {new Date(data.dataAsOf).toLocaleString()}</div><div>{data.metricVersion} · live reporting data</div></div>}</header>} customDateLimits={customDateLimits} activeAnalyticsTab={tab} analyticsPeriod={filters.period} analyticsCustomFrom={filters.from} analyticsCustomTo={filters.to} analyticsBrandId={data && !data.selectedBrandId ? '' : filters.brandId} brands={brands} drawerOpen={drawerOpen} toggleAnalyticsSidebar={() => setDrawerOpen(value => !value)} switchAnalyticsTab={tab => { setTab(tab); setDrawerOpen(false) }} onPeriodChange={changePeriod} onDateChange={changeDate} onPartnerChange={brandId => setFilters(previous => ({ ...previous, brandId }))} notify={setToast}>
             {error ? <div role="alert" className="p-6 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 rounded-2xl border border-rose-100 dark:border-rose-900/60 font-medium text-sm flex flex-col gap-2"><span className="font-bold">❌ Error Computing Analytics</span><span>{error}</span><button onClick={() => setRetry(value => value + 1)} className="mt-2 w-fit px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-all shadow-md">Retry Query</button></div> : !data ? <Loading /> : tab === 'overview' ? <OverviewTab data={data} analyticsPeriod={filters.period} /> : <SpecificTab tabId={tab} data={data} analyticsPeriod={filters.period} />}
           </AnalyticsFrame>}
       </div>
     </main>
-    {toast && <div role="status" className="fixed bottom-6 right-6 z-[200] rounded-xl bg-slate-900 text-white p-4 shadow-xl">{toast}</div>}
+    {toast && <div role="status" className="fixed bottom-4 left-3 right-3 sm:bottom-6 sm:left-auto sm:right-6 z-[200] rounded-xl bg-slate-900 text-white p-4 shadow-xl">{toast}</div>}
   </div>
 }
 

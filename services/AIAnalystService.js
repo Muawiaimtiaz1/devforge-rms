@@ -25,17 +25,18 @@ class AIAnalystService {
 
     // 2. Profit Margin Analysis
     const margin = data.summary.profitMargin;
-    if (margin < 15) {
+    if (margin < 15 && data.kpi.totalOrders >= 20) {
       recommendations.push({
         action: 'Price Optimization Needed',
-        reason: `Your profit margin is currently ${margin.toFixed(1)}%, which is below the healthy benchmark of 20%.`,
-        suggestion: 'Consider increasing prices on top-selling items or negotiating better buying prices with suppliers.'
+        reason: `Your recorded gross margin is ${margin.toFixed(1)}% across ${data.kpi.totalOrders} completed orders.`,
+        suggestion: 'Review item-level prices and recorded costs. This observation is not an industry benchmark or a causal diagnosis.'
       });
     }
 
     // 3. Peak Hour Strategy
     if (data.bestSellingHours && data.bestSellingHours.length > 0) {
-      const peakHour = data.bestSellingHours[0].label;
+      const peak = [...data.bestSellingHours].sort((a, b) => Number(b.orders || 0) - Number(a.orders || 0))[0];
+      const peakHour = peak.label;
       const hourInt = parseInt(peakHour);
       const ampm = hourInt >= 12 ? 'PM' : 'AM';
       const displayHour = hourInt % 12 || 12;
@@ -50,7 +51,10 @@ class AIAnalystService {
     // 4. Inventory Efficiency
     if (data.topProducts && data.topProducts.length > 0) {
       const top = data.topProducts[0];
-      if (top.stock < 10) {
+      // Recipe menu items do not own a discrete stock quantity. Their ingredients
+      // can be shared by many recipes, so claiming "N products remaining" would
+      // be misleading. Raw ingredient alerts are handled by inventory monitoring.
+      if (top.product_type !== 'recipe_based' && Number(top.stock) < 10) {
         insights.push({
           type: 'warning',
           title: 'Stockout Risk',
@@ -70,19 +74,19 @@ class AIAnalystService {
     }
 
     // 6. Return Rate Anomaly
-    const returnRate = (data.summary.totalReturns / (data.kpi.totalOrders || 1)) * 100;
-    if (returnRate > 5) {
+    const returnEventRate = data.kpi.totalOrders > 0 ? (data.summary.totalReturns / data.kpi.totalOrders) * 100 : 0;
+    if (data.kpi.totalOrders >= 20 && returnEventRate > 5) {
       insights.push({
         type: 'danger',
         title: 'High Return Rate',
-        message: `${returnRate.toFixed(1)}% of your orders are being returned. This is significantly higher than the 2% industry average.`
+        message: `Return invoices equal ${returnEventRate.toFixed(1)}% of completed orders in this period. One order can have more than one return invoice.`
       });
     }
 
     return {
       summary: {
         verdict: salesGrowth > 0 ? 'Healthy & Growing' : 'Monitoring Required',
-        aiConfidence: '98%',
+        evidenceLevel: data.kpi.totalOrders >= 100 ? 'High sample' : data.kpi.totalOrders >= 20 ? 'Moderate sample' : 'Low sample',
         lastAnalysis: new Date().toISOString()
       },
       insights,

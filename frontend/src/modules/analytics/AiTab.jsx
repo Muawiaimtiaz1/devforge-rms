@@ -38,7 +38,7 @@ export function AiTab({
                    <span className={"text-[10px] font-black uppercase tracking-widest text-indigo-100"}>AI Data Verdict</span>
                 </div>
                 <h3 className={"text-2xl font-black tracking-tight"}>{aiData.summary.verdict}</h3>
-                <p className={"text-xs text-indigo-100/80 mt-1"}>AI Confidence: {aiData.summary.aiConfidence} based on {analyticsPeriod} performance data.</p>
+                <p className={"text-xs text-indigo-100/80 mt-1"}>Evidence level: {aiData.summary.evidenceLevel} based on completed orders in this period.</p>
              </div>
              <div className={"flex gap-4"}>
                 <div className={"bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 text-center"}>

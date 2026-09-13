@@ -11448,6 +11448,13 @@ async function renderPrinterRouting() {
   _printerRoutingKitchens = Array.isArray(users) ? users.filter(u => u.role === 'kitchen') : [];
   _printerRouteSettings = settings || {};
   await fetchCategories();
+  const realtimeEnabled = Number(settings?.realtime_printing_enabled) === 1;
+  const [realtimeStatus, failedRealtimeJobs] = realtimeEnabled
+    ? await Promise.all([
+        api('/api/realtime-print-jobs/status').catch(() => null),
+        api('/api/realtime-print-jobs/failed').catch(() => [])
+      ])
+    : [null, []];
 
   const contentHtml = `
     <div class="animate-in fade-in slide-in-from-right-4 duration-500 max-w-6xl mx-auto pb-20">
@@ -11456,13 +11463,33 @@ async function renderPrinterRouting() {
           <h3 class="text-3xl font-black text-slate-950 dark:text-white mb-2 tracking-tight">Printers & Routing</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm italic">Define physical printers and assign them to kitchens, customer bills, and unpaid bills.</p>
         </div>
-        <a href="/api/download-print-agent" download class="inline-flex shrink-0 items-center gap-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-600/20 active:scale-95 transition-all">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-          Download Print Agent
-        </a>
+        <div class="flex flex-wrap items-center gap-3">
+          <a href="/api/download-print-agent" download class="inline-flex shrink-0 items-center gap-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-600/20 active:scale-95 transition-all">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            Download Print Agent
+          </a>
+          ${Number(settings?.realtime_printing_enabled) ? `<a href="/api/realtime-print-jobs/download" download class="inline-flex shrink-0 items-center gap-2 px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-widest shadow-xl shadow-emerald-600/20 active:scale-95 transition-all">Download Realtime Print Agent</a>` : ''}
+        </div>
       </header>
 
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        <div class="lg:col-span-12 rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+          <label class="flex cursor-pointer items-center justify-between gap-5">
+            <span><strong class="block text-sm font-black text-slate-900 dark:text-white">Realtime Print Agent</strong><small class="mt-1 block text-xs text-slate-500 dark:text-slate-400">Runs beside the existing polling agent. Enable it to reveal the separate download button.</small></span>
+            <input type="checkbox" class="h-5 w-5 accent-emerald-600" ${Number(settings?.realtime_printing_enabled) ? 'checked' : ''} onchange="setRealtimePrintingEnabled(this.checked)" />
+          </label>
+          ${realtimeEnabled ? `
+            <div class="mt-4 border-t border-emerald-200 pt-4 text-xs dark:border-emerald-900/50">
+              <div class="flex flex-wrap gap-x-6 gap-y-2 text-slate-600 dark:text-slate-300">
+                <span class="font-black ${realtimeStatus?.agent?.connected ? 'text-emerald-600' : 'text-amber-600'}">Agent: ${realtimeStatus?.agent?.connected ? 'Online' : 'Offline'}</span>
+                <span>Pending: ${Number(realtimeStatus?.queue?.pending || 0)}</span>
+                <span>Printing: ${Number(realtimeStatus?.queue?.printing || 0)}</span>
+                <span>Waiting retry: ${Number(realtimeStatus?.queue?.retry_wait || 0)}</span>
+                <span>Failed: ${Number(realtimeStatus?.queue?.failed || 0)}</span>
+              </div>
+              ${failedRealtimeJobs.length ? `<div class="mt-3 space-y-2">${failedRealtimeJobs.map(job => `<div class="flex items-center justify-between gap-3 rounded-xl bg-white/70 px-3 py-2 dark:bg-slate-900/60"><span class="truncate">Job #${job.id} · ${escapeHtml(job.station_name || 'Unknown printer')} · ${escapeHtml(job.last_error || 'Printing failed')}</span><button onclick="retryRealtimePrintJob(${Number(job.id)})" class="shrink-0 font-black uppercase tracking-wider text-emerald-700 hover:text-emerald-600">Retry</button></div>`).join('')}</div>` : ''}
+            </div>` : ''}
+        </div>
         <!-- Left: Registered Printers -->
         <div class="lg:col-span-12 xl:col-span-5 space-y-6">
           <div class="flex items-center justify-between mb-2">
@@ -11796,6 +11823,32 @@ async function saveDefaultPrinters() {
     if (list) list.innerHTML = renderPrintersListHtml();
   } catch(e) {
     toast("Failed to save default printers", "error");
+  }
+}
+
+async function setRealtimePrintingEnabled(enabled) {
+  try {
+    const formData = new FormData();
+    formData.append('realtime_printing_enabled', enabled ? '1' : '0');
+    const response = await fetch('/api/shop-settings', { method: 'POST', body: formData });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || 'Could not update realtime printing');
+    toast(enabled ? 'Realtime printing enabled' : 'Realtime printing disabled');
+    renderSettings('printer-routing');
+  } catch (error) {
+    toast(error.message || 'Failed to update realtime printing', 'error');
+    renderSettings('printer-routing');
+  }
+}
+
+async function retryRealtimePrintJob(id) {
+  try {
+    const result = await api(`/api/realtime-print-jobs/${Number(id)}/retry`, 'POST', {});
+    if (result?.error) throw new Error(result.error);
+    toast('Print job queued for retry');
+    renderSettings('printer-routing');
+  } catch (error) {
+    toast(error.message || 'Could not retry print job', 'error');
   }
 }
 

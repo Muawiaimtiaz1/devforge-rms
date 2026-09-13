@@ -192,6 +192,7 @@ app.use("/api/notification-preferences", require("./src/modules/notification-pre
 app.use("/api/tables", require("./routes/tables"));
 app.use("/api/kds", require("./routes/kds"));
 app.use("/api/print-jobs", require("./routes/print-jobs"));
+app.use("/api/realtime-print-jobs", require("./routes/realtime-print-jobs"));
 app.use("/api/printers", require("./routes/printers"));
 app.use("/api/shifts", require("./routes/shifts"));
 app.use("/api/activity-logs", require("./routes/activity-logs"));
@@ -282,7 +283,8 @@ const PORT = process.env.PORT || 4000;
 
 function startServer(port = PORT) {
   const server = http.createServer(app);
-  require('./services/OrderRealtimeService').initialize(server, sessionMiddleware);
+  const realtimeIo = require('./services/OrderRealtimeService').initialize(server, sessionMiddleware);
+  require('./services/RealtimePrintService').initialize(realtimeIo);
   const listener = server.listen(port, () => {
     console.log(`✅ POS System running at http://localhost:${port}`);
     console.log("   Login: admin / admin123");

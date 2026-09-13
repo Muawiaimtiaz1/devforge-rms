@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS shops (
   table_visibility_mode TEXT NOT NULL DEFAULT 'all',
   logo_data TEXT,
   user_count INTEGER DEFAULT 0,
-  product_count INTEGER DEFAULT 0
+  product_count INTEGER DEFAULT 0,
+  realtime_printing_enabled INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -738,7 +739,9 @@ CREATE TABLE IF NOT EXISTS print_queue (
   status TEXT DEFAULT 'pending',
   attempts INTEGER DEFAULT 0,
   claimed_at TIMESTAMPTZ,
+  available_at TIMESTAMPTZ DEFAULT NOW(),
   printed_at TIMESTAMPTZ,
+  failed_at TIMESTAMPTZ,
   last_error TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -747,6 +750,25 @@ CREATE TABLE IF NOT EXISTS print_queue (
 CREATE INDEX IF NOT EXISTS idx_print_queue_shop_id ON print_queue(shop_id);
 CREATE INDEX IF NOT EXISTS idx_print_queue_status ON print_queue(status);
 CREATE INDEX IF NOT EXISTS idx_print_queue_claimed_at ON print_queue(claimed_at);
+CREATE INDEX IF NOT EXISTS idx_print_queue_pending_claim ON print_queue(shop_id, station_name, created_at, id) WHERE status = 'pending';
+
+CREATE OR REPLACE FUNCTION notify_rms_print_job() RETURNS trigger AS $$
+BEGIN
+  IF NEW.status = 'pending' THEN
+    PERFORM pg_notify('rms_print_jobs', json_build_object(
+      'job_id', NEW.id,
+      'shop_id', NEW.shop_id,
+      'station_name', NEW.station_name
+    )::text);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_notify_rms_print_job ON print_queue;
+CREATE TRIGGER trg_notify_rms_print_job
+AFTER INSERT OR UPDATE OF status ON print_queue
+FOR EACH ROW EXECUTE FUNCTION notify_rms_print_job();
 
 CREATE TABLE IF NOT EXISTS kitchen_order_updates (
   sale_id INTEGER PRIMARY KEY REFERENCES sales(id) ON DELETE CASCADE,

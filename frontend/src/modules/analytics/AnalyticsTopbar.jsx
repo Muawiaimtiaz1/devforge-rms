@@ -25,7 +25,7 @@ export function AnalyticsTopbar({
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, []);
-  return <>{<header id={"top-nav"} className={"fixed top-0 left-0 w-full h-16 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 z-50 flex items-center justify-between px-6 transition-colors duration-300 shadow-sm"}>
+  return <>{<header id={"top-nav"} className={"fixed top-0 left-0 w-full h-16 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 z-50 flex items-center justify-between px-3 sm:px-6 transition-colors duration-300 shadow-sm"}>
 
         
         <div className={"flex items-center gap-4"}>
@@ -49,10 +49,10 @@ export function AnalyticsTopbar({
             </div>
         </div>
         
-        <div id={"lobby-controls"} className={"flex-1 flex items-center justify-end px-4 gap-4 sm:gap-6"}>
+        <div id={"lobby-controls"} className={"flex-1 flex items-center justify-end pl-2 sm:px-4 gap-2 sm:gap-6"}>
             
         
-        <div className={"flex items-center gap-3"}>
+        <div className={"flex items-center gap-1.5 sm:gap-3"}>
             <div className={"hidden lg:flex flex-col items-end mr-3"}>
                 <div className={"text-[11px] font-bold text-gray-900 dark:text-white leading-none truncate max-w-[120px]"} id={"user-name-sidebar"}>{user.name || user.username}</div>
                 <div className={"text-[9px] text-gray-500 uppercase font-black tracking-widest mt-0.5"} id={"user-role-sidebar"}>{user.role}</div>

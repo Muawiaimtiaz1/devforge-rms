@@ -44,7 +44,7 @@ router.get("/", requireAuth, async (req, res) => {
                 contact_font_size, contact_align, contact_padding,
                 footer_font_size, footer_font_style, footer_margin,
                 divider_style, divider_width, section_gap, auto_calculate_damage_to_loss,
-                customer_bill_printer, unpaid_bill_printer
+                customer_bill_printer, unpaid_bill_printer, realtime_printing_enabled
          FROM shops WHERE id = ${isPostgres ? '$1' : '?'}`;
 
     let shop;
@@ -85,7 +85,7 @@ router.post("/", requireAuth, requireAdmin, upload.single("logo"), async (req, r
       "header_spacing", "extended_name_font_size", "extended_name_font_weight", "extended_name_spacing",
       "contact_font_size", "contact_align", "contact_padding", "footer_font_size", "footer_font_style",
       "footer_margin", "divider_style", "divider_width", "section_gap", "auto_calculate_damage_to_loss",
-      "customer_bill_printer", "unpaid_bill_printer", "logo_data"
+      "customer_bill_printer", "unpaid_bill_printer", "realtime_printing_enabled", "logo_data"
     ];
 
     const updates = [];
@@ -94,7 +94,7 @@ router.post("/", requireAuth, requireAdmin, upload.single("logo"), async (req, r
     fields.forEach(f => {
         if (req.body[f] !== undefined) {
             let val = req.body[f];
-            if (["use_logo_on_receipt", "use_text_on_receipt", "auto_calculate_damage_to_loss"].includes(f)) {
+            if (["use_logo_on_receipt", "use_text_on_receipt", "auto_calculate_damage_to_loss", "realtime_printing_enabled"].includes(f)) {
                 val = (val === "true" || val === true || val === 1) ? 1 : 0;
             }
             updates.push(`${f} = ${isPostgres ? '$' + (values.push(val)) : '?'}`);
@@ -120,6 +120,11 @@ router.post("/", requireAuth, requireAdmin, upload.single("logo"), async (req, r
         if (!isPostgres) values.push(shopId);
         if (isPostgres) await getPostgres().query(query, values);
         else getSqlite().prepare(query).run(...values);
+    }
+
+    if (req.body.realtime_printing_enabled !== undefined && !(req.body.realtime_printing_enabled === "true" || req.body.realtime_printing_enabled === true || req.body.realtime_printing_enabled === 1 || req.body.realtime_printing_enabled === "1")) {
+      require('../services/RealtimePrintService').disconnectShop(shopId);
+      if (isPostgres) await getPostgres().query("UPDATE print_queue SET status = 'pending', attempts = 0, available_at = NOW(), claimed_at = NULL, failed_at = NULL, updated_at = NOW() WHERE shop_id = $1 AND status IN ('retry_wait', 'failed')", [shopId]);
     }
 
     res.json({ ok: true });

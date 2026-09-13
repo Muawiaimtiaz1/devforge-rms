@@ -3,6 +3,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Explicit sales-intensity scale: level 0 is no sales, level 9 is the
+   highest-revenue four-hour block in the visible period. */
+.analytics-heatmap-cell { background: rgba(148, 163, 184, .08); border-color: rgba(148, 163, 184, .25); }
+.analytics-heatmap-level-1 { background: rgba(16, 185, 129, .18); border-color: rgba(5, 150, 105, .30); }
+.analytics-heatmap-level-2 { background: rgba(16, 185, 129, .27); border-color: rgba(5, 150, 105, .38); }
+.analytics-heatmap-level-3 { background: rgba(16, 185, 129, .36); border-color: rgba(5, 150, 105, .46); }
+.analytics-heatmap-level-4 { background: rgba(16, 185, 129, .45); border-color: rgba(5, 150, 105, .54); }
+.analytics-heatmap-level-5 { background: rgba(16, 185, 129, .54); border-color: rgba(5, 150, 105, .62); }
+.analytics-heatmap-level-6 { background: rgba(16, 185, 129, .63); border-color: rgba(5, 150, 105, .70); color: #fff; }
+.analytics-heatmap-level-7 { background: rgba(16, 185, 129, .72); border-color: rgba(5, 150, 105, .80); color: #fff; }
+.analytics-heatmap-level-8 { background: rgba(16, 185, 129, .83); border-color: rgba(5, 150, 105, .90); color: #fff; }
+.analytics-heatmap-level-9 { background: rgb(5, 150, 105); border-color: rgb(4, 120, 87); color: #fff; }
+
 html.analytics-document { font-size: 18px; }
 .analytics-page { font-family: Inter, sans-serif; line-height: 1.5; }
 .analytics-page *, .analytics-page ::before, .analytics-page ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: #e5e7eb; }
@@ -19,5 +32,30 @@ html.analytics-document { font-size: 18px; }
 .analytics-page #profile-dropdown { opacity: 0; transform: translateY(10px) scale(.95); pointer-events: none; transition: all .2s cubic-bezier(.4,0,.2,1); }
 .analytics-page #profile-dropdown.active { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
 .dark .analytics-page .dropdown-item { color: #94a3b8; }
+
+/* Compact, modern scrollbars scoped to Analytics. Firefox uses the standard
+   properties; Chromium/Safari use the WebKit pseudo-elements. */
+.analytics-page,
+.analytics-page * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, .45) transparent;
+}
+.analytics-page *::-webkit-scrollbar { width: 6px; height: 6px; }
+.analytics-page *::-webkit-scrollbar-track { background: transparent; }
+.analytics-page *::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, .42);
+  border-radius: 999px;
+}
+.analytics-page *::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, .68); }
+.dark .analytics-page,
+.dark .analytics-page * { scrollbar-color: rgba(148, 163, 184, .38) transparent; }
+.dark .analytics-page *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, .32); }
+.dark .analytics-page *::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, .55); }
+.analytics-page .overflow-x-auto,
+.analytics-page .overflow-y-auto { -webkit-overflow-scrolling: touch; }
+.analytics-page .analytics-fixed-sidebar {
+  left: max(1.5rem, calc((100vw - 1400px) / 2 + 1.5rem));
+}
+
 @media print { .analytics-page * { visibility: hidden; } }
 

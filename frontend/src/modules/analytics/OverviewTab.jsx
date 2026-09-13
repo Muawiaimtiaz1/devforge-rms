@@ -153,18 +153,18 @@ export function OverviewTab({
     return <span className={"" + color + " font-black text-[11px] block mt-1 tracking-tight"}>{arrow} {absVal}% {compLabel}</span>;
   };
   const showPeakTimeframe = analyticsPeriod !== 'today';
-  const renderInsightMetricCard = (label, body, info) => <div className={"bg-slate-950/40 dark:bg-slate-900/40 rounded-2xl p-4 border border-slate-800 dark:border-slate-800/60 flex flex-col justify-between min-w-[130px]"}>
+  const renderInsightMetricCard = (label, body, info) => <div className={"min-w-0 bg-slate-950/40 dark:bg-slate-900/40 rounded-2xl p-4 border border-slate-800 dark:border-slate-800/60 flex flex-col justify-between"}>
       <div className={"text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-slate-500"}>
         {analyticsLabelWithInfo(label, info, "dark")}
       </div>
       {body}
     </div>;
-  const insightSummaryHtml = <div className={"bg-slate-900 dark:bg-black rounded-3xl p-6 text-white shadow-md flex flex-col lg:flex-row justify-between items-center gap-6 border border-slate-800 dark:border-slate-900 relative overflow-visible select-none"}>
+  const insightSummaryHtml = <div className={"bg-slate-900 dark:bg-black rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-white shadow-md flex flex-col lg:flex-row justify-between items-center gap-4 sm:gap-6 border border-slate-800 dark:border-slate-900 relative overflow-visible select-none"}>
       
       <div className={"absolute -left-10 -bottom-10 w-40 h-40 bg-slate-800/20 rounded-full blur-2xl"}></div>
       <div className={"absolute -right-10 -top-10 w-40 h-40 bg-slate-800/10 rounded-full blur-2xl"}></div>
  
-      <div className={"grid grid-cols-2 md:grid-cols-3 " + (showPeakTimeframe ? "lg:grid-cols-7" : "lg:grid-cols-6") + " gap-4 w-full lg:w-auto shrink-0 z-10"}>
+      <div className={"grid grid-cols-1 min-[380px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 w-full min-w-0 z-10"}>
         {renderInsightMetricCard("Total Period Sales", <>
           <h5 className={"text-base font-black mt-1.5"}>{formatCurrency(k.totalSales)}</h5>
           {formatGrowth(g.sales)}
@@ -242,7 +242,7 @@ export function OverviewTab({
           </div>
           <div className={"flex flex-col items-end"}>
             <span className={"text-xs font-black text-slate-800 dark:text-white"}>{formatCurrency(k.totalSales)}</span>
-            <span className={"text-[9px] font-bold text-emerald-500"}>↗ 15.4% last period</span>
+            {formatGrowth(g.sales)}
           </div>
         </div>
         <div id={"chart-sales-trend"} className={"h-64 mt-2"}><LineChart containerId="chart-sales-trend" dataPoints={barPoints} /></div>
@@ -254,7 +254,7 @@ export function OverviewTab({
     <div className={"grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 animate-[fadeIn_0.3s_ease-out]"}>
       
       <div className={"w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-6 rounded-3xl shadow-sm h-fit"}>
-        <div className={"mb-4 flex items-center justify-between"}>
+        <div className={"mb-4 flex flex-col min-[380px]:flex-row min-[380px]:items-center justify-between gap-2"}>
           <div>
             {analyticsPanelTitle("Activity Heatmap", "Completed orders grouped into 4-hour blocks. Cell intensity uses bill subtotal - discount + tax. Refunds are not netted per block.")}
             <span className={"text-[11px] font-medium text-slate-400 block mt-0.5"}>Granular 4-hour transaction density over active timeframe</span>
@@ -328,13 +328,13 @@ export function OverviewTab({
           </div>
         </div>
         <div className={"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1"}>
-          {renderSummaryCard("Total Discounts", formatCurrency(s.totalDiscounts), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"} /></svg>, `↗ 5.3% ${compLabel}`, "blue", "Promotional incentives and order price reductions", "Sum of sale-level discounts on completed orders in the selected period. Returns do not change this discount total.")}
+          {renderSummaryCard("Total Discounts", formatCurrency(s.totalDiscounts), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"} /></svg>, "Selected period", "blue", "Promotional incentives and order price reductions", "Sum of sale-level discounts on completed orders in the selected period.")}
           {renderSummaryCard("Tips Collected", formatCurrency(data.totalTipsCollected || 0), "", "Cash " + formatCurrency(tips.cash_tips || 0) + " | Card " + formatCurrency(tips.card_tips || 0) + " | Online " + formatCurrency(tips.online_tips || 0), "emerald", "Shop-wide tips collected during this period", "Tips use collection time and remain separate from revenue, tax, and partner profit. Brand filters do not allocate tips.")}
-          {renderSummaryCard("Total Returns", formatNum(s.totalReturns), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"} /></svg>, `↗ 3.1% ${compLabel}`, "rose", "Items returned to inventory from completed orders", "Count of return invoices created in the selected period. One return invoice can contain multiple returned items.")}
-          {renderSummaryCard("Refunds", formatCurrency(s.totalRefunds), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"} /></svg>, `↗ 2.4% ${compLabel}`, "amber", "Direct financial reimbursements processed", "Total refund amount from return invoices created in the selected period. This is subtracted from net revenue.")}
-          {renderSummaryCard("Shop Profit", formatCurrency(Number(s.shopProfit ?? s.grossProfit ?? 0)), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"} /></svg>, `↗ 11.3% ${compLabel}`, "emerald", "Revenue minus COGS and damage/loss", "Shop Profit = revenue - COGS - damage/loss. Partner shares add up to this amount.")}
-          {renderSummaryCard("Shop Profit Margin", `${Number(s.shopProfitMargin ?? s.profitMargin ?? 0).toFixed(1)}%`, <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"} /></svg>, `↗ 9.8% ${compLabel}`, "indigo", "Shop profit as percentage of sales", "Shop profit divided by net revenue for the selected period.")}
-          {renderSummaryCard("Stock Value", formatCurrency(s.stockValue), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"} /></svg>, `↗ 6.7% ${compLabel}`, "sky", "Current asset valuation of all active inventory", "Current active product stock multiplied by product buying price. This is a live inventory valuation, not limited to the selected sales period.")}
+          {renderSummaryCard("Return Invoices", formatNum(s.totalReturns), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"} /></svg>, "Selected period", "rose", "Return records created", "Count of return invoices created in the selected period; one invoice can contain multiple items.")}
+          {renderSummaryCard("Refunds", formatCurrency(s.totalRefunds), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"} /></svg>, "Selected period", "amber", "Refund value recorded", "Total refund amount from return invoices created in the selected period. This is subtracted from net revenue.")}
+          {renderSummaryCard("Shop Profit", formatCurrency(Number(s.shopProfit ?? s.grossProfit ?? 0)), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"} /></svg>, "Selected period", "emerald", "Net revenue minus net COGS and dated waste", "Shop Profit = net revenue - net COGS - recorded waste cost in the selected period.")}
+          {renderSummaryCard("Shop Profit Margin", `${Number(s.shopProfitMargin ?? s.profitMargin ?? 0).toFixed(1)}%`, <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"} /></svg>, "Selected period", "indigo", "Shop profit as percentage of net revenue", "Shop profit divided by net revenue for the selected period.")}
+          {renderSummaryCard("Stock Value", formatCurrency(s.stockValue), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10l-8 4"} /></svg>, "Live value", "sky", "Product and raw-ingredient batch value", "Current product and raw-ingredient batch quantities valued at their recorded batch costs.")}
         </div>
       </div>
     </div>
@@ -422,12 +422,12 @@ function ActivityHeatmap({
     const cellsHtml = datesList.map((dateStr, rowIndex) => {
       const block = heatmapData[dateStr][idx];
       const dateParts = formatDateParts(dateStr);
-      const intensity = block.sales / maxVolume;
-      let bgClass = "bg-slate-50 dark:bg-slate-900/50 border-slate-200/40 dark:border-slate-800/40";
-      if (intensity > 0) bgClass = "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-300";
-      if (intensity > 0.25) bgClass = "bg-emerald-100 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200";
-      if (intensity > 0.5) bgClass = "bg-emerald-300 dark:bg-emerald-700/50 border-emerald-400 dark:border-emerald-600/80 text-white";
-      if (intensity > 0.75) bgClass = "bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 text-white";
+      const salesValue = Math.max(0, Number(block.sales || 0));
+      const intensity = salesValue > 0 ? Math.log1p(salesValue) / Math.log1p(maxVolume) : 0;
+      const cellStyle = intensity > 0
+        ? { width: `${heatmapCellSize}px`, height: `${heatmapCellSize}px`, backgroundColor: `rgba(16, 185, 129, ${0.16 + intensity * 0.78})`, borderColor: `rgba(5, 150, 105, ${0.3 + intensity * 0.7})`, color: intensity >= 0.55 ? '#ffffff' : '#065f46' }
+        : { width: `${heatmapCellSize}px`, height: `${heatmapCellSize}px`, backgroundColor: 'rgba(148, 163, 184, 0.08)', borderColor: 'rgba(148, 163, 184, 0.25)', color: '#94a3b8' };
+      const bgClass = `analytics-heatmap-cell analytics-heatmap-level-${Math.ceil(intensity * 9)}`;
       const formattedSales = new Intl.NumberFormat('en-IN', {
         style: 'currency',
         currency: 'INR',
@@ -554,7 +554,7 @@ function renderTopSellingProductsList(products) {
           </div>
           <div className={"min-w-0"}>
             <span className={"font-bold text-slate-800 dark:text-slate-200 block truncate"}>{p.name}</span>
-            <span className={"text-[9px] text-slate-400 font-semibold block mt-0.5"}>{p.quantity_sold} Sold | Stock: {p.stock || 0}</span>
+            <span className={"text-[9px] text-slate-400 font-semibold block mt-0.5"}>{p.quantity_sold} net sold{p.product_type !== 'recipe_based' ? ` | Stock: ${p.stock || 0}` : ''}</span>
           </div>
         </div>
         <span className={"font-black text-slate-900 dark:text-white shrink-0"}>{formattedSales}</span>

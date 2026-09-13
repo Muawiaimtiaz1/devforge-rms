@@ -121,7 +121,7 @@ export function SpecificTab({
     tabHtml = <div className={"space-y-6 animate-[fadeIn_0.2s_ease-out]"}>
         <div className={"grid grid-cols-1 md:grid-cols-2 gap-6"}>
           <div className={"bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-5 rounded-3xl shadow-sm"}>
-            {renderMetricLabel("Total Asset Stock Valuation", "Current active product stock multiplied by product buying price. This is live inventory value, not limited to the selected sales period.")}
+            {renderMetricLabel("Total Asset Stock Valuation", "Current product and raw-ingredient batch quantities valued at their recorded batch buying costs.")}
             <h4 className={"text-2xl font-black text-slate-800 dark:text-white mt-1"}>{formatCurrency(s.stockValue)}</h4>
             <span className={"text-[10px] font-bold text-slate-400 block mt-1"}>Based on standard buying costs</span>
           </div>
@@ -187,8 +187,8 @@ export function SpecificTab({
 
         <div className={"bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-6 rounded-3xl shadow-sm"}>
           <div className={"mb-4 flex items-center justify-between gap-3"}>
-            {analyticsPanelTitle("Whole Business Partner Split", "Shop profit allocated across partners. Product-based partners use assigned product profit; share-based partners split the remaining shop profit by percentage.")}
-            <span className={"text-[10px] font-black uppercase tracking-widest text-slate-400"}>{formatCurrency(Number(data.totalPartnerProfit ?? shopProfitValue))} allocated</span>
+            {analyticsPanelTitle("Whole Business Partner Split", "Configured partner allocations are shown separately from profit retained by the owner or left unallocated.")}
+            <span className={"text-[10px] font-black uppercase tracking-widest text-slate-400"}>{formatCurrency(Number(data.totalPartnerProfit || 0))} allocated · {formatCurrency(Number(data.retainedOwnerProfit || 0))} retained</span>
           </div>
           {selectedPartnerAuditHtml}
           <div className={"overflow-x-auto"}>

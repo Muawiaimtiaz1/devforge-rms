@@ -109,6 +109,12 @@ class AnalyticsService {
       const bounds = this.getPeriodBounds(period, from, to);
       const prevBounds = this.getPreviousPeriodBounds(period, bounds);
       const isSqlite = db.client.config.client !== 'pg';
+      // Bucket PostgreSQL analytics in the restaurant's reporting clock so
+      // late-night sales stay in their correct date and shift.
+      const timezoneSetting = !isSqlite && shopId
+        ? await db('attendance_settings').where({ shop_id: shopId }).select('timezone').first().catch(() => null)
+        : null;
+      const reportingTimezone = String(timezoneSetting?.timezone || 'Asia/Karachi');
       const brands = shopId ? await brandService.listBrands(shopId) : [];
       const requestedBrandId = parseInt(brandId, 10);
       const selectedBrand = Number.isFinite(requestedBrandId)
@@ -176,6 +182,15 @@ class AnalyticsService {
             db.raw('COALESCE(SUM(CASE WHEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01 THEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) ELSE 0 END), 0) as total_pending_dues'),
             db.raw('COALESCE(SUM(CASE WHEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01 THEN 1 ELSE 0 END), 0) as pending_dues_count')
           ).first();
+
+      const receivables = await db('sales as s')
+        .modify(qb => applyShopScope(qb, 's.shop_id'))
+        .whereIn('s.order_status', ['completed', 'payment_pending'])
+        .whereBetween('s.created_at', [bounds.start, bounds.end])
+        .select(
+          db.raw('COALESCE(SUM(CASE WHEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01 THEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) ELSE 0 END), 0) as total_pending_dues'),
+          db.raw('COALESCE(SUM(CASE WHEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01 THEN 1 ELSE 0 END), 0) as pending_dues_count')
+        ).first();
 
       const linkedCustomersCount = hasBrandFilter
         ? await brandSalesQuery(bounds)
@@ -248,11 +263,20 @@ class AnalyticsService {
       const commissionIncomeStats = { val: 0 };
       const returnedCommissionStats = { val: 0 };
 
-      const stockValueResult = await db('products as p')
-        .modify(qb => applyShopScope(qb, 'p.shop_id'))
-        .modify(qb => applyBrandScope(qb))
-        .where({ 'p.is_deleted': 0 })
-        .select(db.raw('SUM(p.stock * p.buying_price) as val')).first();
+      const [productStockValueResult, rawStockValueResult] = await Promise.all([
+        db('product_batches as pb')
+          .join('products as p', 'p.id', 'pb.product_id')
+          .modify(qb => applyShopScope(qb, 'pb.shop_id'))
+          .where({ 'p.is_deleted': 0 })
+          .select(db.raw('COALESCE(SUM(pb.quantity * pb.buying_price), 0) as val')).first(),
+        db('raw_stock_batches as rb')
+          .join('raw_stocks as rs', 'rs.id', 'rb.raw_stock_id')
+          .modify(qb => applyShopScope(qb, 'rb.shop_id'))
+          .where({ 'rs.is_deleted': 0 })
+          .select(db.raw('COALESCE(SUM(rb.quantity * rb.buying_price), 0) as val')).first()
+      ]);
+      const productStockValue = Number(productStockValueResult?.val || 0);
+      const rawStockValue = Number(rawStockValueResult?.val || 0);
 
       // Calculations
       const totalSalesVal = Number(kpi.total_sales || 0);
@@ -330,16 +354,19 @@ class AnalyticsService {
 
       // 4. Trends & Breakdowns
       const getTrendData = async (lblExpr) => {
+        const labelSelection = typeof lblExpr === 'string'
+          ? db.raw(`${lblExpr} as label`)
+          : lblExpr;
         const raw = hasBrandFilter
           ? await brandSalesQuery(bounds)
-            .select(db.raw(`${lblExpr} as label`))
+            .select(labelSelection)
             .select(db.raw(`COALESCE(SUM(${allocatedSalesExpr}), 0) as sales`), db.raw('COUNT(DISTINCT s.id) as orders'))
             .groupBy('label').orderBy('label', 'asc')
           : await db('sales as s')
             .modify(qb => applyShopScope(qb, 's.shop_id'))
             .where({ 's.order_status': 'completed' })
             .whereBetween('s.created_at', [bounds.start, bounds.end])
-            .select(db.raw(`${lblExpr} as label`))
+            .select(labelSelection)
             .select(db.raw('SUM(s.total) as sales'), db.raw('COUNT(s.id) as orders'))
             .groupBy('label').orderBy('label', 'asc');
         return raw.map(r => ({ ...r, sales: Number(r.sales || 0), orders: Number(r.orders || 0) }));
@@ -347,11 +374,17 @@ class AnalyticsService {
       
       let trendSeries = [];
       if (period === 'today') {
-        trendSeries = await getTrendData(isSqlite ? "strftime('%H', s.created_at)" : "TO_CHAR(s.created_at, 'HH24')");
+        trendSeries = await getTrendData(isSqlite
+          ? "strftime('%H', s.created_at)"
+          : db.raw("TO_CHAR(s.created_at AT TIME ZONE ?, 'HH24') as label", [reportingTimezone]));
       } else if (period === '12months') {
-        trendSeries = await getTrendData(isSqlite ? "strftime('%Y-%m', s.created_at)" : "TO_CHAR(s.created_at, 'YYYY-MM')");
+        trendSeries = await getTrendData(isSqlite
+          ? "strftime('%Y-%m', s.created_at)"
+          : db.raw("TO_CHAR(s.created_at AT TIME ZONE ?, 'YYYY-MM') as label", [reportingTimezone]));
       } else {
-        trendSeries = await getTrendData(isSqlite ? "date(s.created_at)" : "TO_CHAR(s.created_at, 'YYYY-MM-DD')");
+        trendSeries = await getTrendData(isSqlite
+          ? "date(s.created_at)"
+          : db.raw("TO_CHAR(s.created_at AT TIME ZONE ?, 'YYYY-MM-DD') as label", [reportingTimezone]));
       }
 
       const mergeNetBreakdown = (grossRows, refundRows) => {
@@ -444,7 +477,9 @@ class AnalyticsService {
         .groupBy('label');
       const categoryBreakdown = mergeNetBreakdown(categoryBreakdownGross, categoryRefunds);
 
-      const hourQ = await getTrendData(isSqlite ? "strftime('%H', s.created_at)" : "TO_CHAR(s.created_at, 'HH24')");
+      const hourQ = await getTrendData(isSqlite
+        ? "strftime('%H', s.created_at)"
+        : db.raw("TO_CHAR(s.created_at AT TIME ZONE ?, 'HH24') as label", [reportingTimezone]));
       const bestSellingHours = hourQ.sort((a, b) => b.sales - a.sales).slice(0, 5);
 
       const topProductsRaw = await db('sale_items as si')
@@ -456,19 +491,32 @@ class AnalyticsService {
         .modify(qb => applyBrandScope(qb))
         .where('s.order_status', 'completed')
         .whereBetween('s.created_at', [bounds.start, bounds.end])
-        .select('p.id', 'p.name', 'p.image_path', 'p.stock', 'b.name as brand_name')
+        .select('p.id', 'p.name', 'p.image_path', 'p.stock', 'p.product_type', 'b.name as brand_name')
         .sum('si.quantity as quantity_sold')
         .select(db.raw(`SUM(${allocatedSalesExpr}) as sales`))
-        .groupBy('p.id', 'p.name', 'p.image_path', 'p.stock', 'b.name')
-        .orderBy('quantity_sold', 'desc').limit(5);
-      const topProducts = topProductsRaw.map(r => ({ 
+        .groupBy('p.id', 'p.name', 'p.image_path', 'p.stock', 'p.product_type', 'b.name')
+        .orderBy('quantity_sold', 'desc');
+      const topProductIds = topProductsRaw.map(row => Number(row.id)).filter(Boolean);
+      const topProductReturns = topProductIds.length ? await db('return_items as ri')
+        .join('returns as r', 'r.id', 'ri.return_id')
+        .whereIn('ri.product_id', topProductIds)
+        .modify(qb => applyShopScope(qb, 'r.shop_id'))
+        .whereBetween('r.created_at', [bounds.start, bounds.end])
+        .select('ri.product_id')
+        .select(db.raw('COALESCE(SUM(ri.quantity), 0) as returned_quantity'))
+        .select(db.raw('COALESCE(SUM(ri.quantity * ri.refund_price), 0) as refunded_revenue'))
+        .groupBy('ri.product_id') : [];
+      const returnsByProduct = new Map(topProductReturns.map(row => [Number(row.product_id), row]));
+      const topProducts = topProductsRaw.map(r => {
+        const returned = returnsByProduct.get(Number(r.id)) || {};
+        return ({
         ...r, 
-        sales: Number(r.sales || 0), 
-        quantity_sold: Number(r.quantity_sold || 0),
+        sales: Number(r.sales || 0) - Number(returned.refunded_revenue || 0),
+        quantity_sold: Math.max(0, Number(r.quantity_sold || 0) - Number(returned.returned_quantity || 0)),
         // Legacy aliases for dashboard
         qty_sold: Number(r.quantity_sold || 0),
-        revenue: Number(r.sales || 0)
-      }));
+        revenue: Number(r.sales || 0) - Number(returned.refunded_revenue || 0)
+      }); }).sort((a, b) => b.quantity_sold - a.quantity_sold).slice(0, 5);
 
       // 5. Heatmap
       let heatmapStartBound = bounds.start;
@@ -480,8 +528,12 @@ class AnalyticsService {
       const heatmapRawData = hasBrandFilter
         ? await brandSalesQuery(heatmapBounds)
           .select(
-            db.raw(isSqlite ? "date(s.created_at) as dt" : "TO_CHAR(s.created_at, 'YYYY-MM-DD') as dt"),
-            db.raw(isSqlite ? "(CAST(strftime('%H', s.created_at) as INTEGER) / 4) as block_idx" : "CAST(EXTRACT(HOUR FROM s.created_at) AS INTEGER) / 4 as block_idx")
+            isSqlite
+              ? db.raw("date(s.created_at) as dt")
+              : db.raw("TO_CHAR(s.created_at AT TIME ZONE ?, 'YYYY-MM-DD') as dt", [reportingTimezone]),
+            isSqlite
+              ? db.raw("(CAST(strftime('%H', s.created_at) as INTEGER) / 4) as block_idx")
+              : db.raw("FLOOR(EXTRACT(HOUR FROM s.created_at AT TIME ZONE ?) / 4) as block_idx", [reportingTimezone])
           )
           .select(db.raw(`COALESCE(SUM(${allocatedSalesExpr}), 0) as sales`), db.raw('COUNT(DISTINCT s.id) as orders'))
           .groupBy('dt', 'block_idx')
@@ -490,8 +542,12 @@ class AnalyticsService {
           .where({ 's.order_status': 'completed' })
           .whereBetween('s.created_at', [heatmapStartBound, bounds.end])
           .select(
-            db.raw(isSqlite ? "date(s.created_at) as dt" : "TO_CHAR(s.created_at, 'YYYY-MM-DD') as dt"),
-            db.raw(isSqlite ? "(CAST(strftime('%H', s.created_at) as INTEGER) / 4) as block_idx" : "CAST(EXTRACT(HOUR FROM s.created_at) AS INTEGER) / 4 as block_idx")
+            isSqlite
+              ? db.raw("date(s.created_at) as dt")
+              : db.raw("TO_CHAR(s.created_at AT TIME ZONE ?, 'YYYY-MM-DD') as dt", [reportingTimezone]),
+            isSqlite
+              ? db.raw("(CAST(strftime('%H', s.created_at) as INTEGER) / 4) as block_idx")
+              : db.raw("FLOOR(EXTRACT(HOUR FROM s.created_at AT TIME ZONE ?) / 4) as block_idx", [reportingTimezone])
           )
           .count('s.id as orders').sum('s.total as sales')
           .groupBy('dt', 'block_idx');
@@ -508,6 +564,8 @@ class AnalyticsService {
               .where('p.brand_id', selectedBrandId));
           }
         })
+        .where('s.order_status', 'completed')
+        .whereBetween('s.created_at', [bounds.start, bounds.end])
         .orderBy('created_at', 'desc')
         .limit(10);
 
@@ -517,10 +575,11 @@ class AnalyticsService {
         .where({ 'p.is_deleted': 0 })
         .count('* as val').first();
 
-      const damageTotalResult = await db('products as p')
-        .modify(qb => applyShopScope(qb, 'p.shop_id'))
-        .modify(qb => applyBrandScope(qb))
-        .sum('p.manual_damage_loss as val').first();
+      const damageTotalResult = await db('waste_events as we')
+        .modify(qb => applyShopScope(qb, 'we.shop_id'))
+        .where({ 'we.status': 'recorded' })
+        .whereBetween('we.created_at', [bounds.start, bounds.end])
+        .sum('we.cost_amount as val').first();
       const totalDamageLoss = Number(damageTotalResult ? (damageTotalResult.val || 0) : 0);
 
       let businessAdjustedRevenue = adjustedRevenue;
@@ -603,11 +662,14 @@ class AnalyticsService {
         .select(db.raw('COALESCE(SUM(ri.quantity * ri.refund_price), 0) as refunds'))
         .select(db.raw(`COALESCE(SUM(${returnCogsExpr}), 0) as returned_cogs`))
         .groupBy('p.brand_id', 'b.name');
-      const brandDamageRows = await db('products as p')
+      const brandDamageRows = await db('waste_events as we')
+        .leftJoin('products as p', 'we.product_id', 'p.id')
         .leftJoin('brands as b', 'p.brand_id', 'b.id')
-        .modify(qb => applyShopScope(qb, 'p.shop_id'))
+        .modify(qb => applyShopScope(qb, 'we.shop_id'))
+        .where({ 'we.status': 'recorded' })
+        .whereBetween('we.created_at', [bounds.start, bounds.end])
         .select('p.brand_id', 'b.name as brand_name')
-        .select(db.raw('COALESCE(SUM(p.manual_damage_loss), 0) as damage_loss'))
+        .select(db.raw('COALESCE(SUM(we.cost_amount), 0) as damage_loss'))
         .groupBy('p.brand_id', 'b.name');
       const brandMap = new Map();
       brands.forEach((brand) => {
@@ -731,6 +793,7 @@ class AnalyticsService {
         }
         : null;
       const totalPartnerProfit = partnerProfitShares.reduce((sum, share) => sum + Number(share.profit_share || 0), 0);
+      const retainedOwnerProfit = shopProfit - totalPartnerProfit;
 
       const receivedAmountExpr = `CASE WHEN COALESCE(s.amount_received, 0) > COALESCE(s.total, 0) THEN COALESCE(s.total, 0) ELSE COALESCE(s.amount_received, 0) END`;
       const staffPerformanceRaw = await db('sales as s')
@@ -766,6 +829,7 @@ class AnalyticsService {
         shareBasedProfitPool,
         productBasedProfitTotal,
         totalPartnerProfit,
+        retainedOwnerProfit,
         kpi: { 
           totalSales: adjustedRevenue, 
           totalOrders: totalOrderCount,
@@ -775,7 +839,7 @@ class AnalyticsService {
           walkInCustomers: walkInCustomerCountVal,
           totalCustomers: parseInt(totalCustomersInDb ? totalCustomersInDb.val : 0),
           totalInvoices: parseInt(kpi.total_orders || 0),
-          conversionRate: kpi.total_orders > 0 ? 100 : 0
+          conversionRate: null
         },
         growth: {
           sales: salesGrowth,
@@ -791,7 +855,11 @@ class AnalyticsService {
           shopProfit,
           shopProfitMargin,
           profitMargin: profitMargin,
-          stockValue: Number(stockValueResult ? (stockValueResult.val || 0) : 0)
+          grossSales: totalSalesVal,
+          netRevenue: adjustedRevenue,
+          stockValue: productStockValue + rawStockValue,
+          productStockValue,
+          rawStockValue
         },
         trendSeries,
         paymentBreakdown,
@@ -807,12 +875,21 @@ class AnalyticsService {
         tipsBreakdown: tips,
         totalProducts: parseInt(totalProductsCount ? totalProductsCount.val : 0),
         totalRevenue: adjustedRevenue,
-        totalPendingDues: Number(kpi.total_pending_dues || 0),
-        pendingDuesCount: parseInt(kpi.pending_dues_count || 0),
+        totalPendingDues: Number(receivables?.total_pending_dues || 0),
+        pendingDuesCount: parseInt(receivables?.pending_dues_count || 0),
         totalCOGS: adjustedCOGS,
         netProfit: shopProfit,
         totalSales: totalOrderCount,
         damageTotal: totalDamageLoss
+        ,generatedAt: new Date().toISOString()
+        ,dataAsOf: new Date().toISOString()
+        ,metricVersion: 'analytics-v2'
+        ,reportingTimezone
+        ,reconciliation: {
+          revenue: Number((totalSalesVal - totalRefundsVal - adjustedRevenue).toFixed(2)),
+          profit: Number((adjustedRevenue - adjustedCOGS - totalDamageLoss - shopProfit).toFixed(2)),
+          partners: Number((totalPartnerProfit + retainedOwnerProfit - shopProfit).toFixed(2))
+        }
       };
     } catch (e) {
       console.error("Critical Analytics Service Error:", e);

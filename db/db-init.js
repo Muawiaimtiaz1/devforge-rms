@@ -45,6 +45,7 @@ async function initPostgres() {
     await query("UPDATE shops SET shop_type = 'restaurant' WHERE shop_type IS NULL OR shop_type <> 'restaurant'");
     await query("UPDATE expense_categories SET name = 'Restaurant Expense' WHERE name = 'Shop Expense'");
     await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS table_visibility_mode TEXT NOT NULL DEFAULT 'all'");
+    await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS realtime_printing_enabled INTEGER NOT NULL DEFAULT 0");
     await query("ALTER TABLE tables ADD COLUMN IF NOT EXISTS assigned_waiter_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
     await query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS order_number INTEGER");
     await query("UPDATE sales SET order_number = id WHERE order_number IS NULL");
@@ -571,7 +572,9 @@ async function initPostgres() {
     const printQueueColumns = [
       ["attempts", "INTEGER DEFAULT 0"],
       ["claimed_at", "TIMESTAMPTZ"],
+      ["available_at", "TIMESTAMPTZ DEFAULT NOW()"],
       ["printed_at", "TIMESTAMPTZ"],
+      ["failed_at", "TIMESTAMPTZ"],
       ["last_error", "TEXT"],
       ["updated_at", "TIMESTAMPTZ DEFAULT NOW()"],
     ];
@@ -588,6 +591,25 @@ async function initPostgres() {
     }
     await query("UPDATE print_queue SET updated_at = COALESCE(updated_at, created_at, NOW())");
     await query("CREATE INDEX IF NOT EXISTS idx_print_queue_claimed_at ON print_queue(claimed_at)");
+    await query("CREATE INDEX IF NOT EXISTS idx_print_queue_pending_claim ON print_queue(shop_id, station_name, created_at, id) WHERE status = 'pending'");
+    await query(`
+      CREATE OR REPLACE FUNCTION notify_rms_print_job() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.status = 'pending' THEN
+          PERFORM pg_notify('rms_print_jobs', json_build_object(
+            'job_id', NEW.id,
+            'shop_id', NEW.shop_id,
+            'station_name', NEW.station_name
+          )::text);
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS trg_notify_rms_print_job ON print_queue;
+      CREATE TRIGGER trg_notify_rms_print_job
+      AFTER INSERT OR UPDATE OF status ON print_queue
+      FOR EACH ROW EXECUTE FUNCTION notify_rms_print_job();
+    `);
     
     // Check printers table
     const printersTableCheck = await query(`
