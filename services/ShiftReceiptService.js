@@ -58,6 +58,9 @@ function renderShiftReceiptPage(details, options = {}) {
     ${Number(summary.pending_verification_total || 0) ? row('Pending verification', `- Rs. ${money(summary.pending_verification_total)}`) : ''}
     <div class="rule heavy"></div>
     ${row('EXPECTED TOTAL', `Rs. ${money(summary.expected_total)}`, true)}
+    <div class="center">Includes opening cash; net of refunds, expenses and removals.</div>
+    ${row('EXPECTED CARD', `Rs. ${money(summary.expected_card)}`)}
+    ${row('EXPECTED ONLINE', `Rs. ${money(summary.expected_online)}`)}
     ${row('EXPECTED CASH', `Rs. ${money(summary.expected_balance)}`, true)}
     ${row('ACTUAL CASH', `Rs. ${money(shift.closing_balance)}`, true)}
     <div class="result">${esc(result)}</div>

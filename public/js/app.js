@@ -6093,6 +6093,9 @@ async function submitRecordedTip() {
 
 function tipSummaryRows(summary) {
   return '<div class="rounded-xl border border-emerald-200 p-4 text-sm dark:border-emerald-900">' +
+    '<div class="flex justify-between"><span>Expected Card</span><span>' + formatRegisterMoney(summary.expected_card) + '</span></div>' +
+    '<div class="flex justify-between"><span>Expected Online</span><span>' + formatRegisterMoney(summary.expected_online) + '</span></div>' +
+    '<p class="mb-2 text-xs text-slate-500">Expected Total includes opening cash, less refunds, business expenses and cash removals (including pending verification).</p>' +
     '<div class="flex justify-between font-bold"><span>Tips Collected</span><span>' + formatRegisterMoney(summary.total_tips) + '</span></div>' +
     '<div class="mt-2 text-xs text-slate-500">Cash ' + formatRegisterMoney(summary.cash_tips) +
     ' | Card ' + formatRegisterMoney(summary.card_tips) + ' | Online ' + formatRegisterMoney(summary.online_tips) + '</div></div>';
@@ -12215,6 +12218,8 @@ async function renderRegister() {
       <section id="register-cash-summary" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         ${renderRegisterMetric("Expected Cash", summary.expected_balance, "emerald")}
         ${renderRegisterMetric("Expected Total", summary.expected_total, "indigo")}
+        ${renderRegisterMetric("Expected Card", summary.expected_card, "indigo")}
+        ${renderRegisterMetric("Expected Online", summary.expected_online, "indigo")}
         ${renderRegisterMetric("Opening Cash", summary.opening_balance, "indigo")}
         ${renderRegisterMetric("Tips Collected", summary.total_tips, "emerald")}
         ${renderRegisterMetric("Cash Tips", summary.cash_tips, "emerald")}

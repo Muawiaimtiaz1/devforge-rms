@@ -3,8 +3,8 @@ let _registerPaymentShiftPages = 1;
 let _registerPaymentOrderPage = 1;
 let _registerPaymentSelectedShiftId = null;
 let _registerPaymentLoadToken = 0;
-let _registerPaymentSelectedDate = '';
-let _registerPaymentShiftDates = null;
+// Kept only for the hidden legacy date markup; register reporting is shift-only.
+const _registerPaymentSelectedDate = '';
 const _registerPaymentShiftCache = new Map();
 
 function registerPaymentMoney(value) {
@@ -31,7 +31,6 @@ async function renderRegisterPaymentsPanel(options = {}) {
   if (!container) return;
   if (options.refreshShifts) {
     _registerPaymentShiftCache.clear();
-    _registerPaymentShiftDates = null;
   }
   const token = ++_registerPaymentLoadToken;
   if (!options.keepFilters || !container.children.length) {
@@ -40,25 +39,16 @@ async function renderRegisterPaymentsPanel(options = {}) {
 
   try {
     const shiftParams = new URLSearchParams({ view: 'payment_shifts', page: String(_registerPaymentShiftPage), page_size: '8' });
-    if (_registerPaymentSelectedDate) shiftParams.set('date', _registerPaymentSelectedDate);
-    const shiftCacheKey = `${_registerPaymentSelectedDate || 'all'}:${_registerPaymentShiftPage}`;
-    const [shiftData, shiftDatesData] = await Promise.all([
-      _registerPaymentShiftCache.has(shiftCacheKey)
-        ? Promise.resolve(_registerPaymentShiftCache.get(shiftCacheKey))
-        : api(`/api/shifts/history?${shiftParams}`).then(data => {
-          _registerPaymentShiftCache.set(shiftCacheKey, data);
-          return data;
-        }),
-      _registerPaymentShiftDates
-        ? Promise.resolve({ dates: _registerPaymentShiftDates })
-        : api('/api/shifts/history?view=payment_shift_dates').then(data => {
-          _registerPaymentShiftDates = Array.isArray(data.dates) ? data.dates : [];
-          return data;
-        })
-    ]);
+    const shiftCacheKey = String(_registerPaymentShiftPage);
+    const shiftData = _registerPaymentShiftCache.has(shiftCacheKey)
+      ? _registerPaymentShiftCache.get(shiftCacheKey)
+      : await api(`/api/shifts/history?${shiftParams}`).then(data => {
+        _registerPaymentShiftCache.set(shiftCacheKey, data);
+        return data;
+      });
     if (token !== _registerPaymentLoadToken || !document.getElementById('register-payments-panel')) return;
     const shifts = Array.isArray(shiftData.items) ? shiftData.items : [];
-    const availableDates = Array.isArray(shiftDatesData.dates) ? shiftDatesData.dates : [];
+    const availableDates = [];
     _registerPaymentShiftPages = Number(shiftData.pagination?.total_pages || 1);
     if (!_registerPaymentSelectedShiftId || !shifts.some(shift => Number(shift.id) === Number(_registerPaymentSelectedShiftId))) {
       _registerPaymentSelectedShiftId = shifts[0]?.id || null;
@@ -94,8 +84,10 @@ async function renderRegisterPaymentsPanel(options = {}) {
               <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l2 2 4-4M7 7h10M7 11h10m-9 10h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></div>
               <div><h4 class="text-xl font-black tracking-tight text-slate-950 dark:text-white">Payments by Shift</h4><p class="mt-1 text-sm text-slate-500">Orders for which you received payment during the selected shift.</p></div>
             </div>
-            <div class="grid w-full gap-3 lg:w-[620px] sm:grid-cols-[190px_minmax(0,1fr)]">
+            <div class="w-full lg:w-[620px]">
+              <div class="hidden">
               <div><label for="register-payment-date" class="mb-2 block text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Available shift date</label><div class="relative"><svg class="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3M5 11h14M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg><select id="register-payment-date" onchange="selectRegisterPaymentDate(this.value)" class="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="">All shift dates</option>${availableDates.map(date => `<option value="${date}" ${date === _registerPaymentSelectedDate ? 'selected' : ''}>${registerPaymentDate(`${date}T12:00:00`, false)}</option>`).join('')}</select></div></div>
+              </div>
               <div><label for="register-payment-shift" class="mb-2 block text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Shift filter</label>
               <div class="flex gap-2"><select id="register-payment-shift" onchange="selectRegisterPaymentShift(this.value)" class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">${shifts.map(shift => `<option value="${shift.id}" ${Number(shift.id) === Number(_registerPaymentSelectedShiftId) ? 'selected' : ''}>Shift #${shift.id} · ${registerPaymentDate(shift.start_time, false)} · ${Number(shift.payment_order_count || 0)} orders · ${registerPaymentMoney(shift.payment_total)}</option>`).join('')}</select><button onclick="changeRegisterPaymentShiftPage(-1)" ${_registerPaymentShiftPage <= 1 ? 'disabled' : ''} class="h-12 w-12 rounded-xl border border-slate-200 text-slate-500 disabled:opacity-35 dark:border-slate-700" aria-label="Previous shifts">‹</button><button onclick="changeRegisterPaymentShiftPage(1)" ${_registerPaymentShiftPage >= _registerPaymentShiftPages ? 'disabled' : ''} class="h-12 w-12 rounded-xl border border-slate-200 text-slate-500 disabled:opacity-35 dark:border-slate-700" aria-label="Next shifts">›</button></div></div>
               <p class="mt-2 text-right text-[10px] font-bold uppercase tracking-wider text-slate-400">Shift page ${_registerPaymentShiftPage} of ${_registerPaymentShiftPages}</p>
@@ -166,14 +158,6 @@ function selectRegisterPaymentShift(value) {
   _registerPaymentSelectedShiftId = Number(value) || null;
   _registerPaymentOrderPage = 1;
   renderRegisterPaymentsPanel({ keepFilters: true });
-}
-
-function selectRegisterPaymentDate(value) {
-  _registerPaymentSelectedDate = value || '';
-  _registerPaymentShiftPage = 1;
-  _registerPaymentSelectedShiftId = null;
-  _registerPaymentOrderPage = 1;
-  renderRegisterPaymentsPanel();
 }
 
 function changeRegisterPaymentShiftPage(direction) {

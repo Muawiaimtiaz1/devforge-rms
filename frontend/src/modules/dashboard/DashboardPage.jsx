@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, legacyUrl } from '../../api/client'
 import DashboardTopbar from './components/DashboardTopbar'
+import ShiftDashboard from './components/ShiftDashboard'
 import DashboardFilters from './components/DashboardFilters'
 import DashboardMetrics from './components/DashboardMetrics'
 import PaymentReceivers from './components/PaymentReceivers'
@@ -20,6 +21,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [view, setView] = useState('date')
 
   const load = useCallback(async (nextFilters, quiet = false, global = false) => {
     if (quiet) setRefreshing(true); else setLoading(true)
@@ -37,7 +39,8 @@ export default function DashboardPage() {
   useEffect(() => {
     api('/api/auth/me').then(({ user: sessionUser }) => {
       if (sessionUser.role !== 'superadmin' && !sessionUser.permissions?.includes('dashboard.view')) { setError('You do not have permission to view Dashboard.'); setLoading(false); return }
-      setUser(sessionUser); load(INITIAL_FILTERS, false, sessionUser.role === 'superadmin')
+      setUser(sessionUser)
+      load(INITIAL_FILTERS, false, sessionUser.role === 'superadmin')
     }).catch((requestError) => { if (requestError.status === 401) window.location.replace(legacyUrl('/')); else { setError(requestError.message); setLoading(false) } })
   }, [load])
 
@@ -54,5 +57,5 @@ export default function DashboardPage() {
 
   if (loading) return <DashboardSkeleton />
   if (!user || (!data && error)) return <main className="dashboard-state"><h1>Could not load Dashboard</h1><p>{error}</p><a href="/app/lobby">Return to shop lobby</a></main>
-  return <main className="dashboard-page"><DashboardTopbar user={user} /><section className={`dashboard-shell ${refreshing ? 'refreshing' : ''}`}>{error && <div className="dashboard-error"><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error">x</button></div>}{data?.isGlobal ? <GlobalDashboard /> : <><header className="dashboard-heading"><h1>Main Dashboard</h1><p>Real-time overview of your store performance</p></header><DashboardFilters filters={filters} brands={data?.brands || []} onChange={changeFilters} onClear={() => { setFilters({ ...INITIAL_FILTERS, period: 'all' }); load({ ...INITIAL_FILTERS, period: 'all' }, true, user?.role === 'superadmin') }} /><DashboardMetrics data={data || {}} /><PaymentReceivers rows={data?.staffPerformance} /><PartnerTables data={data || {}} /><DashboardLists topProducts={data?.topProducts} recentSales={data?.recentSales} /></>}</section></main>
+  return <main className="dashboard-page"><DashboardTopbar user={user} /><section className={`dashboard-shell ${refreshing ? 'refreshing' : ''}`}>{error && <div className="dashboard-error"><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error">x</button></div>}{data?.isGlobal ? <GlobalDashboard /> : <><header className="dashboard-heading"><h1>Main Dashboard</h1><p>Real-time overview of your store performance</p></header><nav className="dashboard-view-switch" aria-label="Dashboard view"><button aria-pressed={view === 'date'} onClick={() => setView('date')}>Date-wise</button><button aria-pressed={view === 'shift'} onClick={() => setView('shift')}>Shift-wise</button></nav>{view === 'shift' ? <ShiftDashboard /> : <><DashboardFilters filters={filters} brands={data?.brands || []} onChange={changeFilters} onClear={() => { setFilters({ ...INITIAL_FILTERS, period: 'all' }); load({ ...INITIAL_FILTERS, period: 'all' }, true, user?.role === 'superadmin') }} /><DashboardMetrics data={data || {}} /><PaymentReceivers rows={data?.staffPerformance} /><PartnerTables data={data || {}} /><DashboardLists topProducts={data?.topProducts} recentSales={data?.recentSales} /></>}</>}</section></main>
 }

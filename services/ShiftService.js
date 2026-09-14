@@ -240,8 +240,14 @@ class ShiftService {
 
     const tips = await tipsService.summary({ shopId, shiftId }, db);
     const expectedBalance = (toMoney(shift.opening_balance) + cashSales + cashCollections + tips.cash_tips) - (cashRefunds + currentDrops + confirmedHandovers);
-    const expectedTotal = (cashSales + cardSales + onlineSales + cashCollections + cardCollections + onlineCollections + tips.total_tips)
-      - (totalRefunds + cashExpenses + currentDrops + confirmedHandovers);
+    const expectedCard = cardSales + cardCollections + tips.card_tips - cardRefunds;
+    const expectedOnline = onlineSales + onlineCollections + tips.online_tips - onlineRefunds;
+    // Overall funds include opening cash. Pending removals are deducted once;
+    // after verification they move into currentDrops/confirmedHandovers.
+    const expectedTotal = toMoney(shift.opening_balance) + cashSales + cardSales + onlineSales
+      + cashCollections + cardCollections + onlineCollections + tips.total_tips
+      - totalRefunds - cashExpenses - currentDrops - confirmedHandovers
+      - firstTotal(pendingDrops) - firstTotal(pendingHandovers);
 
     return {
       ...tips,
@@ -264,6 +270,8 @@ class ShiftService {
       card_collections: cardCollections,
       online_collections: onlineCollections,
       expected_balance: expectedBalance,
+      expected_card: expectedCard,
+      expected_online: expectedOnline,
       expected_total: expectedTotal
     };
   }

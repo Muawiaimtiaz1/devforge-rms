@@ -52,7 +52,7 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
   await t.test('4500 sale plus 500 cash tip reconciles to 6000 with 1000 opening', async () => {
     const summary=await shifts.calculateShiftSummary(1,1);
     assert.equal(summary.net_cash_sales,4500); assert.equal(summary.total_tips,500);
-    assert.equal(summary.expected_balance,6000); assert.equal(summary.expected_total,5000);
+    assert.equal(summary.expected_balance,6000); assert.equal(summary.expected_total,6000);
     const list=await shifts.listReceivedPayments(1,1,{shiftId:1});
     assert.equal(list.summary.total_amount,5000); assert.equal(list.items[0].tip_amount,500);
     const receipt=renderShiftReceiptPage({shift:{id:1,closing_balance:6000},summary,shop:{name:'Test'}},{autoPrint:false});
@@ -61,7 +61,7 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
   await t.test('paid receipt separates tips from change; kitchen and unpaid omit tips', async () => {
     const details={sale:await db('sales').first(),items:[],shop:{name:'Test'}};
     const paid=renderSaleReceiptPage(details,{autoPrint:false});
-    assert.match(paid,/Tip received \(Cash\):<\/strong> Rs. 500.00/);
+    assert.match(paid,/Tip received \(CASH\):<\/strong> Rs. 500.00/);
     assert.match(paid,/Change:<\/strong> Rs. 0/);
     assert.doesNotMatch(renderSaleReceiptPage(details,{format:'kitchen',autoPrint:false}),/Tip received/);
     assert.doesNotMatch(renderSaleReceiptPage(details,{format:'unpaid',autoPrint:false}),/Tip received/);
@@ -75,8 +75,27 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
     const summary = await shifts.calculateShiftSummary(1,1);
     assert.equal(summary.total_tips,550); assert.equal(summary.cash_tips,500);
     assert.equal(summary.card_tips,25); assert.equal(summary.online_tips,25);
-    assert.equal(summary.expected_balance,6000); assert.equal(summary.expected_total,5250);
+    assert.equal(summary.expected_balance,6000); assert.equal(summary.expected_total,6250);
+    assert.equal(summary.expected_card,125); assert.equal(summary.expected_online,125);
     await db('sale_tips').whereIn('sale_id',[3,4]).update({collected_at:'2026-01-01 00:00:00'});
+  });
+  await t.test('overall funds include opening and deduct refunds, expenses and removals once', async () => {
+    await db('shifts').insert({id:99,shop_id:1,user_id:1,status:'closed',opening_balance:100,cash_drops:10});
+    await db('sales').insert([
+      {id:99,shop_id:1,shift_id:99,total:100,amount_received:100,payment_method:'cash',order_status:'completed'},
+      {id:100,shop_id:1,shift_id:99,total:200,amount_received:200,payment_method:'card',order_status:'completed'}
+    ]);
+    await db('returns').insert({shop_id:1,shift_id:99,total_refund:20,payment_method:'card'});
+    await db('expenses').insert({shop_id:1,shift_id:99,amount:30});
+    await db('cash_drops').insert({id:99,shop_id:1,shift_id:99,amount:15,status:'pending'});
+    let summary = await shifts.calculateShiftSummary(99,1);
+    assert.equal(summary.expected_card,180);
+    assert.equal(summary.expected_online,0);
+    assert.equal(summary.expected_total,325); // 400 - refund 20 - expense 30 - drops 25
+    await db('cash_drops').where({id:99}).update({status:'verified'});
+    await db('shifts').where({id:99}).update({cash_drops:25});
+    summary = await shifts.calculateShiftSummary(99,1);
+    assert.equal(summary.expected_total,325);
   });
   await t.test('tip-only request requires payment permission on the sales router', () => {
     const router = require('../routes/sales');
