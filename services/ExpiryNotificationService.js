@@ -1,6 +1,7 @@
 const db = require('../db/knex');
 const preferenceService = require('../src/modules/notification-preferences/notification-preferences.service');
 const pushNotificationService = require('./PushNotificationService');
+const { getUserPermissions } = require('../authorization/service');
 
 function dateKey(value) {
   if (typeof value === 'string') {
@@ -12,6 +13,25 @@ function dateKey(value) {
 }
 
 class ExpiryNotificationService {
+  // Device subscriptions remain on the server while the PWA is closed. Scan
+  // those users independently of notification badge requests.
+  async syncSubscribedUsers(permissionLookup = getUserPermissions) {
+    const users = await db('push_subscriptions as subscription')
+      .join('users as user', 'user.id', 'subscription.user_id')
+      .where('subscription.enabled', true)
+      .where((query) => query.whereNull('subscription.shop_id').orWhereColumn('subscription.shop_id', 'user.shop_id'))
+      .where((query) => query.whereNull('user.status').orWhere('user.status', 'active'))
+      .distinct('user.id', 'user.shop_id', 'user.role');
+    let created = 0;
+    for (const user of users) {
+      try {
+        created += await this.syncForUser(user, await permissionLookup(user));
+      } catch (error) {
+        console.error('Background inventory notification sync failed:', error.message);
+      }
+    }
+    return created;
+  }
   // Item-level expiry-${expired ? 'expired' : 'near'} alerts were replaced by daily summaries.
   async syncForUser(user, permissions = []) {
     const shopId = Number(user?.shop_id);

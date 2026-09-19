@@ -322,6 +322,18 @@ if (require.main === module) {
     await require('./authorization/service').ensureAuthorizationSchema();
     await require('./services/PushNotificationService').ensureSchema();
     startServer();
+    const inventoryAlerts = require('./services/ExpiryNotificationService');
+    let inventorySyncRunning = false;
+    const syncInventoryAlerts = async () => {
+      if (inventorySyncRunning) return;
+      inventorySyncRunning = true;
+      try { await inventoryAlerts.syncSubscribedUsers(); }
+      catch (error) { console.error('[Inventory Alert Sync]', error.message); }
+      finally { inventorySyncRunning = false; }
+    };
+    syncInventoryAlerts();
+    const inventoryAlertTimer = setInterval(syncInventoryAlerts, 60 * 1000);
+    inventoryAlertTimer.unref?.();
   })();
 }
 

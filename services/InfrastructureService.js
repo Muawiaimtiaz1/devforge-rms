@@ -56,14 +56,25 @@ async function ensureKitchenWorkflowSchema() {
 
 class InfrastructureService {
   async notifyOrderReady(sale, saleId, shopId, userId) {
-    const recipientIds = [...new Set([sale.user_id, sale.waiter_id].filter(Boolean).map(Number))];
+    const recipientIds = new Set([sale.user_id, sale.waiter_id].filter(Boolean).map(Number));
+    if (sale.order_type === 'takeaway') {
+      const cashiers = await db('users')
+        .where({ shop_id: shopId, role: 'pos_user' })
+        .where(builder => builder.whereNull('status').orWhere('status', 'active'))
+        .pluck('id');
+      cashiers.forEach(id => recipientIds.add(Number(id)));
+    }
     const table = sale.table_id ? await db('tables').where({ id: sale.table_id, shop_id: shopId }).first() : null;
     const context = table ? ` for Table ${table.table_number}` : '';
     const displayOrderNumber = sale.order_number || saleId;
-    const title = `Order #${displayOrderNumber} completed by kitchen`;
-    const message = `Order #${displayOrderNumber}${context} is ready to serve.`;
+    const title = sale.order_type === 'takeaway'
+      ? `Takeaway order #${displayOrderNumber} ready`
+      : `Order #${displayOrderNumber} completed by kitchen`;
+    const message = sale.order_type === 'takeaway'
+      ? `Takeaway order #${displayOrderNumber} is ready for pickup.`
+      : `Order #${displayOrderNumber}${context} is ready to serve.`;
 
-    await Promise.all(recipientIds.map(async targetUserId => {
+    await Promise.all([...recipientIds].map(async targetUserId => {
       try {
         await notificationService.create({
           shop_id: shopId,
@@ -471,12 +482,12 @@ class InfrastructureService {
       const isAssignedOrderTaker = Number(sale.waiter_id) === Number(userId);
       const isReceptionist = String(actor?.role || '').toLowerCase() === 'receptionist';
       if (!isOrderCreator && !isAssignedOrderTaker && !isReceptionist) {
-        const error = new Error('Only the order creator, assigned order taker, or a receptionist can mark this order served.');
+        const error = new Error(`Only the order creator, assigned order taker, or a receptionist can mark this order ${sale.order_type === 'takeaway' ? 'handed over' : 'served'}.`);
         error.status = 403;
         throw error;
       }
       if (!['ready', 'served'].includes(sale.order_status)) {
-        throw new Error('Only a ready order can be marked as served.');
+        throw new Error(`Only a ready order can be marked as ${sale.order_type === 'takeaway' ? 'handed over' : 'served'}.`);
       }
       await db('sales')
         .where({ id: saleId, shop_id: shopId })

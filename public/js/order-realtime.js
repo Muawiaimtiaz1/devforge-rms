@@ -21,6 +21,10 @@
       await loadKDSOrders();
     } else if (typeof isPOSOrdersViewActive === 'function' && isPOSOrdersViewActive()) {
       await renderPOSOrders();
+    } else if (typeof _currentPage !== 'undefined' && _currentPage === 'sales-history'
+      && typeof _salesRestrictedView !== 'undefined' && _salesRestrictedView
+      && typeof loadSalesPanelPage === 'function') {
+      await loadSalesPanelPage();
     }
   }
 

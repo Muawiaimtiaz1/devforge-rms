@@ -746,10 +746,15 @@ class SalesService {
    */
   async createSale(payload, shopId, userId) {
     const data = checkoutSchema.parse(payload);
-    if (!data.waiter_id) {
-      const creator = await db('users').where({ id: userId, shop_id: shopId }).first('role');
-      if (['waiter', 'order_taker'].includes(String(creator?.role || '').toLowerCase())) {
-        data.waiter_id = userId;
+    const creator = await db('users').where({ id: userId, shop_id: shopId }).first('role');
+    if (['waiter', 'order_taker'].includes(String(creator?.role || '').toLowerCase())
+      && (data.order_type === 'takeaway' || !data.waiter_id)) {
+      data.waiter_id = userId;
+    }
+    if (data.order_type === 'takeaway' && data.waiter_id) {
+      const assignedWaiter = await db('users').where({ id: data.waiter_id, shop_id: shopId }).first('role', 'status');
+      if (!assignedWaiter || !['waiter', 'order_taker'].includes(String(assignedWaiter.role || '').toLowerCase()) || String(assignedWaiter.status || 'active').toLowerCase() !== 'active') {
+        throw new Error('Select an active order taker from this shop');
       }
     }
     if (data.client_request_id) {
@@ -1238,6 +1243,12 @@ class SalesService {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
       if (!sale) throw new Error("Sale not found");
       if (sale.order_status === 'completed') throw new Error("Cannot edit a completed order");
+      if (data.order_type === 'takeaway' && data.waiter_id) {
+        const assignedWaiter = await trx('users').where({ id: data.waiter_id, shop_id: shopId }).first('role', 'status');
+        if (!assignedWaiter || !['waiter', 'order_taker'].includes(String(assignedWaiter.role || '').toLowerCase()) || String(assignedWaiter.status || 'active').toLowerCase() !== 'active') {
+          throw new Error('Select an active order taker from this shop');
+        }
+      }
 
       let shiftId = data.order_status === 'payment_pending' ? null : sale.shift_id;
       if (!shiftId && data.order_status !== 'payment_pending') {
@@ -1678,11 +1689,13 @@ class SalesService {
       .leftJoin('users as r', 's.rider_id', 'r.id')
       .leftJoin('users as k', 's.kitchen_id', 'k.id')
       .leftJoin('tables as t', 's.table_id', 't.id')
-      .where('s.shop_id', shopId)
-      .whereIn('s.order_status', ['completed', 'payment_pending']);
+      .where('s.shop_id', shopId);
 
     const role = String(currentUser?.role || '').toLowerCase();
     const isWaiter = ['waiter', 'order_taker'].includes(role);
+    query.whereIn('s.order_status', isWaiter
+      ? ['pending', 'preparing', 'ready', 'served', 'payment_pending', 'completed']
+      : ['completed', 'payment_pending']);
     const canViewAllShopOrders = ['admin', 'superadmin', 'manager', 'pos_user'].includes(role);
     if (currentUser && isWaiter) {
       query.andWhere(function() {

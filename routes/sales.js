@@ -43,7 +43,7 @@ router.get("/", requireAuth, async (req, res) => {
     const isRestrictedSalesPanel = ['waiter', 'order_taker']
       .includes(String(req.session.user.role || '').toLowerCase());
     const rows = isRestrictedSalesPanel
-      ? result.rows.map(sale => ({ id: sale.id, order_number: sale.order_number, order_status: sale.order_status }))
+      ? result.rows.map(sale => ({ id: sale.id, order_number: sale.order_number, order_type: sale.order_type, token_number: sale.token_number, order_status: sale.order_status }))
       : result.rows;
     return res.json({
       rows,

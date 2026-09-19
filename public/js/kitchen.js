@@ -913,7 +913,7 @@ function kdsPunchedBy(order) {
   const fullName = String(order.punched_by_name || '').trim();
   const username = String(order.punched_by_username || '').trim();
   const waiter = String(order.waiter_name || '').trim();
-  return escapeWasteValue(username || fullName || waiter || (order.punched_by_user_id ? `User #${order.punched_by_user_id}` : 'Staff'));
+  return escapeWasteValue((order.order_type === 'takeaway' ? waiter : '') || fullName || username || waiter || (order.punched_by_user_id ? `User #${order.punched_by_user_id}` : 'Staff'));
 }
 
 function kdsOrderTimer(order) {
@@ -932,7 +932,7 @@ function renderKDSQueueCard(order, position, isUpdated = false) {
   const canStart = currentUserHasPermission('kitchen_orders.update_status');
   const displayOrderNumber = order.order_number || order.id;
   return `<article class="snap-start shrink-0 w-[86vw] sm:w-[340px] rounded-2xl border-2 ${isUpdated ? 'border-violet-300 dark:border-violet-900/60' : 'border-amber-200 dark:border-amber-900/50'} bg-white dark:bg-slate-900 p-4 shadow-sm">
-    <div class="flex justify-between items-start gap-3"><div class="flex items-center gap-3"><span class="min-w-10 h-10 px-2 rounded-xl ${isUpdated ? 'bg-violet-600' : 'bg-amber-500'} text-white flex items-center justify-center text-base font-black">#${displayOrderNumber}</span><div><div class="font-black text-slate-900 dark:text-white">${isUpdated ? 'Updated order' : `Queue position ${position}`}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div></div></div>${kdsOrderTimer(order)}</div>
+    <div class="flex justify-between items-start gap-3"><div class="flex items-center gap-3"><span class="min-w-10 h-10 px-2 rounded-xl ${isUpdated ? 'bg-violet-600' : 'bg-amber-500'} text-white flex items-center justify-center text-base font-black">#${displayOrderNumber}</span><div><div class="font-black text-slate-900 dark:text-white">${isUpdated ? 'Updated order' : `Queue position ${position}`}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">${order.order_type === 'takeaway' ? 'Order taker' : 'Punched by'} ${kdsPunchedBy(order)}</div></div></div>${kdsOrderTimer(order)}</div>
     <div class="mt-4 space-y-2 border-y border-slate-100 dark:border-slate-800 py-3">${kdsItemsPreview(order)}</div>
     <div class="mt-3 grid grid-cols-2 gap-2"><button onclick="showKDSOrderModal(${order.id})" class="py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-black">Details</button>${canStart ? `<button onclick="updateKDSStatus(${order.id}, 'preparing')" class="py-2.5 rounded-xl bg-orange-500 text-white text-xs font-black">Start Preparing</button>` : ''}</div>
   </article>`;
@@ -940,11 +940,13 @@ function renderKDSQueueCard(order, position, isUpdated = false) {
 
 function renderKDSWorkCard(order) {
   const isCompleted = ['ready', 'served', 'completed'].includes(order.order_status);
-  const completedLabel = order.order_status === 'served' ? 'Served' : 'Completed';
+  const completedLabel = order.order_status === 'served'
+    ? (order.order_type === 'takeaway' ? 'Handed over' : 'Served')
+    : 'Completed';
   const canComplete = currentUserHasPermission('kitchen_orders.complete');
   const displayOrderNumber = order.order_number || order.id;
   return `<article class="rounded-2xl border ${isCompleted ? 'border-emerald-200 dark:border-emerald-900/50' : 'border-blue-200 dark:border-blue-900/50'} bg-white dark:bg-slate-900 p-4 shadow-sm">
-    <div class="flex justify-between items-start gap-3"><div><div class="font-black text-slate-900 dark:text-white">Order #${displayOrderNumber}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">Punched by ${kdsPunchedBy(order)}</div><span class="inline-flex mt-2 px-2 py-1 h-fit rounded-lg text-[9px] font-black uppercase ${isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}">${isCompleted ? completedLabel : 'Preparing'}</span></div>${kdsOrderTimer(order)}</div>
+    <div class="flex justify-between items-start gap-3"><div><div class="font-black text-slate-900 dark:text-white">Order #${displayOrderNumber}</div><div class="text-xs font-bold text-slate-500">${kdsOrderContext(order)}</div><div class="mt-1 text-[10px] font-black text-slate-400">${order.order_type === 'takeaway' ? 'Order taker' : 'Punched by'} ${kdsPunchedBy(order)}</div><span class="inline-flex mt-2 px-2 py-1 h-fit rounded-lg text-[9px] font-black uppercase ${isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}">${isCompleted ? completedLabel : 'Preparing'}</span></div>${kdsOrderTimer(order)}</div>
     <div class="mt-4 space-y-2">${kdsItemsPreview(order)}</div>
     <div class="mt-4 flex gap-2"><button onclick="showKDSOrderModal(${order.id})" class="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-black">Order Details</button>${!isCompleted && canComplete ? `<button onclick="updateKDSStatus(${order.id}, 'ready')" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black">Mark Completed</button>` : ''}</div>
   </article>`;

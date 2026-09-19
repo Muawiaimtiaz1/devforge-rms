@@ -3984,7 +3984,7 @@ function getPOSLayout() {
 function capturePOSLayoutState() {
   const ids = [
     "pos-table", "pos-waiter", "pos-rider", "pos-delivery-addr",
-    "pos-token", "pos-discount", "pos-discount-preset", "pos-tax", "pos-tax-preset",
+    "pos-token", "pos-takeaway-waiter", "pos-discount", "pos-discount-preset", "pos-tax", "pos-tax-preset",
     "pos-method", "pos-received", "pos-cust-name", "pos-cust-phone"
   ];
   const values = {};
@@ -4384,6 +4384,10 @@ async function renderPOS() {
     0
   );
   const selectedWaiter = waiterList.find(waiter => Number(waiter.id) === selectedWaiterId);
+  const takeawayWaiterId = Number(
+    (_editingOrderId && _tempEditSaleDetails?.order_type === 'takeaway' ? _tempEditSaleDetails.waiter_id : null) ||
+    loggedInWaiter?.id || 0
+  );
   const activePOSOrderType = layoutRestore?.form?.orderType || window._posEntryOrderType || (deliveryOnly ? 'delivery' : 'dine_in');
   const lockTableWaiter = activePOSOrderType === 'dine_in' && !!selectedPOSTable;
   const posOrderTypeMeta = {
@@ -4600,6 +4604,11 @@ async function renderPOS() {
             <div id="pos-takeaway-fields" class="mb-4 space-y-2 hidden">
               <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Token #</label>
               <input id="pos-token" type="text" placeholder="Auto or manual" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
+              <label for="pos-takeaway-waiter" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Order taker</label>
+              <select id="pos-takeaway-waiter" ${loggedInWaiter ? 'disabled' : ''} class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold">
+                <option value="">-- Select order taker --</option>
+                ${waiterList.map(waiter => `<option value="${waiter.id}" ${Number(waiter.id) === takeawayWaiterId ? 'selected' : ''}>${escapeOrderValue(waiter.name || waiter.username || 'Order taker')}</option>`).join('')}
+              </select>
             </div>
 
             <div class="mb-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-300">Kitchen terminals are assigned automatically from product category routing.</div>
@@ -5356,8 +5365,8 @@ async function renderPOSOrdersNow() {
         ? '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">Paid</span>'
         : '<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider">Unpaid</span>';
       const canMarkServed = Number(s.user_id) === Number(currentUser?.id) || Number(s.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist';
-      const primaryAction = s.order_type === 'dine_in' && s.order_status === 'ready' && canMarkServed
-        ? `<button onclick="markOrderServed(${s.id})" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white font-bold text-[10px] uppercase hover:bg-violet-500 transition-all shadow-sm">Mark Served</button>`
+      const primaryAction = ['dine_in', 'takeaway'].includes(s.order_type) && s.order_status === 'ready' && canMarkServed
+        ? `<button onclick="markOrderServed(${s.id}, '${s.order_type}')" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white font-bold text-[10px] uppercase hover:bg-violet-500 transition-all shadow-sm">${s.order_type === 'takeaway' ? 'Mark Handed Over' : 'Mark Served'}</button>`
         : s.order_type === 'delivery' && s.order_status !== 'ready'
         ? `<button onclick="viewOrderItems(${s.id})" class="px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold text-[10px] uppercase hover:bg-blue-600 transition-all shadow-sm">Out</button>`
         : currentUserHasPermission('orders.take_payment') && currentUserHasPermission('orders.complete')
@@ -5376,7 +5385,7 @@ async function renderPOSOrdersNow() {
             ${s.waiter_name || '-'}
           </td>
           <td class="px-4 py-4">
-            ${deliveryPanel ? `<select onchange="updateDeliveryStatus(${s.id}, this.value)" class="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${statusColor} border-0 outline-none cursor-pointer"><option value="pending" ${s.order_status === 'pending' ? 'selected' : ''}>Pending</option><option value="preparing" ${s.order_status === 'preparing' ? 'selected' : ''}>Preparing</option><option value="ready" ${s.order_status === 'ready' ? 'selected' : ''}>Out for delivery</option></select>` : `<span class="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${statusColor}">${s.order_status}</span>`}
+            ${deliveryPanel ? `<select onchange="updateDeliveryStatus(${s.id}, this.value)" class="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${statusColor} border-0 outline-none cursor-pointer"><option value="pending" ${s.order_status === 'pending' ? 'selected' : ''}>Pending</option><option value="preparing" ${s.order_status === 'preparing' ? 'selected' : ''}>Preparing</option><option value="ready" ${s.order_status === 'ready' ? 'selected' : ''}>Out for delivery</option></select>` : `<span class="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${statusColor}">${orderStatusLabel(s)}</span>`}
           </td>
           <td class="px-4 py-4 font-black text-slate-900 dark:text-white text-sm"><div>${shopCurrencyCode()} ${Number(s.total).toLocaleString()}</div>${deliveryPanel ? paymentBadge : ''}</td>
           <td class="px-4 py-4 text-xs font-medium text-slate-400">${date}</td>
@@ -5447,6 +5456,12 @@ function relativeOrderTime(value) {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
+function orderStatusLabel(order) {
+  if (order.order_type === 'takeaway' && order.order_status === 'ready') return 'Ready for pickup';
+  if (order.order_type === 'takeaway' && order.order_status === 'served') return 'Handed over';
+  return String(order.order_status || 'pending').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
 function renderActiveOrderCard(order) {
   const type = order.order_type === 'dine_in' ? 'Dine-in' : order.order_type === 'takeaway' ? 'Takeaway' : 'Delivery';
   const context = order.order_type === 'dine_in'
@@ -5459,7 +5474,7 @@ function renderActiveOrderCard(order) {
   return `<article class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm active:scale-[0.99] transition-all">
     <div class="flex items-start justify-between gap-3">
       <div><div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Order #${order.order_number || order.id}</div><div class="mt-1 text-lg font-black text-slate-900 dark:text-white">${context}</div></div>
-      <span class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${statusTone}">${escapeOrderValue(order.order_status || 'pending')}</span>
+      <span class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${statusTone}">${escapeOrderValue(orderStatusLabel(order))}</span>
     </div>
     <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
       <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Placed</span><span class="font-bold text-slate-700 dark:text-slate-200">${relativeOrderTime(order.created_at)}</span></div>
@@ -5470,21 +5485,26 @@ function renderActiveOrderCard(order) {
     <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
       ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${order.id})" class="flex-1 min-w-[120px] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black">Order Details</button>` : ''}
       ${currentUserHasPermission('orders.update') ? `<button onclick="editOrder(${order.id})" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-black">Edit</button>` : ''}
-      ${order.order_type === 'dine_in' && order.order_status === 'ready' && (Number(order.user_id) === Number(currentUser?.id) || Number(order.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist') ? `<button onclick="markOrderServed(${order.id})" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">Mark Served</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
+      ${['dine_in', 'takeaway'].includes(order.order_type) && order.order_status === 'ready' && (Number(order.user_id) === Number(currentUser?.id) || Number(order.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist') ? `<button onclick="markOrderServed(${order.id}, '${order.order_type}')" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">${order.order_type === 'takeaway' ? 'Mark Handed Over' : 'Mark Served'}</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
     </div>
   </article>`;
 }
 
-async function markOrderServed(id) {
-  if (!confirm('Confirm that this order has been handed to the guest?')) return;
-  showAppLoader('Marking order served', `Updating order #${id}...`);
+async function markOrderServed(id, orderType = 'dine_in') {
+  const takeaway = orderType === 'takeaway';
+  if (!confirm(takeaway ? 'Confirm that this takeaway order has been handed to the customer?' : 'Confirm that this order has been handed to the guest?')) return;
+  showAppLoader(takeaway ? 'Marking order handed over' : 'Marking order served', `Updating order #${id}...`);
   try {
     const result = await api(`/api/kds/${id}/status`, 'PATCH', { status: 'served' });
     if (result?.error) throw new Error(result.error);
-    toast('Order marked as served.', 'success');
-    renderPOSOrders();
+    toast(takeaway ? 'Takeaway order marked as handed over.' : 'Order marked as served.', 'success');
+    if (typeof _salesRestrictedView !== 'undefined' && _salesRestrictedView && _currentPage === 'sales-history') {
+      await loadSalesPanelPage();
+    } else {
+      await renderPOSOrders();
+    }
   } catch (error) {
-    toast(error.message || 'Could not mark the order as served.', 'error');
+    toast(error.message || (takeaway ? 'Could not mark the order as handed over.' : 'Could not mark the order as served.'), 'error');
   } finally {
     hideAppLoader();
   }
@@ -7649,6 +7669,12 @@ async function checkout(status = 'completed') {
     delivery_address = $c('pos-delivery-addr')?.value.trim() || '';
     rider_id = parseInt($c('pos-rider')?.value) || null;
   } else if (orderType === 'takeaway') {
+    waiter_id = Number($c('pos-takeaway-waiter')?.value) || null;
+    if (!waiter_id) {
+      resetPOSCheckoutSubmission(status, isEditing);
+      $c('pos-takeaway-waiter')?.focus();
+      return toast('Select the order taker for this takeaway order.', 'error');
+    }
     token_number = $c('pos-token')?.value.trim() || `TK-${Date.now()}`;
   }
 
@@ -8513,7 +8539,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
         <div class="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-1">Orders</h2>
-            <p class="text-slate-500 dark:text-slate-400 text-sm">Showing order IDs and ordered items only</p>
+            <p class="text-slate-500 dark:text-slate-400 text-sm">Your placed and assigned orders, with their kitchen status</p>
           </div>
           <input id="sales-search" oninput="scheduleSalesPageReload()" placeholder="Search Order ID..." class="w-full sm:w-64 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm shadow-sm" />
         </div>
@@ -8521,6 +8547,8 @@ async function renderSalesHistory(onlyPendingDues = false) {
           <table class="w-full text-left border-collapse">
             <thead class="bg-slate-50 dark:bg-black/20 border-b border-slate-200 dark:border-slate-700"><tr>
               <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Order ID</th>
+              <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Type</th>
+              <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Status</th>
               <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase text-right">Ordered Items</th>
             </tr></thead>
             <tbody id="sales-table-body" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
@@ -8640,12 +8668,15 @@ function _renderRestrictedSalesTable() {
   const rows = _allSalesCache;
   body.innerHTML = rows.length ? rows.map(sale => `
     <tr class="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
-      <td class="px-5 py-4 font-bold text-indigo-600 dark:text-indigo-400">#${escapeOrderValue(sale.order_number || sale.id)}</td>
+      <td class="px-5 py-4 font-bold text-indigo-600 dark:text-indigo-400">#${escapeOrderValue(sale.order_number || sale.id)}${sale.order_type === 'takeaway' && sale.token_number ? `<div class="mt-1 text-xs text-slate-500">Token ${escapeOrderValue(sale.token_number)}</div>` : ''}</td>
+      <td class="px-5 py-4 text-xs font-bold text-slate-600 dark:text-slate-300">${escapeOrderValue(sale.order_type === 'takeaway' ? 'Takeaway' : sale.order_type === 'dine_in' ? 'Dine-in' : 'Delivery')}</td>
+      <td class="px-5 py-4 text-xs font-bold text-slate-700 dark:text-slate-200">${escapeOrderValue(orderStatusLabel(sale))}</td>
       <td class="px-5 py-4 text-right">
+        ${sale.order_type === 'takeaway' && sale.order_status === 'ready' ? `<button onclick="markOrderServed(${Number(sale.id)}, 'takeaway')" class="mr-2 inline-flex items-center rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white">Mark Handed Over</button>` : ''}
         <button onclick="viewRestrictedSalesOrderItems(${Number(sale.id)})" class="inline-flex items-center rounded-lg bg-emerald-100 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400">View Items</button>
       </td>
     </tr>
-  `).join('') : '<tr><td colspan="2" class="px-6 py-12 text-center text-sm font-bold text-slate-400">No orders found</td></tr>';
+  `).join('') : '<tr><td colspan="4" class="px-6 py-12 text-center text-sm font-bold text-slate-400">No orders found</td></tr>';
   renderSalesPagination(rows.length);
 }
 
