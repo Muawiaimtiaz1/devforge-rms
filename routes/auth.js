@@ -44,6 +44,7 @@ router.get('/me', async (req, res) => {
         ...req.session.user,
         allowed_panels: freshUser.allowed_panels,
         shop_name: freshUser.shop_name,
+        shop_currency: freshUser.shop_currency,
         shop_type: freshUser.shop_type,
         shop_status: freshUser.shop_status,
         shop_created_at: freshUser.shop_created_at,

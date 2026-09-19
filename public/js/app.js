@@ -740,6 +740,7 @@ async function init() {
     }
     const data = await res.json();
     currentUser = data.user;
+    window.shopCurrency = currentUser.shop_currency || 'PKR';
     currentUser.total_users = data.total_users || 1;
     currentUser.total_brands = data.total_brands || 1;
     const requestedPlatformPage = new URLSearchParams(window.location.search).get("platform_page");
@@ -1256,6 +1257,18 @@ async function renderActiveSettingsContent() {
         </div>
 
         ${renderSubscriptionQuotaCard()}
+        ${currentUser.role === 'admin' ? `
+          <section class="mb-10 rounded-[2rem] border border-slate-200 bg-white p-8 dark:border-slate-800 dark:bg-slate-900">
+            <h4 class="text-xl font-black text-slate-900 dark:text-white">Shop currency</h4>
+            <p class="mt-2 text-sm text-slate-500">Choose the currency used for prices, bills, and reports in this shop.</p>
+            <label for="shop-currency" class="mt-6 block text-xs font-bold uppercase tracking-widest text-slate-500">Search currency</label>
+            <div class="mt-2 flex flex-col gap-3 sm:flex-row">
+              <input id="shop-currency" list="shop-currency-options" value="${currentUser.shop_currency || 'PKR'}" autocomplete="off" class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              <datalist id="shop-currency-options">${Intl.supportedValuesOf('currency').map(code => `<option value="${code}">${new Intl.DisplayNames(['en'], { type: 'currency' }).of(code)}</option>`).join('')}</datalist>
+              <button type="button" onclick="saveShopCurrency()" class="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white">Save currency</button>
+            </div>
+          </section>
+        ` : ''}
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
           <div class="space-y-3">
@@ -2005,11 +2018,11 @@ async function renderDashboard(period, brandId, from, to) {
             </div>
             <div>
               <div class="text-[9px] uppercase font-black tracking-widest text-slate-400">${selectedPartnerType === "product_based" ? "Product Profit" : "Share Pool"}</div>
-              <div class="text-xs font-black text-slate-800 dark:text-slate-100">Rs. ${Number(selectedPartnerAudit.profit_pool || 0).toLocaleString()}</div>
+              <div class="text-xs font-black text-slate-800 dark:text-slate-100">${shopCurrencyCode()} ${Number(selectedPartnerAudit.profit_pool || 0).toLocaleString()}</div>
             </div>
             <div>
               <div class="text-[9px] uppercase font-black tracking-widest text-slate-400">Partner Share</div>
-              <div class="text-xs font-black ${Number(selectedPartnerAudit.profit_share || 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">Rs. ${Number(selectedPartnerAudit.profit_share || 0).toLocaleString()}</div>
+              <div class="text-xs font-black ${Number(selectedPartnerAudit.profit_share || 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">${shopCurrencyCode()} ${Number(selectedPartnerAudit.profit_share || 0).toLocaleString()}</div>
             </div>
             <div>
               <div class="text-[9px] uppercase font-black tracking-widest text-slate-400">${selectedPartnerType === "product_based" ? "Product Orders" : "Business Orders"}</div>
@@ -2028,7 +2041,7 @@ async function renderDashboard(period, brandId, from, to) {
           <h3 class="font-bold text-gray-700 dark:text-gray-200 text-sm">Whole Business Partner Split</h3>
           ${statInfoIcon("Shop profit allocated across partners. Product-based partners use their assigned product profit; share-based partners split the remaining shop profit by percentage. Partner profits add up to shop profit.")}
         </div>
-        <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Rs. ${Number(data.totalPartnerProfit ?? shopProfitValue).toLocaleString()} allocated</span>
+        <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">${shopCurrencyCode()} ${Number(data.totalPartnerProfit ?? shopProfitValue).toLocaleString()} allocated</span>
       </div>
       ${selectedPartnerAuditHtml}
       <div class="overflow-x-auto">
@@ -2053,8 +2066,8 @@ async function renderDashboard(period, brandId, from, to) {
                 </td>
                 <td class="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">${type === "product_based" ? "Product Based" : "Share Based"}</td>
                 <td class="px-6 py-3 text-right text-xs font-bold text-slate-600 dark:text-slate-300">${type === "product_based" ? "Products" : `${Number(share.ownership_percent || 0).toFixed(2).replace(/\.00$/, "")}%`}</td>
-                <td class="px-6 py-3 text-right text-xs font-bold text-slate-600 dark:text-slate-300">Rs. ${Number(share.profit_pool || 0).toLocaleString()}</td>
-                <td class="px-6 py-3 text-right text-xs font-black ${Number(share.profit_share || 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">Rs. ${Number(share.profit_share || 0).toLocaleString()}</td>
+                <td class="px-6 py-3 text-right text-xs font-bold text-slate-600 dark:text-slate-300">${shopCurrencyCode()} ${Number(share.profit_pool || 0).toLocaleString()}</td>
+                <td class="px-6 py-3 text-right text-xs font-black ${Number(share.profit_share || 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">${shopCurrencyCode()} ${Number(share.profit_share || 0).toLocaleString()}</td>
               </tr>
             `}).join("")}
           </tbody>
@@ -2098,11 +2111,11 @@ async function renderDashboard(period, brandId, from, to) {
                     <div class="text-sm font-black text-slate-800 dark:text-slate-100">${brand.brand_name}</div>
                     <div class="text-[10px] text-slate-400 font-bold">${Number(brand.orders || 0).toLocaleString()} order${Number(brand.orders || 0) === 1 ? "" : "s"}</div>
                   </td>
-                  <td class="px-6 py-3 text-right text-xs font-black text-blue-600 dark:text-blue-400">Rs. ${Number(brand.netRevenue || 0).toLocaleString()}</td>
-                  <td class="px-6 py-3 text-right text-xs font-bold text-slate-600 dark:text-slate-300">Rs. ${Number(brand.netCogs || 0).toLocaleString()}</td>
-                  <td class="px-6 py-3 text-right text-xs font-black ${grossTone}">Rs. ${grossProfit.toLocaleString()}</td>
-                  <td class="px-6 py-3 text-right text-xs font-bold text-rose-600 dark:text-rose-400">Rs. ${Number(brand.damageLoss || 0).toLocaleString()}</td>
-                  <td class="px-6 py-3 text-right text-xs font-black ${afterLossTone}">Rs. ${afterLoss.toLocaleString()}</td>
+                  <td class="px-6 py-3 text-right text-xs font-black text-blue-600 dark:text-blue-400">${shopCurrencyCode()} ${Number(brand.netRevenue || 0).toLocaleString()}</td>
+                  <td class="px-6 py-3 text-right text-xs font-bold text-slate-600 dark:text-slate-300">${shopCurrencyCode()} ${Number(brand.netCogs || 0).toLocaleString()}</td>
+                  <td class="px-6 py-3 text-right text-xs font-black ${grossTone}">${shopCurrencyCode()} ${grossProfit.toLocaleString()}</td>
+                  <td class="px-6 py-3 text-right text-xs font-bold text-rose-600 dark:text-rose-400">${shopCurrencyCode()} ${Number(brand.damageLoss || 0).toLocaleString()}</td>
+                  <td class="px-6 py-3 text-right text-xs font-black ${afterLossTone}">${shopCurrencyCode()} ${afterLoss.toLocaleString()}</td>
                   <td class="px-6 py-3 text-right text-xs font-black text-slate-900 dark:text-white">${Number(brand.profitMargin || 0).toFixed(1)}%</td>
                 </tr>
               `;
@@ -2148,12 +2161,12 @@ async function renderDashboard(period, brandId, from, to) {
 
     <!-- Metric Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7 gap-5 mb-8">
-      ${statCard("Total Revenue", "Rs. " + Number(data.totalRevenue).toLocaleString(), `${data.totalSales} transaction${data.totalSales !== 1 ? "s" : ""}`, "blue", "Completed orders only. Revenue = bill subtotal - discount + tax - refunds. Includes both received money and pending dues.")}
-      ${statCard("Payments Received", "Rs. " + Number(data.totalPaymentsReceived || 0).toLocaleString(), `${(data.staffPerformance || []).length} receiver${(data.staffPerformance || []).length !== 1 ? "s" : ""}`, "emerald", "Money actually marked received, attributed to the staff member who confirmed it.")}
-      ${statCard("Pending Dues", "Rs. " + Number(data.totalPendingDues || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), `${data.pendingDuesCount || 0} bill${Number(data.pendingDuesCount || 0) !== 1 ? "s" : ""} pending`, "amber", "Completed bills where final total minus amount received is still greater than zero. Shows only the unpaid balance.")}
-      ${statCard("Cost of Goods Sold", "Rs. " + Number(data.totalCOGS).toLocaleString(), "Sum of buying prices", "purple", "Buying cost of sold items from completed orders, reduced by the buying cost of returned items.")}
-      ${statCard("Shop Profit", "Rs. " + shopProfitValue.toLocaleString(), "Sum of partner shares", "emerald", "Shop Profit = revenue - COGS - damage/loss. This equals the sum of partner shares.")}
-      ${statCard("Damage Value", "Rs. " + Number(data.damageTotal || 0).toLocaleString(), "Inventory & Returns", "rose", "Current product damage/loss value tracked in inventory. This is separate from normal sales COGS.")}
+      ${statCard("Total Revenue", `${shopCurrencyCode()} ` + Number(data.totalRevenue).toLocaleString(), `${data.totalSales} transaction${data.totalSales !== 1 ? "s" : ""}`, "blue", "Completed orders only. Revenue = bill subtotal - discount + tax - refunds. Includes both received money and pending dues.")}
+      ${statCard("Payments Received", `${shopCurrencyCode()} ` + Number(data.totalPaymentsReceived || 0).toLocaleString(), `${(data.staffPerformance || []).length} receiver${(data.staffPerformance || []).length !== 1 ? "s" : ""}`, "emerald", "Money actually marked received, attributed to the staff member who confirmed it.")}
+      ${statCard("Pending Dues", `${shopCurrencyCode()} ` + Number(data.totalPendingDues || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), `${data.pendingDuesCount || 0} bill${Number(data.pendingDuesCount || 0) !== 1 ? "s" : ""} pending`, "amber", "Completed bills where final total minus amount received is still greater than zero. Shows only the unpaid balance.")}
+      ${statCard("Cost of Goods Sold", `${shopCurrencyCode()} ` + Number(data.totalCOGS).toLocaleString(), "Sum of buying prices", "purple", "Buying cost of sold items from completed orders, reduced by the buying cost of returned items.")}
+      ${statCard("Shop Profit", `${shopCurrencyCode()} ` + shopProfitValue.toLocaleString(), "Sum of partner shares", "emerald", "Shop Profit = revenue - COGS - damage/loss. This equals the sum of partner shares.")}
+      ${statCard("Damage Value", `${shopCurrencyCode()} ` + Number(data.damageTotal || 0).toLocaleString(), "Inventory & Returns", "rose", "Current product damage/loss value tracked in inventory. This is separate from normal sales COGS.")}
       ${statCard("Products", data.totalProducts, "in catalog", "amber", "Count of active catalog products for this shop, excluding deleted products.")}
     </div>
 
@@ -2161,7 +2174,7 @@ async function renderDashboard(period, brandId, from, to) {
     <div class="glass rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden mb-8">
       <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800"><h3 class="font-bold text-gray-700 dark:text-gray-200 text-sm">Sales by Payment Receiver</h3></div>
       <div class="divide-y divide-slate-100 dark:divide-slate-800">
-        ${(data.staffPerformance || []).map(row => `<div class="px-6 py-3 flex items-center justify-between gap-4"><div><div class="text-sm font-black text-slate-800 dark:text-white">${escapeOrderValue(row.name || row.username || 'Unknown')}</div><div class="text-[10px] font-bold text-slate-400">${Number(row.orders || 0)} received payment${Number(row.orders || 0) !== 1 ? 's' : ''}</div></div><div class="text-sm font-black text-emerald-600 dark:text-emerald-400">Rs. ${Number(row.received_sales || 0).toLocaleString()}</div></div>`).join('')}
+        ${(data.staffPerformance || []).map(row => `<div class="px-6 py-3 flex items-center justify-between gap-4"><div><div class="text-sm font-black text-slate-800 dark:text-white">${escapeOrderValue(row.name || row.username || 'Unknown')}</div><div class="text-[10px] font-bold text-slate-400">${Number(row.orders || 0)} received payment${Number(row.orders || 0) !== 1 ? 's' : ''}</div></div><div class="text-sm font-black text-emerald-600 dark:text-emerald-400">${shopCurrencyCode()} ${Number(row.received_sales || 0).toLocaleString()}</div></div>`).join('')}
       </div>
     </div>` : ''}
 
@@ -2193,8 +2206,8 @@ async function renderDashboard(period, brandId, from, to) {
                   <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-semibold">${p.qty_sold} sold</span>
                     <div class="text-right">
-                      <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">Rs. ${Number(p.revenue).toLocaleString()}</div>
-                      <div class="text-[10px] text-rose-500 font-mono">COGS: Rs. ${Number(p.cogs || 0).toLocaleString()}</div>
+                      <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">${shopCurrencyCode()} ${Number(p.revenue).toLocaleString()}</div>
+                      <div class="text-[10px] text-rose-500 font-mono">COGS: ${shopCurrencyCode()} ${Number(p.cogs || 0).toLocaleString()}</div>
                     </div>
                   </div>
                 </div>`,
@@ -2222,7 +2235,7 @@ async function renderDashboard(period, brandId, from, to) {
           (s) => `
                 <div class="flex items-center justify-between py-2.5 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div class="text-xs text-gray-500 dark:text-gray-400">${new Date(s.created_at).toLocaleString()}</div>
-                  <div class="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-sm">Rs. ${Number(s.total).toLocaleString()}</div>
+                  <div class="font-bold text-emerald-600 dark:text-emerald-400 font-mono text-sm">${shopCurrencyCode()} ${Number(s.total).toLocaleString()}</div>
                 </div>`,
         )
         .join("")}
@@ -2644,7 +2657,7 @@ async function renderProducts(onlyLowStock = false, requestedPage = 1, state = {
                   ${!inventoryIsRecipeProduct(p) ? `<div class="text-[10px] text-slate-500 pl-1 italic">Threshold: ${p.min_stock_level}</div>` : ""}
                 </div>
               </td>
-              <td class="px-5 py-4 text-slate-600 dark:text-slate-400">${getProductMenuVariants(p).length ? getProductMenuVariants(p).map(v => `<div class="text-xs"><strong>${escapeOrderValue(v.name)}:</strong> Rs. ${Number(v.price).toLocaleString()}</div>`).join('') : `Rs. ${p.selling_price || 0}`}</td>
+              <td class="px-5 py-4 text-slate-600 dark:text-slate-400">${getProductMenuVariants(p).length ? getProductMenuVariants(p).map(v => `<div class="text-xs"><strong>${escapeOrderValue(v.name)}:</strong> ${shopCurrencyCode()} ${Number(v.price).toLocaleString()}</div>`).join('') : `${shopCurrencyCode()} ${p.selling_price || 0}`}</td>
               <td class="px-5 py-4 text-right space-x-1 whitespace-nowrap">
                 ${!inventoryIsRecipeProduct(p) && !(p.stock_variants || []).length
               ? `<button onclick="adjustStock(${p.id},'${p.name.replace(/'/g, "\\'")}',${p.stock},${p.buying_price})" class="px-2 py-1 text-xs rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700">Stock</button>`
@@ -3027,7 +3040,7 @@ function calculateProductVariantCost(variant) {
 function refreshProductVariantCost(variantIndex) {
   const value = calculateProductVariantCost(window._formVariants?.[variantIndex]);
   const target = $c(`pf-variant-cost-${variantIndex}`);
-  if (target) target.textContent = `Rs. ${value.toFixed(2)}`;
+  if (target) target.textContent = `${shopCurrencyCode()} ${value.toFixed(2)}`;
 }
 
 function removeVariantIngredient(variantIndex, ingredientIndex) {
@@ -3051,7 +3064,7 @@ function renderProductVariantsForm() {
         <button type="button" onclick="removeProductVariant(${variantIndex})" class="col-span-1 h-9 rounded-lg text-rose-500 hover:bg-rose-50" title="Remove variant">×</button>
       </div>
       <div class="space-y-2">
-        <div class="flex justify-between items-center"><span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Ingredients for ${escapeOrderValue(variant.name || 'this variant')}</span><span class="text-[10px] font-black text-emerald-600">Calculated cost: <strong id="pf-variant-cost-${variantIndex}">Rs. ${calculateProductVariantCost(variant).toFixed(2)}</strong></span><button type="button" onclick="addVariantIngredient(${variantIndex})" class="text-[10px] font-bold text-emerald-600">+ Ingredient</button></div>
+        <div class="flex justify-between items-center"><span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Ingredients for ${escapeOrderValue(variant.name || 'this variant')}</span><span class="text-[10px] font-black text-emerald-600">Calculated cost: <strong id="pf-variant-cost-${variantIndex}">${shopCurrencyCode()} ${calculateProductVariantCost(variant).toFixed(2)}</strong></span><button type="button" onclick="addVariantIngredient(${variantIndex})" class="text-[10px] font-bold text-emerald-600">+ Ingredient</button></div>
         ${(variant.ingredients || []).map((ingredient, ingredientIndex) => `
           <div class="grid grid-cols-12 gap-2">
             <select onchange="updateVariantIngredient(${variantIndex}, ${ingredientIndex}, 'raw_stock_id', this.value)" class="col-span-7 px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs">${rawStockOptions(ingredient.raw_stock_id)}</select>
@@ -3086,7 +3099,7 @@ function renderProductAddonsForm() {
   host.innerHTML = (window._menuAddons || []).map(addon => `
     <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-3 cursor-pointer">
       <span class="flex items-center gap-3"><input type="checkbox" ${selected.has(`addon-${addon.id}`) ? 'checked' : ''} onchange="toggleProductAddon(${addon.id}, this.checked)" class="rounded text-amber-600"><span><strong class="block text-xs text-slate-800 dark:text-slate-100">${escapeOrderValue(addon.name)}</strong><small class="text-[10px] text-slate-500">${addon.ingredients?.length ? `${addon.ingredients.length} ingredient${addon.ingredients.length === 1 ? '' : 's'} linked` : 'No inventory linked'}</small></span></span>
-      <strong class="text-xs text-emerald-600">+ Rs. ${Number(addon.price || 0).toLocaleString()}</strong>
+      <strong class="text-xs text-emerald-600">+ ${shopCurrencyCode()} ${Number(addon.price || 0).toLocaleString()}</strong>
     </label>`).join('') || '<p class="text-[10px] text-slate-400 italic">No add-ons created. Use Manage Add-ons first.</p>';
   return;
   host.innerHTML = (window._formAddons || []).map((addon, index) => `
@@ -3173,7 +3186,7 @@ async function renderMenuAddons(editId = null) {
       </div>
     </section>` : ''}
     <section class="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm"><div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5"><div><h3 class="text-lg font-black text-slate-900 dark:text-white">Add-on Catalog</h3><p class="text-xs text-slate-500 mt-1">Search and manage add-ons available for products.</p></div><input id="menu-addon-list-search" oninput="filterMenuAddonCards(this.value)" placeholder="Search add-ons or ingredients..." class="w-full sm:w-80 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"></div>
-      <div id="menu-addon-card-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${addons.map(addon => `<article class="menu-addon-card rounded-2xl border border-slate-200 dark:border-slate-700 p-4 hover:border-amber-300 transition-colors" data-search="${escapeOrderValue(`${addon.name} ${(addon.ingredients || []).map(ingredient => ingredient.ingredient_name).join(' ')}`.toLowerCase())}"><div class="flex justify-between gap-3"><div class="min-w-0"><h4 class="font-black text-slate-900 dark:text-white truncate">${escapeOrderValue(addon.name)}</h4><p class="mt-1 text-lg font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()}</p></div><span class="h-fit px-2.5 py-1 rounded-full text-[10px] font-black ${addon.ingredients?.length ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${addon.ingredients?.length ? `${addon.ingredients.length} linked` : 'No inventory'}</span></div><div class="mt-4 min-h-10 space-y-1 text-xs text-slate-500">${menuAddonCatalogIngredientsHtml(addon)}</div><div class="mt-4 flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="editMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></article>`).join('') || '<p class="md:col-span-2 xl:col-span-3 py-12 text-center text-slate-500">No add-ons created yet.</p>'}</div>
+      <div id="menu-addon-card-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${addons.map(addon => `<article class="menu-addon-card rounded-2xl border border-slate-200 dark:border-slate-700 p-4 hover:border-amber-300 transition-colors" data-search="${escapeOrderValue(`${addon.name} ${(addon.ingredients || []).map(ingredient => ingredient.ingredient_name).join(' ')}`.toLowerCase())}"><div class="flex justify-between gap-3"><div class="min-w-0"><h4 class="font-black text-slate-900 dark:text-white truncate">${escapeOrderValue(addon.name)}</h4><p class="mt-1 text-lg font-black text-emerald-600">+ ${shopCurrencyCode()} ${Number(addon.price).toLocaleString()}</p></div><span class="h-fit px-2.5 py-1 rounded-full text-[10px] font-black ${addon.ingredients?.length ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">${addon.ingredients?.length ? `${addon.ingredients.length} linked` : 'No inventory'}</span></div><div class="mt-4 min-h-10 space-y-1 text-xs text-slate-500">${menuAddonCatalogIngredientsHtml(addon)}</div><div class="mt-4 flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="editMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></article>`).join('') || '<p class="md:col-span-2 xl:col-span-3 py-12 text-center text-slate-500">No add-ons created yet.</p>'}</div>
     </section>
   </div>`;
 }
@@ -3206,7 +3219,7 @@ async function openMenuAddonsPanel(editId = null) {
         <div class="sm:col-span-2 space-y-3"><div class="flex items-center justify-between gap-3"><span class="text-xs font-black text-slate-600 dark:text-slate-300">Inventory ingredients (optional)</span><button type="button" onclick="addMenuAddonIngredient()" class="px-3 py-2 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-black">+ Add Ingredient</button></div><div id="menu-addon-ingredient-rows" class="space-y-2">${menuAddonIngredientRowsHtml()}</div></div>
         <div class="sm:col-span-2 flex justify-end gap-2">${editing ? `<button onclick="openMenuAddonsPanel()" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 font-bold">Cancel Edit</button>` : ''}<button id="save-menu-addon" onclick="saveMenuAddon(${editing?.id || 'null'})" class="px-5 py-2 rounded-xl bg-amber-500 text-white font-bold">${editing ? 'Update Add-on' : 'Add Add-on'}</button></div>
       </div>` : ''}
-      <div class="space-y-2">${addons.map(addon => `<div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div><strong class="text-sm text-slate-900 dark:text-white">${escapeOrderValue(addon.name)}</strong><p class="text-[11px] text-slate-500 mt-1">Rs. ${Number(addon.price).toLocaleString()} · ${addon.ingredients?.length ? `${addon.ingredients.length} ingredient${addon.ingredients.length === 1 ? '' : 's'} linked` : 'No inventory linked'}</p></div><div class="flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="openMenuAddonsPanel(${addon.id})" class="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></div>`).join('') || '<p class="py-10 text-center text-sm text-slate-500">No add-ons created yet.</p>'}</div>
+      <div class="space-y-2">${addons.map(addon => `<div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-4"><div><strong class="text-sm text-slate-900 dark:text-white">${escapeOrderValue(addon.name)}</strong><p class="text-[11px] text-slate-500 mt-1">${shopCurrencyCode()} ${Number(addon.price).toLocaleString()} · ${addon.ingredients?.length ? `${addon.ingredients.length} ingredient${addon.ingredients.length === 1 ? '' : 's'} linked` : 'No inventory linked'}</p></div><div class="flex gap-2">${currentUserHasPermission('products.update') ? `<button onclick="openMenuAddonsPanel(${addon.id})" class="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">Edit</button>` : ''}${currentUserHasPermission('products.delete') ? `<button onclick="deleteMenuAddon(${addon.id})" class="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 text-xs font-bold">Remove</button>` : ''}</div></div>`).join('') || '<p class="py-10 text-center text-sm text-slate-500">No add-ons created yet.</p>'}</div>
     </div>`;
     document.body.appendChild(modal);
   } catch (error) { toast(error.message, 'error'); } finally { hideAppLoader(); }
@@ -3687,7 +3700,7 @@ function renderFormCompositionList() {
              <div class="col-span-12 sm:col-span-10">
                 <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Ingredient</label>
                 <select onchange="updateIngredientInForm(${idx}, this.value)" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px] font-bold outline-none">
-                    ${(window._rawStocksList || []).map(s => `<option value="${s.id}" ${s.id == c.raw_stock_id ? 'selected' : ''}>${s.name} (Rs. ${s.buying_price}/${s.unit})</option>`).join('')}
+                    ${(window._rawStocksList || []).map(s => `<option value="${s.id}" ${s.id == c.raw_stock_id ? 'selected' : ''}>${s.name} (${shopCurrencyCode()} ${s.buying_price}/${s.unit})</option>`).join('')}
                 </select>
              </div>`
           : `<!-- Part Name (Free Text) -->
@@ -3748,7 +3761,7 @@ function adjustStock(id, name, current, buyingPrice) {
       </div>
 
       <div>
-        <label class="block text-xs text-slate-400 mb-1.5 font-bold uppercase tracking-wider">Batch Buying Price (Rs.)</label>
+        <label class="block text-xs text-slate-400 mb-1.5 font-bold uppercase tracking-wider">Batch Buying Price (${shopCurrencyCode()})</label>
         <input id="stock-buying-price" type="number" value="${buyingPrice || 0}" class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-emerald-400 focus:outline-none focus:border-emerald-500 transition-all font-bold text-lg" />
         <p class="text-[10px] text-slate-500 mt-1 italic">When adding stock, this will create a new batch with this cost.</p>
       </div>
@@ -3837,14 +3850,14 @@ function openLossPopup(productId, productName) {
           <div>
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">Select Batch to Deduct From</label>
             <select id="loss-batch-id" class="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 focus:border-indigo-500 transition-all outline-none font-bold text-sm">
-              ${product.batches.map(b => `<option value="${b.id}">Cost: Rs. ${b.buying_price} (Available: ${b.quantity})</option>`).join('')}
+              ${product.batches.map(b => `<option value="${b.id}">Cost: ${shopCurrencyCode()} ${b.buying_price} (Available: ${b.quantity})</option>`).join('')}
             </select>
           </div>
           `;
     })()}
 
         <div>
-          <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">Additional Loss Amount (Optional, Rs.)</label>
+          <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">Additional Loss Amount (Optional, ${shopCurrencyCode()})</label>
           <input id="loss-manual-amount" type="number" min="0" value="0" 
                  class="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400 focus:border-rose-500 transition-all outline-none font-bold text-xl" />
         </div>
@@ -3910,7 +3923,7 @@ function openRecoveryPopup(productId, productName, currentDamageStock) {
           <div>
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">Recover From Which Batch?</label>
             <select id="recovery-batch-id" class="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-emerald-600 dark:text-emerald-400 focus:border-indigo-500 transition-all outline-none font-bold text-sm">
-              ${damagedBatches.map(b => `<option value="${b.id}">Cost: Rs. ${b.buying_price} (${b.damaged_quantity} units damaged)</option>`).join('')}
+              ${damagedBatches.map(b => `<option value="${b.id}">Cost: ${shopCurrencyCode()} ${b.buying_price} (${b.damaged_quantity} units damaged)</option>`).join('')}
             </select>
           </div>
           `;
@@ -3922,7 +3935,7 @@ function openRecoveryPopup(productId, productName, currentDamageStock) {
         </div>
 
         <div>
-          <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">Cash Recovered Amount (Rs.)</label>
+          <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 pl-1">Cash Recovered Amount (${shopCurrencyCode()})</label>
           <input id="recovery-amount" type="number" min="0" value="0" 
                  class="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-emerald-600 dark:text-emerald-400 focus:border-emerald-500 transition-all outline-none font-bold text-xl" />
         </div>
@@ -4406,7 +4419,7 @@ async function renderPOS() {
   const discountPresetOptions = _posDiscountPresets.map((preset) => {
     const type = preset.type === 'amount' ? 'amount' : 'percentage';
     const value = Number(preset.value || 0);
-    const label = type === 'percentage' ? `${value}%` : `Rs. ${value}`;
+    const label = type === 'percentage' ? `${value}%` : `${shopCurrencyCode()} ${value}`;
     return `<option value="${value}" data-type="${type}">${escapeOrderValue(preset.name)} (${label})</option>`;
   }).join("");
   const taxPresetOptions = _posTaxPresets.map((preset) => {
@@ -4467,7 +4480,7 @@ async function renderPOS() {
             <button type="button" id="pos-toolbar-checkout" onclick="openPOSCheckout()"
               class="${splitLayout ? 'hidden' : 'relative order-2 flex'} h-12 min-w-24 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black shadow-lg shadow-indigo-500/25 transition-all items-center justify-center gap-2 shrink-0 active:scale-95" title="Open checkout" aria-label="Open checkout">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.6 1.6A1 1 0 006.1 16H18M9 20a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
-              <span id="pos-checkout-total" class="text-xs font-black text-indigo-50">Rs. 0.00</span>
+              <span id="pos-checkout-total" class="text-xs font-black text-indigo-50">${shopCurrencyCode()} 0.00</span>
               <span id="pos-checkout-count" class="absolute -right-1.5 -top-1.5 min-w-5 h-5 px-1 rounded-full border-2 border-gray-50 dark:border-gray-950 bg-rose-500 flex items-center justify-center text-[10px] leading-none">0</span>
             </button>
             ${splitLayout ? '' : '<span class="order-3 basis-full h-0" aria-hidden="true"></span>'}
@@ -4510,7 +4523,7 @@ async function renderPOS() {
             <div class="absolute inset-0 cursor-pointer" onclick="closePOSCheckout()"></div>
             <div class="relative z-10 w-full max-w-lg">
               <span class="block text-[11px] font-black uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 mb-3">Grand Total</span>
-              <span id="pos-checkout-overlay-total" class="block text-5xl md:text-7xl font-black tracking-tighter text-slate-900 dark:text-white mb-10">Rs. 0.00</span>
+              <span id="pos-checkout-overlay-total" class="block text-5xl md:text-7xl font-black tracking-tighter text-slate-900 dark:text-white mb-10">${shopCurrencyCode()} 0.00</span>
               
               <p class="mt-8 text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-widest opacity-50">Click background to return to cart</p>
             </div>
@@ -4594,13 +4607,13 @@ async function renderPOS() {
 
           <div id="pos-cart-controls" class="border-t border-slate-200 dark:border-slate-700 ${splitLayout ? 'mt-0.5 pt-0.5 space-y-1 shrink-0' : 'mt-4 pt-4 space-y-4'}">
             <div class="hidden">
-               <div class="flex justify-between ${splitLayout ? 'rounded-md bg-slate-50 dark:bg-slate-800 px-1.5 py-1' : ''}"><span>Subtotal</span><span id="cart-subtotal" class="font-bold text-slate-900 dark:text-white">Rs. 0</span></div>
-               <div class="hidden"><span>Tax Amount</span><span id="cart-tax-amt">Rs. 0.00</span></div>
+               <div class="flex justify-between ${splitLayout ? 'rounded-md bg-slate-50 dark:bg-slate-800 px-1.5 py-1' : ''}"><span>Subtotal</span><span id="cart-subtotal" class="font-bold text-slate-900 dark:text-white">${shopCurrencyCode()} 0</span></div>
+               <div class="hidden"><span>Tax Amount</span><span id="cart-tax-amt">${shopCurrencyCode()} 0.00</span></div>
             </div>
 
             <div id="pos-grand-total-row" class="hidden">
               <span class="text-slate-900 dark:text-white ${splitLayout ? 'text-xs' : 'text-lg'}">Grand Total</span>
-              <span id="cart-total" data-total="0">Rs. 0.00</span>
+              <span id="cart-total" data-total="0">${shopCurrencyCode()} 0.00</span>
             </div>
 
             <div class="hidden">
@@ -4617,11 +4630,11 @@ async function renderPOS() {
                    <option value="">Manual discount</option>${discountPresetOptions}
                  </select>`}
                  ${splitLayout ? `
-                 <input id="pos-discount" type="number" min="0" value="" placeholder="Rs." oninput="clearPOSDiscountPreset();calculateCartTotal()" class="w-full min-w-0 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-sm font-black shadow-sm text-center" />
+                 <input id="pos-discount" type="number" min="0" value="" placeholder="${shopCurrencyCode()}" oninput="clearPOSDiscountPreset();calculateCartTotal()" class="w-full min-w-0 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-sm font-black shadow-sm text-center" />
                  ` : `
                  <div class="flex items-center gap-1">
                    <button type="button" onclick="$c('pos-discount').stepDown();clearPOSDiscountPreset();calculateCartTotal()" class="w-8 h-8 flex items-center justify-center rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm font-bold shadow-sm">-</button>
-                   <input id="pos-discount" type="number" min="0" value="" placeholder="Rs." oninput="clearPOSDiscountPreset();calculateCartTotal()" class="flex-1 min-w-0 px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-sm font-black shadow-sm text-center" />
+                   <input id="pos-discount" type="number" min="0" value="" placeholder="${shopCurrencyCode()}" oninput="clearPOSDiscountPreset();calculateCartTotal()" class="flex-1 min-w-0 px-2 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-sm font-black shadow-sm text-center" />
                    <button type="button" onclick="$c('pos-discount').stepUp();clearPOSDiscountPreset();calculateCartTotal()" class="w-8 h-8 flex items-center justify-center rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm font-bold shadow-sm">+</button>
                  </div>`}
                  </div>
@@ -4701,7 +4714,7 @@ async function renderPOS() {
 
             <div class="hidden">
               <span class="text-emerald-700 dark:text-emerald-400 text-xs uppercase tracking-widest">Change / Dues</span>
-              <span id="cart-remaining" class="text-emerald-600 dark:text-emerald-400">Rs. 0.00</span>
+              <span id="cart-remaining" class="text-emerald-600 dark:text-emerald-400">${shopCurrencyCode()} 0.00</span>
             </div>
 
             <div class="hidden">
@@ -4870,7 +4883,7 @@ function syncPOSCheckoutSummary(totalOverride) {
   const grandTotal = typeof totalOverride === "number"
     ? totalOverride
     : parseFloat($c("cart-total")?.dataset.total) || 0;
-  const totalText = "Rs. " + grandTotal.toFixed(2);
+  const totalText = `${shopCurrencyCode()} ` + grandTotal.toFixed(2);
   const itemCount = cart.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0);
 
   const buttonTotal = $c("pos-checkout-total");
@@ -5046,7 +5059,7 @@ async function showPrintOptionsModal(id) {
           <div class="flex gap-2">
             <select id="pp-disc-preset" onchange="applyDiscPreset(${subtotal})" class="w-1/2 px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all">
               <option value="">Presets</option>
-              ${discounts.map(d => `<option value="${d.value}" data-type="${d.type}">${d.name} (${d.type === 'percentage' ? d.value + '%' : 'Rs.' + d.value})</option>`).join("")}
+              ${discounts.map(d => `<option value="${d.value}" data-type="${d.type}">${d.name} (${d.type === 'percentage' ? d.value + '%' : `${shopCurrencyCode()}` + d.value})</option>`).join("")}
             </select>
             <input id="pp-discount" type="number" step="0.01" value="${sale.discount || 0}" 
               oninput="updatePrintSummary(${subtotal})"
@@ -5058,23 +5071,23 @@ async function showPrintOptionsModal(id) {
         <div class="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-2">
           <div class="flex justify-between text-xs">
             <span class="text-slate-500 font-bold uppercase tracking-wider">Subtotal</span>
-            <span class="text-slate-900 dark:text-white font-black">Rs. ${subtotal.toLocaleString()}</span>
+            <span class="text-slate-900 dark:text-white font-black">${shopCurrencyCode()} ${subtotal.toLocaleString()}</span>
           </div>
           <div class="flex justify-between text-xs">
             <span class="text-slate-500 font-bold uppercase tracking-wider">Discount</span>
-            <span id="ps-discount" class="text-rose-500 font-black">- Rs. ${Number(sale.discount || 0).toLocaleString()}</span>
+            <span id="ps-discount" class="text-rose-500 font-black">- ${shopCurrencyCode()} ${Number(sale.discount || 0).toLocaleString()}</span>
           </div>
           <div class="flex justify-between text-xs border-b border-slate-100 dark:border-slate-700 pb-2">
             <span class="text-slate-500 font-bold uppercase tracking-wider">Tax</span>
-            <span id="ps-tax" class="text-slate-900 dark:text-white font-black">Rs. 0</span>
+            <span id="ps-tax" class="text-slate-900 dark:text-white font-black">${shopCurrencyCode()} 0</span>
           </div>
           <div class="flex justify-between items-center pt-1">
             <span class="text-slate-500 font-black uppercase tracking-widest text-[10px]">Grand Total</span>
-            <span id="ps-total" class="text-lg font-black text-indigo-600 dark:text-indigo-400">Rs. ${Number(sale.total).toLocaleString()}</span>
+            <span id="ps-total" class="text-lg font-black text-indigo-600 dark:text-indigo-400">${shopCurrencyCode()} ${Number(sale.total).toLocaleString()}</span>
           </div>
           <div class="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700">
             <span class="text-slate-500 font-black uppercase tracking-widest text-[10px]">Remaining Due</span>
-            <span id="ps-due" class="text-lg font-black text-rose-500">Rs. ${Math.max(Number(sale.total) - Number(sale.amount_received || 0), 0).toLocaleString()}</span>
+            <span id="ps-due" class="text-lg font-black text-rose-500">${shopCurrencyCode()} ${Math.max(Number(sale.total) - Number(sale.amount_received || 0), 0).toLocaleString()}</span>
           </div>
         </div>
 
@@ -5158,10 +5171,10 @@ function updatePrintSummary(subtotal, orderType = '') {
   const gs = document.getElementById('ps-total');
   const dueEl = document.getElementById('ps-due');
 
-  if (ds) ds.textContent = `- PKR ${discount.toLocaleString()}`;
-  if (ts) ts.textContent = `PKR ${taxAmt.toLocaleString()}`;
-  if (gs) gs.textContent = `PKR ${total.toLocaleString()}`;
-  if (dueEl) dueEl.textContent = `PKR ${due.toLocaleString()}`;
+  if (ds) ds.textContent = `- ${shopCurrencyCode()} ${discount.toLocaleString()}`;
+  if (ts) ts.textContent = `${shopCurrencyCode()} ${taxAmt.toLocaleString()}`;
+  if (gs) gs.textContent = `${shopCurrencyCode()} ${total.toLocaleString()}`;
+  if (dueEl) dueEl.textContent = `${shopCurrencyCode()} ${due.toLocaleString()}`;
 
   // An inquiry/unpaid bill is print-only. Customer identity and received
   // payment are deliberately not validated here.
@@ -5365,7 +5378,7 @@ async function renderPOSOrdersNow() {
           <td class="px-4 py-4">
             ${deliveryPanel ? `<select onchange="updateDeliveryStatus(${s.id}, this.value)" class="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${statusColor} border-0 outline-none cursor-pointer"><option value="pending" ${s.order_status === 'pending' ? 'selected' : ''}>Pending</option><option value="preparing" ${s.order_status === 'preparing' ? 'selected' : ''}>Preparing</option><option value="ready" ${s.order_status === 'ready' ? 'selected' : ''}>Out for delivery</option></select>` : `<span class="px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${statusColor}">${s.order_status}</span>`}
           </td>
-          <td class="px-4 py-4 font-black text-slate-900 dark:text-white text-sm"><div>PKR ${Number(s.total).toLocaleString()}</div>${deliveryPanel ? paymentBadge : ''}</td>
+          <td class="px-4 py-4 font-black text-slate-900 dark:text-white text-sm"><div>${shopCurrencyCode()} ${Number(s.total).toLocaleString()}</div>${deliveryPanel ? paymentBadge : ''}</td>
           <td class="px-4 py-4 text-xs font-medium text-slate-400">${date}</td>
           <td class="px-4 py-4 text-right">
             <div class="flex justify-end gap-2">
@@ -5452,7 +5465,7 @@ function renderActiveOrderCard(order) {
       <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Placed</span><span class="font-bold text-slate-700 dark:text-slate-200">${relativeOrderTime(order.created_at)}</span></div>
       <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Service</span><span class="font-bold text-slate-700 dark:text-slate-200">${type}</span></div>
       <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Waiter</span><span class="font-bold text-slate-700 dark:text-slate-200">${escapeOrderValue(order.waiter_name || '-')}</span></div>
-      <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Total</span><span class="font-black text-indigo-600 dark:text-indigo-300">PKR ${Number(order.total || 0).toLocaleString()}</span></div>
+      <div><span class="block text-[9px] uppercase tracking-widest text-slate-400 font-black">Total</span><span class="font-black text-indigo-600 dark:text-indigo-300">${shopCurrencyCode()} ${Number(order.total || 0).toLocaleString()}</span></div>
     </div>
     <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
       ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${order.id})" class="flex-1 min-w-[120px] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black">Order Details</button>` : ''}
@@ -5494,7 +5507,7 @@ function suggestPrintBillCustomers(query, targetId) {
     try {
       const customers = await api(`/api/customers?status=active&search=${encodeURIComponent(q)}`);
       const matches = Array.isArray(customers) ? customers.slice(0, 6) : [];
-      box.innerHTML = matches.map(customer => `<button type="button" onclick="selectPrintBillCustomer(${Number(customer.id)})" class="w-full border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span class="block text-sm font-black text-slate-900 dark:text-white">${escapeOrderValue(customer.name)}</span><span class="block text-xs text-slate-500">${escapeOrderValue(customer.phone || 'No phone')} · ${Number(customer.current_balance || 0) > 0.01 ? `Due Rs. ${Number(customer.current_balance).toFixed(2)}` : 'No due'}</span></button>`).join('');
+      box.innerHTML = matches.map(customer => `<button type="button" onclick="selectPrintBillCustomer(${Number(customer.id)})" class="w-full border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span class="block text-sm font-black text-slate-900 dark:text-white">${escapeOrderValue(customer.name)}</span><span class="block text-xs text-slate-500">${escapeOrderValue(customer.phone || 'No phone')} · ${Number(customer.current_balance || 0) > 0.01 ? `Due ${shopCurrencyCode()} ${Number(customer.current_balance).toFixed(2)}` : 'No due'}</span></button>`).join('');
       box.dataset.customers = JSON.stringify(matches);
       box.classList.toggle('hidden', !matches.length);
     } catch (_) { box.classList.add('hidden'); }
@@ -5570,7 +5583,7 @@ async function viewOrderItems(id, readOnly = false) {
             </div>
           </div>
           <div class="text-sm font-black text-slate-700 dark:text-slate-300">
-            PKR ${(item.quantity * item.price_at_sale).toLocaleString()}
+            ${shopCurrencyCode()} ${(item.quantity * item.price_at_sale).toLocaleString()}
           </div>
         </div>
     `).join('');
@@ -5627,14 +5640,14 @@ async function viewOrderItems(id, readOnly = false) {
     openModal(`Order #${sale.order_number || id} - Details`, `
       <div class="space-y-4">
         ${orderInfoHtml}
-        ${Number(sale.tip_amount || 0) > 0 ? `<div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 font-bold text-emerald-700 dark:text-emerald-300">Tip received: Rs. ${Number(sale.tip_amount).toFixed(2)}</div>` : ""}
+        ${Number(sale.tip_amount || 0) > 0 ? `<div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 font-bold text-emerald-700 dark:text-emerald-300">Tip received: ${shopCurrencyCode()} ${Number(sale.tip_amount).toFixed(2)}</div>` : ""}
         ${kitchenStatusesHtml}
         <div class="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[60vh] overflow-y-auto">
           ${itemsHtml}
         </div>
         <div class="flex justify-between items-center p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
           <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Total Amount</span>
-          <span class="text-xl font-black text-indigo-700 dark:text-indigo-300">PKR ${data.sale.total.toLocaleString()}</span>
+          <span class="text-xl font-black text-indigo-700 dark:text-indigo-300">${shopCurrencyCode()} ${data.sale.total.toLocaleString()}</span>
         </div>
         <div class="grid ${canEditOrder ? 'grid-cols-2' : 'grid-cols-1'} gap-3">
           <button onclick="closeModal()" class="py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-sm hover:bg-slate-200 transition-all">Close</button>
@@ -5729,7 +5742,7 @@ function renderEditOrderModal(id) {
         </div>
         <div>
           <div class="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">${escapeOrderValue(configuredOrderItemName(item.name, item.variants, item.addons))}</div>
-          <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">PKR ${item.selling_price.toLocaleString()} / unit</div>
+          <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">${shopCurrencyCode()} ${item.selling_price.toLocaleString()} / unit</div>
           ${item.special_instructions ? `<div class="text-[10px] italic text-amber-500 font-medium mt-0.5">"${item.special_instructions}"</div>` : ''}
         </div>
       </div>
@@ -5743,7 +5756,7 @@ function renderEditOrderModal(id) {
             class="w-8 h-8 flex items-center justify-center rounded-lg bg-white dark:bg-slate-700 text-slate-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 font-black shadow-sm transition-all"
             title="Increase quantity" aria-label="Increase quantity">+</button>
         </div>
-        <div class="text-sm font-black text-slate-900 dark:text-white">PKR ${(item.quantity * item.selling_price).toLocaleString()}</div>
+        <div class="text-sm font-black text-slate-900 dark:text-white">${shopCurrencyCode()} ${(item.quantity * item.selling_price).toLocaleString()}</div>
         ${currentUserHasPermission('orders.remove_items') ? `<button type="button" onclick="removeTempOrderItem(${index}, ${id})" class="p-2 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all" title="Remove product" aria-label="Remove ${escapeOrderValue(item.name)} from order">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
         </button>` : ''}
@@ -5773,7 +5786,7 @@ function renderEditOrderModal(id) {
       <div class="pt-4 border-t border-slate-100 dark:border-slate-800">
         <div class="flex justify-between items-center mb-6 px-1">
           <div class="text-xs font-black text-slate-400 uppercase tracking-widest">Modified Total</div>
-          <div class="text-2xl font-black text-slate-900 dark:text-white tracking-tighter">PKR ${(_tempEditCart.reduce((sum, item) => sum + (item.quantity * item.selling_price), 0)).toLocaleString()}</div>
+          <div class="text-2xl font-black text-slate-900 dark:text-white tracking-tighter">${shopCurrencyCode()} ${(_tempEditCart.reduce((sum, item) => sum + (item.quantity * item.selling_price), 0)).toLocaleString()}</div>
         </div>
         <button onclick="closeModal()" class="w-full py-3 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-black text-xs uppercase tracking-[0.2em] transition-all">Cancel Changes</button>
       </div>
@@ -5915,7 +5928,7 @@ function openRecordTipModal() {
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label for="tip-amount" class="mb-1.5 block text-xs font-bold text-slate-500">Tip received</label>
-          <div class="relative"><span class="absolute left-4 top-3 text-sm font-black text-slate-400">Rs.</span><input id="tip-amount" type="number" min="0.01" step="0.01" inputmode="decimal" oninput="updateRecordTipButton()" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-lg font-black text-emerald-600 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-emerald-400" /></div>
+          <div class="relative"><span class="absolute left-4 top-3 text-sm font-black text-slate-400">${shopCurrencyCode()}</span><input id="tip-amount" type="number" min="0.01" step="0.01" inputmode="decimal" oninput="updateRecordTipButton()" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-lg font-black text-emerald-600 outline-none transition focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-emerald-400" /></div>
         </div>
         <div>
           <label for="tip-payment-method" class="mb-1.5 block text-xs font-bold text-slate-500">Tip payment method</label>
@@ -6165,23 +6178,23 @@ async function showOrderCompleteModal(id) {
       <div class="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-2">
         <div class="flex justify-between text-xs">
           <span class="text-slate-500 font-bold uppercase tracking-wider">Subtotal</span>
-          <span class="text-slate-900 dark:text-white font-black">PKR ${subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+          <span class="text-slate-900 dark:text-white font-black">${shopCurrencyCode()} ${subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
         </div>
         <div class="flex justify-between text-xs">
           <span class="text-slate-500 font-bold uppercase tracking-wider">Tax Amount</span>
-          <span class="text-slate-900 dark:text-white font-black">PKR ${taxAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+          <span class="text-slate-900 dark:text-white font-black">${shopCurrencyCode()} ${taxAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
         </div>
         <div class="flex justify-between text-xs pt-2 border-t border-slate-200 dark:border-slate-700">
           <span class="text-slate-500 font-bold uppercase tracking-wider">Grand Total</span>
-          <span class="text-slate-900 dark:text-white font-black">PKR ${total.toLocaleString()}</span>
+          <span class="text-slate-900 dark:text-white font-black">${shopCurrencyCode()} ${total.toLocaleString()}</span>
         </div>
         <div id="oc-due-row" class="flex justify-between text-xs hidden">
           <span class="text-slate-500 font-bold uppercase tracking-wider">Remaining Due</span>
-          <span id="oc-due" class="text-rose-500 font-black">PKR 0</span>
+          <span id="oc-due" class="text-rose-500 font-black">${shopCurrencyCode()} 0</span>
         </div>
         <div id="oc-change-row" class="flex justify-between text-xs hidden">
           <span class="text-slate-500 font-bold uppercase tracking-wider">Change to Give</span>
-          <span id="oc-change" class="text-emerald-500 font-black">PKR 0</span>
+          <span id="oc-change" class="text-emerald-500 font-black">${shopCurrencyCode()} 0</span>
         </div>
       </div>
 
@@ -6257,11 +6270,11 @@ function updateCompleteOrderSummary(total) {
   if (diff < 0) {
     dueRow?.classList.remove('hidden');
     changeRow?.classList.add('hidden');
-    if (dueVal) dueVal.textContent = `PKR ${Math.abs(diff).toLocaleString()}`;
+    if (dueVal) dueVal.textContent = `${shopCurrencyCode()} ${Math.abs(diff).toLocaleString()}`;
   } else if (diff > 0) {
     dueRow?.classList.add('hidden');
     changeRow?.classList.remove('hidden');
-    if (changeVal) changeVal.textContent = `PKR ${diff.toLocaleString()}`;
+    if (changeVal) changeVal.textContent = `${shopCurrencyCode()} ${diff.toLocaleString()}`;
   } else {
     dueRow?.classList.add('hidden');
     changeRow?.classList.add('hidden');
@@ -6478,7 +6491,7 @@ function renderPOSProducts(products, requestedPage = 1, serverPagination = null)
                 </td>
                 <td class="px-2 py-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">${escapeOrderValue(p.category || '-')}</td>
                 <td class="px-2 py-1.5 text-center text-xs font-black ${available ? 'text-slate-800 dark:text-slate-200' : 'text-rose-500'}">${isRecipe ? 'Recipe' : Number(p.stock || 0)}</td>
-                <td class="px-2 py-1.5 text-right text-xs font-black text-emerald-700 dark:text-emerald-400">Rs. ${Number(p.selling_price || 0).toLocaleString()}</td>
+                <td class="px-2 py-1.5 text-right text-xs font-black text-emerald-700 dark:text-emerald-400">${shopCurrencyCode()} ${Number(p.selling_price || 0).toLocaleString()}</td>
               </tr>`;
           }).join('')}
         </tbody>
@@ -6543,7 +6556,7 @@ function renderPOSProducts(products, requestedPage = 1, serverPagination = null)
           <div class="flex items-center justify-between">
             <div class="flex flex-col">
               <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">${getProductMenuVariants(p).length > 1 ? 'Prices by size' : 'Price'}</span>
-              <span class="text-[1rem] font-black text-emerald-950 dark:text-emerald-400 tracking-tight leading-none">${getProductMenuVariants(p).length > 1 ? `${getProductMenuVariants(p).length} options` : `Rs. <span class="pl-0.5">${getProductMenuVariants(p)[0]?.price ?? p.selling_price}</span>`}</span>
+              <span class="text-[1rem] font-black text-emerald-950 dark:text-emerald-400 tracking-tight leading-none">${getProductMenuVariants(p).length > 1 ? `${getProductMenuVariants(p).length} options` : `${shopCurrencyCode()} <span class="pl-0.5">${getProductMenuVariants(p)[0]?.price ?? p.selling_price}</span>`}</span>
             </div>
             
             <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-800 dark:text-emerald-400 transition-colors duration-300 pointer-events-none">
@@ -6676,7 +6689,7 @@ function addToCart(productId) {
           <span class="text-xs font-bold text-slate-700 dark:text-slate-200">${c.name}</span>
           <div class="flex items-center gap-2 mt-0.5">
             <span class="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">${c.quantity} per kit</span>
-            <span class="text-[9px] font-medium text-slate-400 italic">| Rs. ${price}</span>
+            <span class="text-[9px] font-medium text-slate-400 italic">| ${shopCurrencyCode()} ${price}</span>
           </div>
         </div>
 
@@ -6786,7 +6799,7 @@ function addToCart(productId) {
           <div class="font-bold text-slate-900 dark:text-white">${product.name}</div>
           <div class="text-[10px] font-mono text-indigo-500 dark:text-indigo-400 mt-0.5">
             SKU: ${product.sku} | ${isRecipe ? '🍳 Recipe-Based' : `In Stock: ${product.stock}`}
-            ${product.batches && product.batches.length > 0 ? `<br/><span class="text-rose-500 font-bold uppercase">Cost: Rs. ${product.batches[0].buying_price}</span>` : ''}
+            ${product.batches && product.batches.length > 0 ? `<br/><span class="text-rose-500 font-bold uppercase">Cost: ${shopCurrencyCode()} ${product.batches[0].buying_price}</span>` : ''}
           </div>
         </div>
       </div>
@@ -6794,14 +6807,14 @@ function addToCart(productId) {
       ${configuredVariants.length ? `<div>
         <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Select size <span class="text-rose-500">*</span></label>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          ${configuredVariants.map((variant) => `<label class="${!isRecipe && Number(variant.stock) <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}"><input type="radio" name="pos-product-variant" value="${escapeOrderValue(variant.id)}" ${variant.id === defaultVariant?.id && (isRecipe || Number(variant.stock) > 0) ? 'checked' : ''} ${!isRecipe && Number(variant.stock) <= 0 ? 'disabled' : ''} onchange="updateConfiguredProductPrice(${productId})" class="peer sr-only"><span class="block p-3 text-center rounded-xl border border-slate-200 dark:border-slate-700 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-950/30"><strong class="block text-xs">${escapeOrderValue(variant.name)}</strong><small class="text-[10px] text-slate-500">Rs. ${Number(variant.price).toLocaleString()}${!isRecipe ? ` · ${Number(variant.stock)} left` : ''}</small></span></label>`).join('')}
+          ${configuredVariants.map((variant) => `<label class="${!isRecipe && Number(variant.stock) <= 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}"><input type="radio" name="pos-product-variant" value="${escapeOrderValue(variant.id)}" ${variant.id === defaultVariant?.id && (isRecipe || Number(variant.stock) > 0) ? 'checked' : ''} ${!isRecipe && Number(variant.stock) <= 0 ? 'disabled' : ''} onchange="updateConfiguredProductPrice(${productId})" class="peer sr-only"><span class="block p-3 text-center rounded-xl border border-slate-200 dark:border-slate-700 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-950/30"><strong class="block text-xs">${escapeOrderValue(variant.name)}</strong><small class="text-[10px] text-slate-500">${shopCurrencyCode()} ${Number(variant.price).toLocaleString()}${!isRecipe ? ` · ${Number(variant.stock)} left` : ''}</small></span></label>`).join('')}
         </div>
       </div>` : ''}
 
       ${configuredAddons.length ? `<div>
         <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Optional add-ons</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          ${configuredAddons.map((addon) => `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700"><span class="min-w-0"><span class="block truncate text-xs font-bold">${escapeOrderValue(addon.name)}</span><span class="text-xs font-black text-emerald-600">+ Rs. ${Number(addon.price).toLocaleString()} each</span></span><div class="grid h-9 shrink-0 grid-cols-[36px_38px_36px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"><button type="button" onclick="changeConfiguredAddonQuantity(${productId}, '${escapeOrderValue(addon.id)}', -1)" class="text-lg font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Remove one ${escapeOrderValue(addon.name)}">&minus;</button><input name="pos-product-addon-quantity" data-addon-id="${escapeOrderValue(addon.id)}" value="0" readonly class="w-full border-x border-slate-200 bg-white text-center text-xs font-black text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white" aria-label="${escapeOrderValue(addon.name)} quantity"><button type="button" onclick="changeConfiguredAddonQuantity(${productId}, '${escapeOrderValue(addon.id)}', 1)" class="text-lg font-black text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950" aria-label="Add one ${escapeOrderValue(addon.name)}">+</button></div></div>`).join('')}
+          ${configuredAddons.map((addon) => `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700"><span class="min-w-0"><span class="block truncate text-xs font-bold">${escapeOrderValue(addon.name)}</span><span class="text-xs font-black text-emerald-600">+ ${shopCurrencyCode()} ${Number(addon.price).toLocaleString()} each</span></span><div class="grid h-9 shrink-0 grid-cols-[36px_38px_36px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"><button type="button" onclick="changeConfiguredAddonQuantity(${productId}, '${escapeOrderValue(addon.id)}', -1)" class="text-lg font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Remove one ${escapeOrderValue(addon.name)}">&minus;</button><input name="pos-product-addon-quantity" data-addon-id="${escapeOrderValue(addon.id)}" value="0" readonly class="w-full border-x border-slate-200 bg-white text-center text-xs font-black text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-white" aria-label="${escapeOrderValue(addon.name)} quantity"><button type="button" onclick="changeConfiguredAddonQuantity(${productId}, '${escapeOrderValue(addon.id)}', 1)" class="text-lg font-black text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950" aria-label="Add one ${escapeOrderValue(addon.name)}">+</button></div></div>`).join('')}
         </div>
       </div>` : ''}
 
@@ -7193,12 +7206,12 @@ function showCartModal() {
                   <div class="mt-2">
                     <label class="text-[9px] uppercase font-bold text-slate-400 block mb-1">Select Batch (Cost)</label>
                     <select onchange="updateCartBatch(${item.product_id}, this.value)" class="text-[10px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1 font-bold text-indigo-600 dark:text-indigo-400">
-                      ${item.product.batches.map(b => `<option value="${b.id}" ${item.batch_id == b.id ? 'selected' : ''}>Cost: Rs. ${b.buying_price} (Qty: ${b.quantity})</option>`).join('')}
+                      ${item.product.batches.map(b => `<option value="${b.id}" ${item.batch_id == b.id ? 'selected' : ''}>Cost: ${shopCurrencyCode()} ${b.buying_price} (Qty: ${b.quantity})</option>`).join('')}
                     </select>
                   </div>
                 `
             : (item.product && item.product.batches && item.product.batches.length === 1)
-              ? `<div class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tight">Cost: Rs. ${item.product.batches[0].buying_price}</div>`
+              ? `<div class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tight">Cost: ${shopCurrencyCode()} ${item.product.batches[0].buying_price}</div>`
               : ''
           }
                 ${item.parent_id
@@ -7214,7 +7227,7 @@ function showCartModal() {
           }
                   </div>
               </td>
-              <td class="py-2 px-2 text-slate-600 dark:text-slate-400 font-medium">Rs. ${item.selling_price}</td>
+              <td class="py-2 px-2 text-slate-600 dark:text-slate-400 font-medium">${shopCurrencyCode()} ${item.selling_price}</td>
               <td class="py-2 px-2">
                 <div class="flex items-center justify-center gap-3">
                   <button onclick="if(${item.quantity} > 1) { updateCartQty(${item.product_id}, ${item.quantity - 1}); showCartModal(); } else { toast('Use delete button to remove', 'info'); }"
@@ -7225,7 +7238,7 @@ function showCartModal() {
                 </div>
               </td>
               <td class="py-2 px-2 text-right font-black text-indigo-600 dark:text-indigo-400">
-                Rs. ${(item.selling_price * item.quantity).toFixed(0)}
+                ${shopCurrencyCode()} ${(item.selling_price * item.quantity).toFixed(0)}
               </td>
               <td class="py-2 px-2 text-right">
                 <button onclick="removeFromCart(${item.product_id}); cart.length ? showCartModal() : closeModal();"
@@ -7244,7 +7257,7 @@ function showCartModal() {
        <div class="text-sm text-slate-500 dark:text-slate-400">Total Items: <span class="font-bold text-slate-900 dark:text-slate-100">${cart.reduce((a, b) => a + b.quantity, 0)}</span></div>
        <div class="text-xl font-black text-slate-900 dark:text-white flex items-baseline gap-2">
          <span class="text-sm font-bold text-slate-400 uppercase tracking-wider">Net Total:</span>
-         Rs. ${cart.reduce((a, b) => a + b.selling_price * b.quantity, 0).toFixed(0)}
+         ${shopCurrencyCode()} ${cart.reduce((a, b) => a + b.selling_price * b.quantity, 0).toFixed(0)}
        </div>
     </div>
   `;
@@ -7329,9 +7342,9 @@ function calculateCartTotal() {
   const taxAmt = taxable > 0 ? taxable * (taxPct / 100) : 0;
   const grandTotal = taxable > 0 ? taxable + taxAmt : 0;
 
-  $c("cart-subtotal").textContent = "Rs. " + subtotal.toLocaleString();
-  $c("cart-tax-amt").textContent = "Rs. " + taxAmt.toFixed(2);
-  $c("cart-total").textContent = "Rs. " + grandTotal.toFixed(2);
+  $c("cart-subtotal").textContent = `${shopCurrencyCode()} ` + subtotal.toLocaleString();
+  $c("cart-tax-amt").textContent = `${shopCurrencyCode()} ` + taxAmt.toFixed(2);
+  $c("cart-total").textContent = `${shopCurrencyCode()} ` + grandTotal.toFixed(2);
   $c("cart-total").dataset.total = grandTotal;
   syncPOSCheckoutSummary(grandTotal);
 
@@ -7391,7 +7404,7 @@ function calculateRemaining() {
   const remainingSize = getPOSLayout() === "split" && _currentPage === "pos" ? "text-xs" : "text-xl";
 
   if (remaining <= 0) {
-    el.textContent = "Change: Rs. " + Math.abs(remaining).toFixed(2);
+    el.textContent = `Change: ${shopCurrencyCode()} ` + Math.abs(remaining).toFixed(2);
     el.className = `font-bold text-emerald-400 ${remainingSize}`;
     if (nameInp) {
       nameInp.placeholder = "Optional";
@@ -7404,7 +7417,7 @@ function calculateRemaining() {
     }
     if (phoneLabel) phoneLabel.classList.remove("text-rose-500");
   } else {
-    el.textContent = "Due: Rs. " + remaining.toFixed(2);
+    el.textContent = `Due: ${shopCurrencyCode()} ` + remaining.toFixed(2);
     el.className = `font-bold text-rose-400 ${remainingSize}`;
     if (nameInp) {
       nameInp.placeholder = "REQUIRED for Dues";
@@ -7716,7 +7729,7 @@ async function checkout(status = 'completed') {
       toast("Order updated successfully!");
       _editingOrderId = null;
     } else {
-      toast("Order placed! Rs. " + r.total);
+      toast(`Order placed! ${shopCurrencyCode()} ` + r.total);
     }
 
     closePOSCheckout(true);
@@ -7744,7 +7757,7 @@ async function checkout(status = 'completed') {
         ${orderType === 'takeaway' ? `<p class="text-amber-400 font-bold text-lg">Token: ${token_number}</p>` : ''}
         <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
           <p class="text-[10px] font-black uppercase tracking-widest text-emerald-600">Completed Amount</p>
-          <p class="mt-1 text-3xl font-black text-emerald-700 dark:text-emerald-300">Rs. ${Number(r.total || 0).toFixed(2)}</p>
+          <p class="mt-1 text-3xl font-black text-emerald-700 dark:text-emerald-300">${shopCurrencyCode()} ${Number(r.total || 0).toFixed(2)}</p>
         </div>
         <div class="grid grid-cols-1 gap-2">
           <button onclick="closeModal()" class="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm transition-all shadow-lg shadow-indigo-600/20">Continue Ordering</button>
@@ -8185,10 +8198,10 @@ async function printBill(saleId, isUnpaid = false) {
     <hr class="divider" />
 
     <div class="text-right">
-      <div>Subtotal: Rs. ${subtotal.toFixed(0)}</div>
-      ${discount > 0 ? `<div>Discount: -Rs. ${discount.toFixed(2)}</div>` : ""}
-      ${taxPct > 0 ? `<div>Tax (${taxPct}%): Rs. ${taxAmt.toFixed(2)}</div>` : ""}
-      <div class="bold total-row" style="margin-top: 4px;">GRAND TOTAL: Rs. ${grandTotal.toFixed(2)}</div>
+      <div>Subtotal: ${shopCurrencyCode()} ${subtotal.toFixed(0)}</div>
+      ${discount > 0 ? `<div>Discount: -${shopCurrencyCode()} ${discount.toFixed(2)}</div>` : ""}
+      ${taxPct > 0 ? `<div>Tax (${taxPct}%): ${shopCurrencyCode()} ${taxAmt.toFixed(2)}</div>` : ""}
+      <div class="bold total-row" style="margin-top: 4px;">GRAND TOTAL: ${shopCurrencyCode()} ${grandTotal.toFixed(2)}</div>
     </div>
 
     <hr class="divider" />
@@ -8197,16 +8210,16 @@ async function printBill(saleId, isUnpaid = false) {
       ${isUnpaid ? `
         <div style="text-align: center; border: 1px dashed #111827; padding: 5px; margin-top: 5px; font-weight: bold;">
           *** UNPAID BILL ***<br>
-          Total: Rs. ${grandTotal.toFixed(2)}<br>
-          Balance Due: Rs. ${balanceDue.toFixed(2)}
+          Total: ${shopCurrencyCode()} ${grandTotal.toFixed(2)}<br>
+          Balance Due: ${shopCurrencyCode()} ${balanceDue.toFixed(2)}
         </div>
       ` : `
         <div><strong>Method:</strong> ${method}</div>
-        ${tip > 0 ? `<div><strong>Tip received (${escapeOrderValue(sale.tip_payment_method || sale.payment_method || 'cash')}):</strong> Rs. ${tip.toFixed(2)}</div>` : ""}
-        <div><strong>Received:</strong> Rs. ${received.toFixed(2)}</div>
-        ${standaloneTip && tip > 0 ? `<div><strong>Total collected:</strong> Rs. ${(Math.min(received, grandTotal) + tip).toFixed(2)}</div>` : ""}
-        ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> Rs. ${remaining.toFixed(2)}</div>` : ""}
-        ${remaining <= 0 ? `<div class="bold"><strong>Change:</strong> Rs. ${Math.abs(remaining).toFixed(2)}</div>` : ""}
+        ${tip > 0 ? `<div><strong>Tip received (${escapeOrderValue(sale.tip_payment_method || sale.payment_method || 'cash')}):</strong> ${shopCurrencyCode()} ${tip.toFixed(2)}</div>` : ""}
+        <div><strong>Received:</strong> ${shopCurrencyCode()} ${received.toFixed(2)}</div>
+        ${standaloneTip && tip > 0 ? `<div><strong>Total collected:</strong> ${shopCurrencyCode()} ${(Math.min(received, grandTotal) + tip).toFixed(2)}</div>` : ""}
+        ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> ${shopCurrencyCode()} ${remaining.toFixed(2)}</div>` : ""}
+        ${remaining <= 0 ? `<div class="bold"><strong>Change:</strong> ${shopCurrencyCode()} ${Math.abs(remaining).toFixed(2)}</div>` : ""}
       `}
     </div>
 
@@ -8236,8 +8249,8 @@ async function returnSaleItems(saleId) {
             data-pid="${i.product_id}" data-id="${i.id}" data-max="${available}" ${isFullyReturned ? "disabled" : ""} />
           <div class="flex flex-col">
             <p class="font-bold text-sm text-slate-800 dark:text-slate-200">${i.product_name}</p>
-            <span class="text-[10px] text-slate-500 uppercase font-black">Sold: ${i.quantity} @ Rs. ${i.price_at_sale}</span>
-            <span class="text-[9px] text-emerald-500 font-bold block">Cost logic ID: ${i.id} (Cost: Rs. ${i.buying_price_at_sale || 0})</span>
+            <span class="text-[10px] text-slate-500 uppercase font-black">Sold: ${i.quantity} @ ${shopCurrencyCode()} ${i.price_at_sale}</span>
+            <span class="text-[9px] text-emerald-500 font-bold block">Cost logic ID: ${i.id} (Cost: ${shopCurrencyCode()} ${i.buying_price_at_sale || 0})</span>
             ${i.returned_qty > 0 ? `<span class="text-[9px] text-rose-500 font-bold italic">Already Returned: ${i.returned_qty}</span>` : ""}
           </div>
         </label>
@@ -8348,13 +8361,13 @@ async function submitSaleReturn(saleId) {
     });
     if (res.error) throw new Error(res.error);
 
-    toast(`Return process completed. Total Refund: Rs. ${res.totalRefund}`);
+    toast(`Return process completed. Total Refund: ${shopCurrencyCode()} ${res.totalRefund}`);
 
     // Prompt for return receipt
     openModal("Return Complete!", `
       <div class="text-center space-y-4">
         <div class="text-5xl">✅</div>
-        <p class="text-slate-300">Return processed successfully — <span class="text-rose-400 font-bold">Refund: Rs. ${(res.totalRefund || 0).toFixed(2)}</span></p>
+        <p class="text-slate-300">Return processed successfully — <span class="text-rose-400 font-bold">Refund: ${shopCurrencyCode()} ${(res.totalRefund || 0).toFixed(2)}</span></p>
         <div class="flex gap-3">
           <button onclick="printReturnReceipt(${res.returnId || 0})" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all">🖨 Print Return Receipt</button>
           <button onclick="closeModal();renderSalesHistory();" class="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium transition-all">Back to History</button>
@@ -8470,7 +8483,7 @@ async function printReturnReceipt(returnId) {
       </tbody>
     </table>
     <hr class="divider" />
-    <div class="text-right bold" style="font-size: 14px;">TOTAL REFUND: Rs. ${ret.total_refund.toFixed(0)}</div>
+    <div class="text-right bold" style="font-size: 14px;">TOTAL REFUND: ${shopCurrencyCode()} ${ret.total_refund.toFixed(0)}</div>
     <div class="text-right" style="font-size: 11px; margin-top: 4px;">Method: ${ret.payment_method.toUpperCase()}</div>
     ${ret.reason ? `<div style="font-size: 10px; margin-top: 5px;"><strong>Reason:</strong> ${ret.reason}</div>` : ''}
     <hr class="divider" />
@@ -8529,7 +8542,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
           <h2 class="text-2xl font-bold ${statusColor} mb-1">${statusLabel}</h2>
           <div class="flex items-center gap-4">
             <p class="text-slate-500 dark:text-slate-400 text-sm">Showing <span id="sales-count" class="font-bold">0</span> records</p>
-            ${onlyPendingDues ? `<p class="text-rose-500 font-black text-sm px-3 py-1 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20">Total Dues: Rs. <span id="sales-total-dues">0</span></p>` : ""}
+            ${onlyPendingDues ? `<p class="text-rose-500 font-black text-sm px-3 py-1 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20">Total Dues: ${shopCurrencyCode()} <span id="sales-total-dues">0</span></p>` : ""}
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-3">
@@ -8685,11 +8698,11 @@ function _renderSalesTable() {
                ${s.customer_phone || "No phone"}
              </div>
           </td>
-          <td class="px-5 py-4 text-slate-700 dark:text-slate-200 font-bold">Rs. ${parseFloat(s.total || 0).toFixed(0)}</td>
-          <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">Rs. ${parseFloat(s.amount_received || 0).toFixed(0)}${Number(s.tip_amount || 0) > 0 ? `<div class="text-xs text-slate-500">Tip: Rs. ${Number(s.tip_amount).toFixed(2)}</div>` : ""}</td>
+          <td class="px-5 py-4 text-slate-700 dark:text-slate-200 font-bold">${shopCurrencyCode()} ${parseFloat(s.total || 0).toFixed(0)}</td>
+          <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">${shopCurrencyCode()} ${parseFloat(s.amount_received || 0).toFixed(0)}${Number(s.tip_amount || 0) > 0 ? `<div class="text-xs text-slate-500">Tip: ${shopCurrencyCode()} ${Number(s.tip_amount).toFixed(2)}</div>` : ""}</td>
           <td class="px-5 py-4">${salesPaymentMethodBadge(s.payment_method)}</td>
           <td class="px-5 py-4 font-black">
-             ${isPending ? `<span class="text-rose-600 dark:text-rose-400">Rs. ${parseFloat(due).toFixed(0)}</span>` : `<span class="text-slate-400 dark:text-slate-600 font-normal">None</span>`}
+             ${isPending ? `<span class="text-rose-600 dark:text-rose-400">${shopCurrencyCode()} ${parseFloat(due).toFixed(0)}</span>` : `<span class="text-slate-400 dark:text-slate-600 font-normal">None</span>`}
           </td>
           <td class="px-5 py-4">
             <span class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[11px] font-bold border border-slate-200 dark:border-slate-700 uppercase">${s.served_by_name || s.served_by_username || "Staff"}</span>
@@ -8799,7 +8812,7 @@ async function markSalePaid(saleId, grandTotal, currentReceived) {
   // Use a customized prompt to allow partial or full payment
   const html = `
     <div class="space-y-4">
-      <p class="text-sm text-slate-500 dark:text-slate-400">Total remaining due is <strong>Rs. ${currentDue.toFixed(2)}</strong>.</p>
+      <p class="text-sm text-slate-500 dark:text-slate-400">Total remaining due is <strong>${shopCurrencyCode()} ${currentDue.toFixed(2)}</strong>.</p>
       <div><label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">How much is being received now?</label>
         <input id="dues-recvd-${saleId}" type="number" min="0.01" max="${currentDue.toFixed(2)}" step="0.01" value="${currentDue.toFixed(2)}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold text-lg" /></div>
       <div><label class="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">Payment Method</label>
@@ -8851,7 +8864,7 @@ async function showSaleDuesDetails(saleId) {
       ? payments.map(p => `
           <div class="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
             <div>
-              <div class="text-sm font-bold text-slate-900 dark:text-white">Rs. ${Number(p.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+              <div class="text-sm font-bold text-slate-900 dark:text-white">${shopCurrencyCode()} ${Number(p.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
               <div class="text-[10px] text-slate-500">${new Date(p.created_at).toLocaleString()}</div>
             </div>
             <div class="text-[10px] text-slate-400 italic font-medium max-w-[150px] text-right truncate">${p.note || 'No note'}</div>
@@ -8864,11 +8877,11 @@ async function showSaleDuesDetails(saleId) {
         <div class="grid grid-cols-2 gap-4">
           <div class="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
             <p class="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Total Bill</p>
-            <p class="text-xl font-black text-indigo-700 dark:text-indigo-300">Rs. ${totalDue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+            <p class="text-xl font-black text-indigo-700 dark:text-indigo-300">${shopCurrencyCode()} ${totalDue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
           </div>
           <div class="p-4 rounded-2xl bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800">
             <p class="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1">Remaining Due</p>
-            <p class="text-xl font-black text-rose-700 dark:text-rose-300">Rs. ${balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+            <p class="text-xl font-black text-rose-700 dark:text-rose-300">${shopCurrencyCode()} ${balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
           </div>
         </div>
 
@@ -8958,7 +8971,7 @@ async function renderExpenses() {
             <div><label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Date</label>
               <input id="exp-date" type="date" value="${new Date().toISOString().slice(0, 10)}" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 outline-none transition-all" /></div>
           </div>
-          <div><label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Amount (Rs.) *</label>
+          <div><label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Amount (${shopCurrencyCode()}) *</label>
             <input id="exp-amount" type="number" min="0" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 outline-none transition-all" placeholder="0" /></div>
           <div><label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Note (optional)</label>
             <textarea id="exp-note" rows="3" class="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 outline-none transition-all resize-none" placeholder="Add some details…"></textarea></div>
@@ -8975,7 +8988,7 @@ async function renderExpenses() {
             <div class="flex items-center gap-2 mt-1">
               <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
               <p class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                Month: <span class="text-slate-900 dark:text-slate-200">${_expenseMonth}</span> — Total: <span class="text-rose-600 dark:text-rose-400">Rs. ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                Month: <span class="text-slate-900 dark:text-slate-200">${_expenseMonth}</span> — Total: <span class="text-rose-600 dark:text-rose-400">${shopCurrencyCode()} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </p>
             </div>
           </div>
@@ -9026,7 +9039,7 @@ async function renderExpenses() {
            </div>
         </div>
         <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-gray-100 dark:border-gray-800">
-          ${statCard("Total Month Expenses", "Rs. " + Number(sharesRes.totalExpenses).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), "Operating costs", "rose", "All expense records dated inside the selected month, before brand payment settlement.")}
+          ${statCard("Total Month Expenses", `${shopCurrencyCode()} ` + Number(sharesRes.totalExpenses).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), "Operating costs", "rose", "All expense records dated inside the selected month, before brand payment settlement.")}
           ${statCard("Ownership Split", `${Number(sharesRes.totalOwnershipPercent || 0).toFixed(2).replace(/\.00$/, "")}% configured`, `${sharesRes.brandCount} share partners`, "blue", "Selected month's expenses split by share-based partner percentages. Product-based partners are audited through product profit.")}
         </div>
         <div class="overflow-x-auto">
@@ -9047,16 +9060,16 @@ async function renderExpenses() {
                 <tr class="hover:bg-gray-50 dark:hover:bg-white/[0.02]">
                   <td class="px-6 py-4 font-medium">${s.brand_name}</td>
                   <td class="px-6 py-4 text-right text-gray-500">${Number(s.ownership_percent || 0).toFixed(2).replace(/\.00$/, "")}%</td>
-                  <td class="px-6 py-4 text-right text-gray-500">Rs. ${parseFloat(s.total_share).toFixed(2)}</td>
+                  <td class="px-6 py-4 text-right text-gray-500">${shopCurrencyCode()} ${parseFloat(s.total_share).toFixed(2)}</td>
                   <td class="px-6 py-4 text-right">
                     <div class="flex items-center justify-end gap-2 group">
-                      <span class="text-emerald-600 dark:text-emerald-400 font-bold">Rs. ${parseFloat(s.paid).toFixed(2)}</span>
+                      <span class="text-emerald-600 dark:text-emerald-400 font-bold">${shopCurrencyCode()} ${parseFloat(s.paid).toFixed(2)}</span>
                       <button onclick="openEditBrandPayments(${s.brand_id}, '${sharesRes.month}')" class="p-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                       </button>
                     </div>
                   </td>
-                  <td class="px-6 py-4 text-right text-rose-500 font-bold">Rs. ${parseFloat(s.due).toFixed(2)}</td>
+                  <td class="px-6 py-4 text-right text-rose-500 font-bold">${shopCurrencyCode()} ${parseFloat(s.due).toFixed(2)}</td>
                 </tr>
               `,
         )
@@ -9098,7 +9111,7 @@ async function renderExpenses() {
                      ${e.added_by || 'Admin'}
                    </div>
                  </td>
-                 <td class="px-6 py-4 text-right text-rose-600 dark:text-rose-400 font-bold">Rs. ${Number(e.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                 <td class="px-6 py-4 text-right text-rose-600 dark:text-rose-400 font-bold">${shopCurrencyCode()} ${Number(e.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                  <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end gap-1">
                     <button onclick="openEditExpense(${e.id})" class="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
@@ -9169,7 +9182,7 @@ function renderPreviousDuesCard(previousDues) {
         </div>
         <div class="text-right">
           <div class="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1">Total Outstanding</div>
-          <div class="text-3xl font-black text-rose-600 dark:text-rose-400 tracking-tighter">Rs. ${totalOutstanding.toLocaleString()}</div>
+          <div class="text-3xl font-black text-rose-600 dark:text-rose-400 tracking-tighter">${shopCurrencyCode()} ${totalOutstanding.toLocaleString()}</div>
         </div>
       </div>
     </div>
@@ -9190,7 +9203,7 @@ async function openPreviousDuesModal() {
           <div class="px-5 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <div class="flex items-center gap-3">
               <span class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">${new Date(m.month + "-01").toLocaleDateString('default', { month: 'long', year: 'numeric' })}</span>
-              <span class="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-bold">Rs. ${m.totalExpenses.toLocaleString()} Total</span>
+              <span class="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-bold">${shopCurrencyCode()} ${m.totalExpenses.toLocaleString()} Total</span>
             </div>
             <button onclick="window.location.href='/api/brands/pdf/monthly-report?month=${m.month}&download=true'" class="p-2 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-400 hover:text-amber-500 transition-colors" title="Download Monthly Report">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -9201,7 +9214,7 @@ async function openPreviousDuesModal() {
               <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/50 group">
                 <div>
                   <div class="text-sm font-bold text-slate-800 dark:text-slate-200">${b.brand_name}</div>
-                  <div class="text-[10px] text-rose-500 font-bold uppercase tracking-widest mt-0.5">Due: Rs. ${b.due.toFixed(2)}</div>
+                  <div class="text-[10px] text-rose-500 font-bold uppercase tracking-widest mt-0.5">Due: ${shopCurrencyCode()} ${b.due.toFixed(2)}</div>
                 </div>
                 <div class="flex items-center gap-2">
                   <input id="prev-due-${m.month}-${b.brand_id}" type="number" value="${b.due.toFixed(2)}" class="w-24 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-right outline-none focus:border-indigo-500" />
@@ -9291,7 +9304,7 @@ async function openPayBrandExpenses() {
         <div class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
           <div class="flex-1">
             <div class="font-semibold text-gray-800 dark:text-gray-200 text-sm">${s.brand_name}</div>
-            <div class="text-xs text-gray-500">Due: <span class="text-rose-600 dark:text-rose-400 font-bold">Rs. ${Number(s.due).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+            <div class="text-xs text-gray-500">Due: <span class="text-rose-600 dark:text-rose-400 font-bold">${shopCurrencyCode()} ${Number(s.due).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
           </div>
           <input id="bep-${s.brand_id}" type="number" min="1" max="${s.due}" value="${s.due}"
             class="w-32 px-3 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 text-sm font-bold text-right"/>
@@ -9380,7 +9393,7 @@ async function openEditExpense(id) {
           ${renderExpenseCategoryOptions(e.category)}
         </select></div>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Amount (Rs.) *</label>
+        <div><label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Amount (${shopCurrencyCode()}) *</label>
           <input id="edit-exp-amount" type="number" min="0" value="${e.amount}" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 outline-none transition-all" /></div>
         <div><label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Date</label>
           <input id="edit-exp-date" type="date" value="${e.date}" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 outline-none transition-all" /></div>
@@ -9492,9 +9505,9 @@ async function renderCustomers(options = {}) {
             <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Customer Accounts</h2>
             <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
               ${_customersCache.length} customers &nbsp;·&nbsp;
-              <span class="text-emerald-600 dark:text-emerald-400 font-semibold">Purchases in filter: Rs. ${periodPurchases.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span> &nbsp;·&nbsp;
+              <span class="text-emerald-600 dark:text-emerald-400 font-semibold">Purchases in filter: ${shopCurrencyCode()} ${periodPurchases.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span> &nbsp;·&nbsp;
               <span class="text-rose-500 font-semibold">${withDues} with dues</span> &nbsp;·&nbsp;
-              Total outstanding: <span class="font-bold text-rose-600 dark:text-rose-400">Rs. ${totalDue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              Total outstanding: <span class="font-bold text-rose-600 dark:text-rose-400">${shopCurrencyCode()} ${totalDue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
             </p>
           </div>
           ${canCreateCustomers ? `<button onclick="openAddCustomerModal()"
@@ -9559,13 +9572,13 @@ async function renderCustomers(options = {}) {
                       </td>
                       <td class="px-5 py-4 text-sm text-slate-600 dark:text-slate-300">${c.phone || "—"}</td>
                       <td class="px-5 py-4">
-                        <div class="font-bold text-emerald-600 dark:text-emerald-400">Rs. ${Number(c.total_purchase_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
-                        <div class="text-[11px] text-slate-400">Paid in filter: Rs. ${Number(c.total_paid_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                        <div class="font-bold text-emerald-600 dark:text-emerald-400">${shopCurrencyCode()} ${Number(c.total_purchase_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                        <div class="text-[11px] text-slate-400">Paid in filter: ${shopCurrencyCode()} ${Number(c.total_paid_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
                       </td>
                       <td class="px-5 py-4 text-sm text-slate-600 dark:text-slate-300">${c.total_sales || 0} sales</td>
                       <td class="px-5 py-4">
                         ${hasDue
-                ? `<span class="px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 text-xs font-bold">Rs. ${Number(c.current_balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>`
+                ? `<span class="px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 text-xs font-bold">${shopCurrencyCode()} ${Number(c.current_balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>`
                 : `<span class="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold">Cleared</span>`
               }
                       </td>
@@ -9619,9 +9632,9 @@ function openAddCustomerModal() {
           <input id="cust-email" type="email" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" placeholder="email@example.com" /></div>
         <div class="col-span-2"><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Address</label>
           <input id="cust-address" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" placeholder="Street, City" /></div>
-        <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Opening Balance (Rs.)</label>
+        <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Opening Balance (${shopCurrencyCode()})</label>
           <input id="cust-opening" type="number" min="0" value="0" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400 focus:outline-none focus:border-indigo-500 transition-all font-bold" /></div>
-        <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Credit Limit (Rs.)</label>
+        <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Credit Limit (${shopCurrencyCode()})</label>
           <input id="cust-limit" type="number" min="0" value="0" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" /></div>
         <div class="col-span-2"><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Notes</label>
           <input id="cust-notes" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" placeholder="Optional" /></div>
@@ -9676,7 +9689,7 @@ async function openEditCustomerModal(customerId) {
             <input id="edit-cust-email" value="${c.email || ""}" type="email" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" /></div>
           <div class="col-span-2"><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Address</label>
             <input id="edit-cust-address" value="${c.address || ""}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" /></div>
-          <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Credit Limit (Rs.)</label>
+          <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Credit Limit (${shopCurrencyCode()})</label>
             <input id="edit-cust-limit" type="number" min="0" value="${c.credit_limit || 0}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all" /></div>
           <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Status</label>
             <select id="edit-cust-status" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all">
@@ -9727,9 +9740,9 @@ function openPaymentModal(customerId, customerName, currentBalance) {
     <div class="space-y-4">
       <div class="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/30">
         <p class="text-sm font-medium text-rose-700 dark:text-rose-400">Outstanding Balance</p>
-        <p class="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">Rs. ${Number(currentBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+        <p class="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">${shopCurrencyCode()} ${Number(currentBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
       </div>
-      <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Amount Received (Rs.) *</label>
+      <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Amount Received (${shopCurrencyCode()}) *</label>
         <input id="pay-amount" type="number" min="0.01" step="0.01" max="${currentBalance}" value="${currentBalance.toFixed(2)}"
           class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold text-lg" /></div>
       <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Payment Method *</label>
@@ -9755,7 +9768,7 @@ async function submitPayment(customerId) {
       note,
     });
     toast(
-      `Payment of Rs. ${r.payment_amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })} recorded!`,
+      `Payment of ${shopCurrencyCode()} ${r.payment_amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })} recorded!`,
     );
     closeModal();
     if (_currentPage === 'pending-dues') {
@@ -9838,9 +9851,9 @@ async function viewCustomerLedger(customerId) {
               <td class="px-4 py-2.5 text-sm text-slate-600 dark:text-slate-300 max-w-[200px] truncate" title="${e.note || ""}">
                 ${e.note || "—"}
               </td>
-              <td class="px-4 py-2.5 text-right text-sm font-semibold ${isDebit ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}">${isDebit ? "Rs. " + fmt(e.amount) : "—"}</td>
-              <td class="px-4 py-2.5 text-right text-sm font-semibold ${!isDebit ? "text-emerald-600 dark:text-emerald-400" : "text-slate-300 dark:text-slate-600"}">${!isDebit ? "Rs. " + fmt(e.amount) : "—"}</td>
-              <td class="px-4 py-2.5 text-right text-sm font-bold ${e.balance_after > 0.01 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}">Rs. ${fmt(e.balance_after)}</td>
+              <td class="px-4 py-2.5 text-right text-sm font-semibold ${isDebit ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}">${isDebit ? `${shopCurrencyCode()} ` + fmt(e.amount) : "—"}</td>
+              <td class="px-4 py-2.5 text-right text-sm font-semibold ${!isDebit ? "text-emerald-600 dark:text-emerald-400" : "text-slate-300 dark:text-slate-600"}">${!isDebit ? `${shopCurrencyCode()} ` + fmt(e.amount) : "—"}</td>
+              <td class="px-4 py-2.5 text-right text-sm font-bold ${e.balance_after > 0.01 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}">${shopCurrencyCode()} ${fmt(e.balance_after)}</td>
             </tr>`;
         })
         .join("")
@@ -9855,9 +9868,9 @@ async function viewCustomerLedger(customerId) {
         <tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
           <td class="px-4 py-2.5 text-xs font-bold text-indigo-600 dark:text-indigo-400">#${s.order_number || s.id}</td>
           <td class="px-4 py-2.5 text-sm text-slate-500">${new Date(s.created_at).toLocaleDateString("en-GB")}</td>
-          <td class="px-4 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100">Rs. ${fmt(s.total)}</td>
-          <td class="px-4 py-2.5 text-sm text-emerald-600 dark:text-emerald-400">Rs. ${fmt(s.amount_received)}</td>
-          <td class="px-4 py-2.5 text-sm font-bold ${due > 0.01 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}">Rs. ${fmt(due)}</td>
+          <td class="px-4 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100">${shopCurrencyCode()} ${fmt(s.total)}</td>
+          <td class="px-4 py-2.5 text-sm text-emerald-600 dark:text-emerald-400">${shopCurrencyCode()} ${fmt(s.amount_received)}</td>
+          <td class="px-4 py-2.5 text-sm font-bold ${due > 0.01 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}">${shopCurrencyCode()} ${fmt(due)}</td>
           <td class="px-4 py-2.5 text-right">
             <button onclick="showReceiptPrintMenu(${s.id})" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Print</button>
           </td>
@@ -9877,15 +9890,15 @@ async function viewCustomerLedger(customerId) {
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/30 text-center">
             <p class="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase mb-1">Total Debited</p>
-            <p class="text-lg font-bold text-rose-700 dark:text-rose-300">Rs. ${fmt(totalDebits)}</p>
+            <p class="text-lg font-bold text-rose-700 dark:text-rose-300">${shopCurrencyCode()} ${fmt(totalDebits)}</p>
           </div>
           <div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/30 text-center">
             <p class="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-1">Total Paid</p>
-            <p class="text-lg font-bold text-emerald-700 dark:text-emerald-300">Rs. ${fmt(totalCredits)}</p>
+            <p class="text-lg font-bold text-emerald-700 dark:text-emerald-300">${shopCurrencyCode()} ${fmt(totalCredits)}</p>
           </div>
           <div class="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/30 text-center">
             <p class="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase mb-1">Purchases</p>
-            <p class="text-lg font-bold text-blue-700 dark:text-blue-300">Rs. ${fmt(summary?.total_purchase_amount || 0)}</p>
+            <p class="text-lg font-bold text-blue-700 dark:text-blue-300">${shopCurrencyCode()} ${fmt(summary?.total_purchase_amount || 0)}</p>
           </div>
           <div class="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/30 text-center">
             <p class="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-1">Sales Count</p>
@@ -9893,7 +9906,7 @@ async function viewCustomerLedger(customerId) {
           </div>
           <div class="p-3 rounded-xl ${customer.current_balance > 0.01 ? "bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30" : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700"} border text-center">
             <p class="text-xs font-bold ${customer.current_balance > 0.01 ? "text-amber-600 dark:text-amber-400" : "text-slate-500"} uppercase mb-1">Balance Due</p>
-            <p class="text-lg font-bold ${customer.current_balance > 0.01 ? "text-amber-700 dark:text-amber-300" : "text-emerald-600 dark:text-emerald-400"}">Rs. ${fmt(customer.current_balance)}</p>
+            <p class="text-lg font-bold ${customer.current_balance > 0.01 ? "text-amber-700 dark:text-amber-300" : "text-emerald-600 dark:text-emerald-400"}">${shopCurrencyCode()} ${fmt(customer.current_balance)}</p>
           </div>
         </div>
 
@@ -10047,7 +10060,7 @@ function openAdjustmentModal(customerId, customerName) {
           <button onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.classList.replace('bg-indigo-600','bg-slate-100')); this.parentElement.querySelectorAll('button').forEach(b=>b.classList.replace('text-white','text-slate-600')); this.classList.replace('bg-slate-100','bg-indigo-600'); this.classList.replace('text-slate-600','text-white');" id="adj-type-credit" data-type="credit" class="py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-sm transition-all border border-slate-200 dark:border-slate-700">Decrease Debt</button>
         </div>
       </div>
-      <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Amount (Rs.) *</label>
+      <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Amount (${shopCurrencyCode()}) *</label>
         <input id="adj-amount" type="number" min="0.01" step="0.01" placeholder="0.00"
           class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all font-bold text-lg" /></div>
       <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Reason / Note *</label>
@@ -10071,7 +10084,7 @@ async function submitAdjustment(customerId) {
       type,
       note,
     });
-    toast(`Adjustment recorded! New balance: Rs. ${r.new_balance.toLocaleString()}`);
+    toast(`Adjustment recorded! New balance: ${shopCurrencyCode()} ${r.new_balance.toLocaleString()}`);
     closeModal();
     renderCustomers();
   } catch (err) {
@@ -10124,7 +10137,7 @@ async function searchPOSCustomers(query) {
           </div>
           <div class="text-right">
             <div class="text-[11px] font-bold ${Number(c.current_balance || 0) > 0.01 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}">
-              ${Number(c.current_balance || 0) > 0.01 ? `Due Rs. ${Number(c.current_balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "Cleared"}
+              ${Number(c.current_balance || 0) > 0.01 ? `Due ${shopCurrencyCode()} ${Number(c.current_balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "Cleared"}
             </div>
           </div>
         </div>
@@ -10201,7 +10214,7 @@ function renderPOSSelectedCustomerBadge() {
       <div>
         <div class="text-xs uppercase font-black tracking-widest text-indigo-500 dark:text-indigo-400">Linked Customer</div>
         <div class="font-semibold text-slate-800 dark:text-slate-100">${_posSelectedCustomer.name}</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400">${_posSelectedCustomer.phone || "No phone"} · ${Number(_posSelectedCustomer.current_balance || 0) > 0.01 ? `Current Due Rs. ${Number(_posSelectedCustomer.current_balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "No due balance"}</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400">${_posSelectedCustomer.phone || "No phone"} · ${Number(_posSelectedCustomer.current_balance || 0) > 0.01 ? `Current Due ${shopCurrencyCode()} ${Number(_posSelectedCustomer.current_balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "No due balance"}</div>
       </div>
       <button type="button" onclick="clearPOSCustomerSelection()" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
         Unlink
@@ -11321,8 +11334,8 @@ function printQuotation(data) {
                         ${item.sku ? `<div style="font-size: 10px; color: #94a3b8;">Code: ${item.sku}</div>` : ""}
                     </td>
                     <td class="col-qty">${item.quantity}</td>
-                    <td class="col-price">Rs. ${item.price.toFixed(0)}</td>
-                    <td class="col-total">Rs. ${item.total.toFixed(0)}</td>
+                    <td class="col-price">${shopCurrencyCode()} ${item.price.toFixed(0)}</td>
+                    <td class="col-total">${shopCurrencyCode()} ${item.total.toFixed(0)}</td>
                 </tr>
                 `,
       )
@@ -11343,13 +11356,13 @@ ${policies ? `\n${policies}` : ""}
             <div class="totals-section">
                 <div class="total-item">
                     <span>Subtotal</span>
-                    <span>Rs. ${subtotal.toFixed(0)}</span>
+                    <span>${shopCurrencyCode()} ${subtotal.toFixed(0)}</span>
                 </div>
-                ${discount > 0 ? `<div class="total-item" style="color: #ef4444;"><span>Discount</span><span>-Rs. ${discount.toFixed(0)}</span></div>` : ""}
-                ${tax_percentage > 0 ? `<div class="total-item"><span>Tax (${tax_percentage}%)</span><span>Rs. ${taxAmt.toFixed(0)}</span></div>` : ""}
+                ${discount > 0 ? `<div class="total-item" style="color: #ef4444;"><span>Discount</span><span>-${shopCurrencyCode()} ${discount.toFixed(0)}</span></div>` : ""}
+                ${tax_percentage > 0 ? `<div class="total-item"><span>Tax (${tax_percentage}%)</span><span>${shopCurrencyCode()} ${taxAmt.toFixed(0)}</span></div>` : ""}
                 <div class="total-item total-grand">
                     <span>Estimated Total</span>
-                    <span>Rs. ${grandTotal.toFixed(0)}</span>
+                    <span>${shopCurrencyCode()} ${grandTotal.toFixed(0)}</span>
                 </div>
             </div>
         </div>
@@ -11859,7 +11872,7 @@ async function retryRealtimePrintJob(id) {
  * ─── Shift Page & Actions ───────────────────────────────────────────
  */
 function formatRegisterMoney(value) {
-  return `Rs. ${Number(value || 0).toLocaleString("en-IN", {
+  return `${shopCurrencyCode()} ${Number(value || 0).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
@@ -12141,7 +12154,7 @@ async function renderRegister() {
             </div>
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1">Opening Cash</label>
             <div class="relative mb-6">
-              <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">Rs.</span>
+              <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">${shopCurrencyCode()}</span>
               <input id="opening-balance-input" type="number" step="0.01" class="w-full pl-20 pr-6 py-7 rounded-3xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-950 dark:text-white focus:border-indigo-500 transition-all outline-none font-black text-4xl tracking-tight" placeholder="0.00" autofocus />
             </div>
             <button onclick="performOpenShift()" class="w-full py-5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-3">
@@ -12295,7 +12308,7 @@ async function renderRegister() {
               <div>
                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Actual Cash Count</label>
                 <div class="relative">
-                  <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">Rs.</span>
+                  <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">${shopCurrencyCode()}</span>
                   <input id="closing-balance-input" type="number" step="0.01" class="w-full pl-20 pr-6 py-6 rounded-3xl bg-slate-950 border border-slate-800 text-white focus:border-rose-500 transition-all outline-none font-black text-4xl tracking-tight" placeholder="0.00" />
                 </div>
               </div>
@@ -12419,20 +12432,20 @@ async function openShiftSummaryModal() {
           </div>
           <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
             <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Opening Cash</p>
-            <p class="text-sm font-bold text-indigo-600 dark:text-indigo-400">Rs. ${summary.opening_balance.toFixed(2)}</p>
+            <p class="text-sm font-bold text-indigo-600 dark:text-indigo-400">${shopCurrencyCode()} ${summary.opening_balance.toFixed(2)}</p>
           </div>
           <div class="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40">
             <p class="text-[9px] font-black text-emerald-600 dark:text-emerald-300 uppercase tracking-widest mb-1">Expected Cash</p>
-            <p class="text-sm font-bold text-emerald-700 dark:text-emerald-300">Rs. ${Number(summary.expected_balance || 0).toFixed(2)}</p>
+            <p class="text-sm font-bold text-emerald-700 dark:text-emerald-300">${shopCurrencyCode()} ${Number(summary.expected_balance || 0).toFixed(2)}</p>
           </div>
           <div class="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
             <p class="text-[9px] font-black text-indigo-600 dark:text-indigo-300 uppercase tracking-widest mb-1">Expected Total</p>
-            <p class="text-sm font-bold text-indigo-700 dark:text-indigo-300">Rs. ${Number(summary.expected_total || 0).toFixed(2)}</p>
+            <p class="text-sm font-bold text-indigo-700 dark:text-indigo-300">${shopCurrencyCode()} ${Number(summary.expected_total || 0).toFixed(2)}</p>
           </div>
           ${hasPendingVerifications ? `
           <div class="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
             <p class="text-[9px] font-black text-amber-600 dark:text-amber-300 uppercase tracking-widest mb-1">Provisional Close Expected</p>
-            <p class="text-sm font-bold text-amber-700 dark:text-amber-300">Rs. ${provisionalExpected.toFixed(2)}</p>
+            <p class="text-sm font-bold text-amber-700 dark:text-amber-300">${shopCurrencyCode()} ${provisionalExpected.toFixed(2)}</p>
           </div>
           ` : ''}
         </div>
@@ -12441,7 +12454,7 @@ async function openShiftSummaryModal() {
         <div class="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
           <div class="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-300">Pending Verification</div>
           <p class="mt-2 text-xs font-bold text-amber-700 dark:text-amber-200 leading-relaxed">
-            You can close this register now. Pending cash movement of Rs. ${pendingVerificationTotal.toFixed(2)} will keep this shift red until admin verifies or rejects it.
+            You can close this register now. Pending cash movement of ${shopCurrencyCode()} ${pendingVerificationTotal.toFixed(2)} will keep this shift red until admin verifies or rejects it.
           </p>
         </div>
         ` : ''}
@@ -12449,13 +12462,13 @@ async function openShiftSummaryModal() {
         <div class="space-y-3">
             <div class="flex items-center justify-between p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold text-sm">
                 <span>Net Cash Sales</span>
-                <span>Rs. ${summary.net_cash_sales.toFixed(2)}</span>
+                <span>${shopCurrencyCode()} ${summary.net_cash_sales.toFixed(2)}</span>
             </div>
             ${tipSummaryRows(summary)}
             ${summary.cash_drops > 0 ? `
             <div class="flex items-center justify-between p-4 rounded-xl bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-300 font-bold text-sm">
                 <span>Cash Drops (Manager)</span>
-                <span>- Rs. ${summary.cash_drops.toFixed(2)}</span>
+                <span>- ${shopCurrencyCode()} ${summary.cash_drops.toFixed(2)}</span>
             </div>
             ` : ''}
         </div>
@@ -12464,7 +12477,7 @@ async function openShiftSummaryModal() {
           <div>
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1 text-center">Closing Cash Reconciliation</label>
             <div class="relative">
-              <span class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">Rs.</span>
+              <span class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">${shopCurrencyCode()}</span>
               <input id="closing-balance-input" type="number" step="0.01" class="w-full pl-14 pr-5 py-5 rounded-2xl bg-slate-900 dark:bg-black border border-slate-800 text-white focus:border-rose-500 transition-all outline-none font-black text-2xl" placeholder="Count your cash..." />
             </div>
           </div>
@@ -12639,7 +12652,7 @@ async function performCloseShift() {
     });
     if (res.ok) {
       const diff = actual - res.summary.expected_balance;
-      const diffMsg = diff === 0 ? "Perfect reconciliation." : (diff > 0 ? `Surplus of Rs. ${diff.toFixed(2)}` : `Shortage of Rs. ${Math.abs(diff).toFixed(2)}`);
+      const diffMsg = diff === 0 ? "Perfect reconciliation." : (diff > 0 ? `Surplus of ${shopCurrencyCode()} ${diff.toFixed(2)}` : `Shortage of ${shopCurrencyCode()} ${Math.abs(diff).toFixed(2)}`);
       const pendingMsg = res.summary.has_pending_verifications ? " Pending verification remains." : "";
 
       toast(`Register closed! ${diffMsg}${pendingMsg}`);
@@ -12680,43 +12693,43 @@ function openShiftClosedReport(summary, shiftId) {
       <div class="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
         <div class="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-300">Closed with Pending Verification</div>
         <p class="mt-2 text-xs font-bold text-amber-700 dark:text-amber-200 leading-relaxed">
-          Rs. ${pendingVerificationTotal.toFixed(2)} is still waiting for admin verification. This shift will stay red in logs until it is verified or rejected.
+          ${shopCurrencyCode()} ${pendingVerificationTotal.toFixed(2)} is still waiting for admin verification. This shift will stay red in logs until it is verified or rejected.
         </p>
       </div>
       ` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[9px] font-black uppercase tracking-widest text-slate-400">Expected Cash</div>
-          <div class="text-xl font-black text-slate-900 dark:text-white mt-1">Rs. ${Number(summary.expected_balance || 0).toFixed(2)}</div>
+          <div class="text-xl font-black text-slate-900 dark:text-white mt-1">${shopCurrencyCode()} ${Number(summary.expected_balance || 0).toFixed(2)}</div>
         </div>
         <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[9px] font-black uppercase tracking-widest text-slate-400">Expected Total</div>
-          <div class="text-xl font-black text-indigo-600 dark:text-indigo-300 mt-1">Rs. ${Number(summary.expected_total || 0).toFixed(2)}</div>
+          <div class="text-xl font-black text-indigo-600 dark:text-indigo-300 mt-1">${shopCurrencyCode()} ${Number(summary.expected_total || 0).toFixed(2)}</div>
         </div>
         <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[9px] font-black uppercase tracking-widest text-slate-400">Actual Count</div>
-          <div class="text-xl font-black text-slate-900 dark:text-white mt-1">Rs. ${Number(summary.closing_balance || 0).toFixed(2)}</div>
+          <div class="text-xl font-black text-slate-900 dark:text-white mt-1">${shopCurrencyCode()} ${Number(summary.closing_balance || 0).toFixed(2)}</div>
         </div>
       </div>
       <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center">
         <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Discrepancy</div>
-        <div class="text-3xl font-black mt-1 ${diffClass}">${diffLabel}: Rs. ${Math.abs(diff).toFixed(2)}</div>
+        <div class="text-3xl font-black mt-1 ${diffClass}">${diffLabel}: ${shopCurrencyCode()} ${Math.abs(diff).toFixed(2)}</div>
       </div>
       <div class="space-y-2 text-sm font-bold">
-        <div class="flex justify-between"><span>Opening Cash</span><span>Rs. ${Number(summary.opening_balance || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Opening Cash</span><span>${shopCurrencyCode()} ${Number(summary.opening_balance || 0).toFixed(2)}</span></div>
         ${tipSummaryRows(summary)}
-        <div class="flex justify-between"><span>Cash Sales</span><span>Rs. ${Number(summary.net_cash_sales || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Card Sales</span><span>Rs. ${Number(summary.net_card_sales || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Online Sales</span><span>Rs. ${Number(summary.net_online_sales || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Cash Due Collections</span><span>Rs. ${Number(summary.debt_collections || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Card Due Collections</span><span>Rs. ${Number(summary.card_collections || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Online Due Collections</span><span>Rs. ${Number(summary.online_collections || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Cash Refunds</span><span>- Rs. ${Number(summary.total_cash_refunds || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Card Refunds</span><span>- Rs. ${Number(summary.total_card_refunds || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Online Refunds</span><span>- Rs. ${Number(summary.total_online_refunds || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Other Expenses</span><span>- Rs. ${Number(summary.total_expenses || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Cash Drops</span><span>- Rs. ${Number(summary.cash_drops || 0).toFixed(2)}</span></div>
-        <div class="flex justify-between"><span>Verified Handovers</span><span>- Rs. ${Number(summary.cash_handovers || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Cash Sales</span><span>${shopCurrencyCode()} ${Number(summary.net_cash_sales || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Card Sales</span><span>${shopCurrencyCode()} ${Number(summary.net_card_sales || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Online Sales</span><span>${shopCurrencyCode()} ${Number(summary.net_online_sales || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Cash Due Collections</span><span>${shopCurrencyCode()} ${Number(summary.debt_collections || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Card Due Collections</span><span>${shopCurrencyCode()} ${Number(summary.card_collections || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Online Due Collections</span><span>${shopCurrencyCode()} ${Number(summary.online_collections || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Cash Refunds</span><span>- ${shopCurrencyCode()} ${Number(summary.total_cash_refunds || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Card Refunds</span><span>- ${shopCurrencyCode()} ${Number(summary.total_card_refunds || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Online Refunds</span><span>- ${shopCurrencyCode()} ${Number(summary.total_online_refunds || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Other Expenses</span><span>- ${shopCurrencyCode()} ${Number(summary.total_expenses || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Cash Drops</span><span>- ${shopCurrencyCode()} ${Number(summary.cash_drops || 0).toFixed(2)}</span></div>
+        <div class="flex justify-between"><span>Verified Handovers</span><span>- ${shopCurrencyCode()} ${Number(summary.cash_handovers || 0).toFixed(2)}</span></div>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <button onclick="printShiftCloseReceipt(${Number(shiftId)})" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest">Print Summary</button>
@@ -12892,7 +12905,7 @@ function _renderWastageLogsTab(wasteRows = []) {
           </div>
         </td>
         <td class="px-6 py-4 text-sm font-black text-rose-600 dark:text-rose-300">${quantity}</td>
-        <td class="px-6 py-4 text-xs font-black text-slate-700 dark:text-slate-200">${cost > 0 ? `Rs. ${cost.toFixed(2)}` : "-"}</td>
+        <td class="px-6 py-4 text-xs font-black text-slate-700 dark:text-slate-200">${cost > 0 ? `${shopCurrencyCode()} ${cost.toFixed(2)}` : "-"}</td>
         <td class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400">${escapeOrderValue(row.reason || row.reason_code || "No reason recorded")}</td>
         <td class="px-6 py-4 text-xs font-black text-slate-700 dark:text-slate-200">${escapeOrderValue(row.user_name || "Unknown")}</td>
         ${currentUser.role === "superadmin" ? `<td class="px-6 py-4 text-xs font-bold text-indigo-500">${escapeOrderValue(row.shop_name || "Core System")}</td>` : ""}
@@ -13481,17 +13494,17 @@ function _renderLogsTable() {
           const diffClass = Math.abs(diff) <= 0.01 ? "text-emerald-500" : diff > 0 ? "text-blue-500" : "text-rose-500";
           detailsHtml = `
             <div class="space-y-1 text-[11px]">
-              <div class="flex gap-2"><span>Expected: Rs.${Number(d.expected).toFixed(0)}</span> | <span>Actual: Rs.${Number(d.actual).toFixed(0)}</span></div>
-              <div class="font-bold ${diffClass}">Discrepancy: Rs.${diff.toFixed(2)}</div>
-              ${d.provisional_close ? `<div class="font-bold text-amber-600 dark:text-amber-300">Pending verification: Rs.${Number(d.pending_verification_total || 0).toFixed(2)}</div>` : ""}
+              <div class="flex gap-2"><span>Expected: ${shopCurrencyCode()}${Number(d.expected).toFixed(0)}</span> | <span>Actual: ${shopCurrencyCode()}${Number(d.actual).toFixed(0)}</span></div>
+              <div class="font-bold ${diffClass}">Discrepancy: ${shopCurrencyCode()}${diff.toFixed(2)}</div>
+              ${d.provisional_close ? `<div class="font-bold text-amber-600 dark:text-amber-300">Pending verification: ${shopCurrencyCode()}${Number(d.pending_verification_total || 0).toFixed(2)}</div>` : ""}
               ${d.shortage_reason ? `<div class="mt-1 p-2 rounded bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-100 dark:border-rose-900/30 font-medium">Reason: ${d.shortage_reason}</div>` : ""}
             </div>`;
         } else if (log.action === 'SHIFT_OPEN') {
-           detailsHtml = `<span class="text-xs font-bold text-emerald-600">Opened with Rs. ${Number(d.opening_balance).toFixed(0)}</span>`;
+           detailsHtml = `<span class="text-xs font-bold text-emerald-600">Opened with ${shopCurrencyCode()} ${Number(d.opening_balance).toFixed(0)}</span>`;
         } else if (log.action === 'CASH_DROP_REQUEST') {
            detailsHtml = `
             <div class="space-y-1 text-xs font-bold">
-              <div>Amount: <span class="text-amber-600">Rs. ${Number(d.amount).toFixed(0)}</span> ${d.note ? `<span class="text-slate-400 font-normal ml-1 italic">(${d.note})</span>` : ""}</div>
+              <div>Amount: <span class="text-amber-600">${shopCurrencyCode()} ${Number(d.amount).toFixed(0)}</span> ${d.note ? `<span class="text-slate-400 font-normal ml-1 italic">(${d.note})</span>` : ""}</div>
               <div class="text-[10px] text-slate-400 uppercase tracking-widest">Demanded: ${time.toLocaleString()}</div>
             </div>`;
         } else if (log.action === 'CASH_DROP_VERIFIED' || log.action === 'CASH_DROP_REJECTED') {
@@ -13499,7 +13512,7 @@ function _renderLogsTable() {
            const statusLabel = log.action.includes('REJECTED') ? 'Admin rejected' : 'Admin verified';
            detailsHtml = `
             <div class="space-y-1 text-xs font-bold">
-              <div>${statusLabel}: <span class="${statusTone}">Rs. ${Number(d.amount).toFixed(0)}</span></div>
+              <div>${statusLabel}: <span class="${statusTone}">${shopCurrencyCode()} ${Number(d.amount).toFixed(0)}</span></div>
               <div class="text-[10px] text-slate-400 uppercase tracking-widest">Demanded: ${_formatAuditTimestamp(d.requested_at, "Unknown")}</div>
               <div class="text-[10px] text-slate-400 uppercase tracking-widest">${statusLabel}: ${time.toLocaleString()}</div>
             </div>`;
@@ -13512,7 +13525,7 @@ function _renderLogsTable() {
               : 'Admin verified';
            detailsHtml = `
             <div class="space-y-1 text-xs font-bold">
-              <div>Amount: <span class="${handoverTone}">Rs. ${Number(d.amount).toFixed(0)}</span></div>
+              <div>Amount: <span class="${handoverTone}">${shopCurrencyCode()} ${Number(d.amount).toFixed(0)}</span></div>
               <div class="text-[10px] text-slate-400 uppercase tracking-widest">Demanded: ${log.action.includes('REQUEST') ? time.toLocaleString() : _formatAuditTimestamp(d.requested_at, "Unknown")}</div>
               ${log.action.includes('REQUEST') ? "" : `<div class="text-[10px] text-slate-400 uppercase tracking-widest">${handoverStatus}: ${time.toLocaleString()}</div>`}
             </div>`;
@@ -13621,15 +13634,15 @@ async function viewShiftAuditFlow(shiftId) {
           const d = JSON.parse(log.details);
           if (log.action === 'SHIFT_CLOSE') {
             const diff = Number(d.actual) - Number(d.expected);
-            detailsText = `Drawer checked. Discrepancy: Rs. ${diff.toFixed(2)}. ${d.provisional_close ? `Pending verification: Rs. ${Number(d.pending_verification_total || 0).toFixed(2)}. ` : ""}${d.shortage_reason ? `Reason: ${d.shortage_reason}` : ""}`;
+            detailsText = `Drawer checked. Discrepancy: ${shopCurrencyCode()} ${diff.toFixed(2)}. ${d.provisional_close ? `Pending verification: ${shopCurrencyCode()} ${Number(d.pending_verification_total || 0).toFixed(2)}. ` : ""}${d.shortage_reason ? `Reason: ${d.shortage_reason}` : ""}`;
           } else if (log.action === 'SHIFT_OPEN') {
-            detailsText = `Opened with float: Rs. ${Number(d.opening_balance).toFixed(0)}`;
+            detailsText = `Opened with float: ${shopCurrencyCode()} ${Number(d.opening_balance).toFixed(0)}`;
           } else if (log.action.includes('CASH_DROP') || log.action.includes('HANDOVER')) {
             const demandedAt = log.action.includes('REQUEST')
               ? new Date(log.created_at).toLocaleString()
               : _formatAuditTimestamp(d.requested_at, "Unknown");
             const verifiedAt = log.action.includes('REQUEST') ? "" : ` Verified: ${new Date(log.created_at).toLocaleString()}.`;
-            detailsText = `Amount: Rs. ${Number(d.amount).toFixed(0)}. Demanded: ${demandedAt}.${verifiedAt} ${d.note ? `(${d.note})` : ""}`;
+            detailsText = `Amount: ${shopCurrencyCode()} ${Number(d.amount).toFixed(0)}. Demanded: ${demandedAt}.${verifiedAt} ${d.note ? `(${d.note})` : ""}`;
           }
         } else {
           detailsText = log.details || "";
@@ -13725,4 +13738,25 @@ function printBarcode(barcode) {
         if (document.head.contains(printStyle)) document.head.removeChild(printStyle);
     }, 1000);
   }, 100);
+}
+
+async function saveShopCurrency() {
+  const currency = document.getElementById('shop-currency')?.value.trim().toUpperCase();
+  if (!currency || !Intl.supportedValuesOf('currency').includes(currency)) {
+    toast('Select a currency from the list.', 'error');
+    return;
+  }
+  try {
+    const body = new FormData();
+    body.append('currency', currency);
+    const response = await fetch('/api/shop-settings', { method: 'POST', body });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not save currency');
+    currentUser.shop_currency = currency;
+    window.shopCurrency = currency;
+    toast('Shop currency saved.');
+    renderSettings('profile');
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }

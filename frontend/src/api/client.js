@@ -1,3 +1,4 @@
+import { setShopCurrency } from '../currency'
 export async function api(path, options = {}) {
   const response = await fetch(path, {
     credentials: 'include',
@@ -18,6 +19,7 @@ export async function api(path, options = {}) {
     error.details = data
     throw error
   }
+  if (path === '/api/auth/me' && data.user) setShopCurrency(data.user.shop_currency)
   return data
 }
 

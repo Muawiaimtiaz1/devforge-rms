@@ -177,6 +177,7 @@ class AuthService {
     let allowedPanels = user.allowed_panels ? JSON.parse(user.allowed_panels) : [];
     const permissions = await require('../authorization/service').getUserPermissions(user);
     let shopName = 'Master Control';
+    let shopCurrency = 'PKR';
     let shopType = 'other';
     let subscription = null;
 
@@ -190,6 +191,7 @@ class AuthService {
       if (!shop) return null;
 
       shopName = shop.name;
+      shopCurrency = shop.currency || 'PKR';
       shopType = shop.shop_type || 'restaurant';
       shopStatus = shop.status || 'active';
       shopCreatedAt = shop.created_at;
@@ -219,6 +221,7 @@ class AuthService {
     return {
       ...user,
       shop_name: shopName,
+      shop_currency: shopCurrency,
       shop_type: shopType,
       shop_status: shopStatus,
       shop_created_at: shopCreatedAt,

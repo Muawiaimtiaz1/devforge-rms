@@ -1,3 +1,4 @@
+import { getShopCurrency } from '../../../currency'
 import { useEffect, useState } from 'react'
 import { api } from '../../../api/client'
 import { EMPTY_PROFILE, STATUS_LABELS } from '../staff.constants'
@@ -9,7 +10,7 @@ function todayInKarachi() {
   const part = (type) => parts.find((value) => value.type === type)?.value
   return `${part('year')}-${part('month')}-${part('day')}`
 }
-function emptySalary(editing) { return { compensation_type: 'monthly', currency: 'PKR', base_amount: '', effective_from: todayInKarachi(), standard_monthly_minutes: 10400, overtime_enabled: false, overtime_multiplier: '1.500', monthly_unpaid_absence_policy: 'prorate_scheduled_days', paid_full_leave_allowance: 0, paid_half_leave_allowance: 0, deduct_excess_paid_leave: true, change_reason: editing ? 'Salary raise or policy change' : 'New employee salary' } }
+function emptySalary(editing) { return { compensation_type: 'monthly', currency: getShopCurrency(), base_amount: '', effective_from: todayInKarachi(), standard_monthly_minutes: 10400, overtime_enabled: false, overtime_multiplier: '1.500', monthly_unpaid_absence_policy: 'prorate_scheduled_days', paid_full_leave_allowance: 0, paid_half_leave_allowance: 0, deduct_excess_paid_leave: true, change_reason: editing ? 'Salary raise or policy change' : 'New employee salary' } }
 
 export default function StaffProfileForm({ profile, onClose, onSaved, canEditSalary }) {
   const [form, setForm] = useState(() => ({ ...EMPTY_PROFILE, ...profile, joining_date: profile?.joining_date ? String(profile.joining_date).slice(0, 10) : '' }))

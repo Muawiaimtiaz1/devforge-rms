@@ -624,9 +624,9 @@ router.get("/:id/ledger.pdf", requirePermission("customers.view"), async (req, r
     infoLines.forEach((line, i) => doc.text(line, 55, y + 28 + i * 13));
 
     const summaryItems = [
-        { label: "TOTAL DEBIT", val: `Rs. ${fmtMoney(periodDebits)}`, bg: "#fef3c7", fg: "#92400e" },
-        { label: "TOTAL CREDIT", val: `Rs. ${fmtMoney(periodCredits)}`, bg: "#d1fae5", fg: "#065f46" },
-        { label: "CLOSING BALANCE", val: `Rs. ${fmtMoney(closingBalance)}`, bg: closingBalance > 0.01 ? "#fee2e2" : "#d1fae5", fg: closingBalance > 0.01 ? "#991b1b" : "#065f46" },
+        { label: "TOTAL DEBIT", val: `${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(periodDebits)}`, bg: "#fef3c7", fg: "#92400e" },
+        { label: "TOTAL CREDIT", val: `${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(periodCredits)}`, bg: "#d1fae5", fg: "#065f46" },
+        { label: "CLOSING BALANCE", val: `${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(closingBalance)}`, bg: closingBalance > 0.01 ? "#fee2e2" : "#d1fae5", fg: closingBalance > 0.01 ? "#991b1b" : "#065f46" },
     ];
     summaryItems.forEach((item, i) => {
         const bx = 40 + W - (3 - i) * 107;
@@ -640,8 +640,8 @@ router.get("/:id/ledger.pdf", requirePermission("customers.view"), async (req, r
     doc.rect(40, y, W, 20).fill(accent);
     doc.fontSize(7.5).font("Helvetica-Bold").fillColor("#fff");
     [["DATE", C.date + 3], ["REFERENCE", C.ref + 3], ["TYPE", C.type + 3], ["DESCRIPTION", C.note + 3]].forEach(([t, x]) => doc.text(t, x, y + 6));
-    doc.text("DEBIT (Rs.)", C.debit, y + 6, { width: 52, align: "right" });
-    doc.text("CREDIT (Rs.)", C.credit, y + 6, { width: 37, align: "right" });
+    doc.text("DEBIT", C.debit, y + 6, { width: 52, align: "right" });
+    doc.text("CREDIT", C.credit, y + 6, { width: 37, align: "right" });
     doc.text("BALANCE", C.bal, y + 6, { width: 75, align: "right" });
     y += 20;
 
@@ -800,8 +800,8 @@ router.get("/:id/report.pdf", requirePermission("customers.view"), async (req, r
 
     const stats = [
         { label: "TOTAL SALES", val: sales.length.toString(), bg: "#dbeafe", fg: "#1e40af" },
-        { label: "AMOUNT BILLED", val: `Rs. ${fmtMoney(totalBilled)}`, bg: "#d1fae5", fg: "#065f46" },
-        { label: "OUTSTANDING DUE", val: `Rs. ${fmtMoney(totalDue)}`, bg: totalDue > 0.01 ? "#fee2e2" : "#d1fae5", fg: totalDue > 0.01 ? "#991b1b" : "#065f46" },
+        { label: "AMOUNT BILLED", val: `${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(totalBilled)}`, bg: "#d1fae5", fg: "#065f46" },
+        { label: "OUTSTANDING DUE", val: `${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(totalDue)}`, bg: totalDue > 0.01 ? "#fee2e2" : "#d1fae5", fg: totalDue > 0.01 ? "#991b1b" : "#065f46" },
     ];
     stats.forEach((item, i) => {
         const bx = 40 + W - (3 - i) * 107;
@@ -824,7 +824,7 @@ router.get("/:id/report.pdf", requirePermission("customers.view"), async (req, r
         doc.fontSize(7.5).font("Helvetica").fillColor(tLight).text(`By: ${sale.served_by || "Staff"}`, 310, y + 8);
         const bBg = isPaid ? "#d1fae5" : "#fee2e2", bFg = isPaid ? "#065f46" : "#991b1b";
         doc.rect(40 + W - 112, y + 4, 107, 14).fill(bBg);
-        doc.fontSize(7.5).font("Helvetica-Bold").fillColor(bFg).text(isPaid ? "✓ PAID" : `DUE: Rs. ${fmtMoney(due)}`, 40+W-110, y+8, { width: 103, align: "center" });
+        doc.fontSize(7.5).font("Helvetica-Bold").fillColor(bFg).text(isPaid ? "✓ PAID" : `DUE: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(due)}`, 40+W-110, y+8, { width: 103, align: "center" });
         y += 22;
         doc.rect(40, y, W, 14).fill("#f3f4f6");
         doc.fontSize(7).font("Helvetica-Bold").fillColor(tLight);
@@ -837,20 +837,20 @@ router.get("/:id/report.pdf", requirePermission("customers.view"), async (req, r
             doc.text(item.product_name || "—", 48, y + 4, { width: 216 });
             doc.text(item.sku || "—", 268, y + 4, { width: 66 });
             doc.text(String(item.quantity), 338, y + 4, { width: 38, align: "right" });
-            doc.text(`Rs. ${fmtMoney(item.price_at_sale)}`, 380, y + 4, { width: 62, align: "right" });
-            doc.font("Helvetica-Bold").text(`Rs. ${fmtMoney(Number(item.quantity || 0) * Number(item.price_at_sale || 0))}`, 446, y + 4, { width: 64, align: "right" });
+            doc.text(`${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(item.price_at_sale)}`, 380, y + 4, { width: 62, align: "right" });
+            doc.font("Helvetica-Bold").text(`${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(Number(item.quantity || 0) * Number(item.price_at_sale || 0))}`, 446, y + 4, { width: 64, align: "right" });
             y += 16;
         });
         doc.rect(40, y, W, 20).fill("#f9fafb");
-        doc.fontSize(7.5).font("Helvetica").fillColor(tLight).text(`Subtotal: Rs. ${fmtMoney(Number(sale.total || 0) + Number(sale.discount || 0))}   Discount: Rs. ${fmtMoney(sale.discount)}   Tax: ${sale.tax_percentage}%`, 48, y+6);
-        doc.font("Helvetica-Bold").fillColor(tDark).text(`TOTAL: Rs. ${fmtMoney(sale.total)}   PAID: Rs. ${fmtMoney(sale.amount_received)}`, 40, y + 6, { align: "right", width: W });
+        doc.fontSize(7.5).font("Helvetica").fillColor(tLight).text(`Subtotal: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(Number(sale.total || 0) + Number(sale.discount || 0))}   Discount: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(sale.discount)}   Tax: ${sale.tax_percentage}%`, 48, y+6);
+        doc.font("Helvetica-Bold").fillColor(tDark).text(`TOTAL: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(sale.total)}   PAID: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(sale.amount_received)}`, 40, y + 6, { align: "right", width: W });
         y += 30;
     });
 
     if (sales.length === 0) { doc.fillColor(tLight).fontSize(10).text("No sales found.", 40, y + 20, { width: W, align: "center" }); y += 50; }
     if (y > 720) { doc.addPage(); y = 40; }
     doc.rect(40, y, W, 28).fill("#1f2937");
-    doc.fontSize(9).font("Helvetica-Bold").fillColor("#ffffff").text(`GRAND TOTALS:   Billed: Rs. ${fmtMoney(totalBilled)}   Paid: Rs. ${fmtMoney(totalPaid)}   Outstanding: Rs. ${fmtMoney(totalDue)}`, 48, y + 10, { width: W - 16 });
+    doc.fontSize(9).font("Helvetica-Bold").fillColor("#ffffff").text(`GRAND TOTALS:   Billed: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(totalBilled)}   Paid: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(totalPaid)}   Outstanding: ${shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.'} ${fmtMoney(totalDue)}`, 48, y + 10, { width: W - 16 });
     
     const addFooter = () => {
         const range = doc.bufferedPageRange();

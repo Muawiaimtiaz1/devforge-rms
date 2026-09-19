@@ -173,6 +173,7 @@ function itemName(item) {
 
 function renderCustomerReceipt(details, options) {
   const { sale, items, seller, shop } = details;
+  const currency = escapeHtml(shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.');
   const isUnpaid = options.format === "unpaid";
   const title = isUnpaid ? "Unpaid Bill" : "Customer Bill";
   const subtotal = items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.price_at_sale || 0), 0);
@@ -233,10 +234,10 @@ function renderCustomerReceipt(details, options) {
       <hr class="divider" />
 
       <div class="text-right">
-        <div>Subtotal: Rs. ${formatProductMoney(subtotal)}</div>
-        ${discount > 0 ? `<div>Discount: -Rs. ${formatMoney(discount)}</div>` : ""}
-        ${taxPct > 0 ? `<div>Tax (${escapeHtml(taxPct)}%): Rs. ${formatMoney(taxAmt)}</div>` : ""}
-        <div class="bold total-row" style="margin-top: 4px;">GRAND TOTAL: Rs. ${formatMoney(grandTotal)}</div>
+        <div>Subtotal: ${currency} ${formatProductMoney(subtotal)}</div>
+        ${discount > 0 ? `<div>Discount: -${currency} ${formatMoney(discount)}</div>` : ""}
+        ${taxPct > 0 ? `<div>Tax (${escapeHtml(taxPct)}%): ${currency} ${formatMoney(taxAmt)}</div>` : ""}
+        <div class="bold total-row" style="margin-top: 4px;">GRAND TOTAL: ${currency} ${formatMoney(grandTotal)}</div>
       </div>
 
       <hr class="divider" />
@@ -245,17 +246,17 @@ function renderCustomerReceipt(details, options) {
         ${isUnpaid ? `
           <div style="text-align: center; border: 1px dashed #111827; padding: 5px; margin-top: 5px; font-weight: bold;">
             *** UNPAID BILL ***<br>
-            Total: Rs. ${formatMoney(grandTotal)}<br>
-            Amount Paid: Rs. ${formatMoney(Math.min(received, grandTotal))}<br>
-            Balance Due: Rs. ${formatMoney(Math.max(remaining, 0))}
+            Total: ${currency} ${formatMoney(grandTotal)}<br>
+            Amount Paid: ${currency} ${formatMoney(Math.min(received, grandTotal))}<br>
+            Balance Due: ${currency} ${formatMoney(Math.max(remaining, 0))}
           </div>
         ` : `
           <div><strong>Method:</strong> ${escapeHtml(method)}</div>
-          ${tip > 0 ? `<div><strong>Tip received (${escapeHtml(tipMethod)}):</strong> Rs. ${tip.toFixed(2)}</div>` : ""}
-          <div><strong>Received:</strong> Rs. ${formatMoney(received)}</div>
-          ${standaloneTip && tip > 0 ? `<div><strong>Total collected:</strong> Rs. ${formatMoney(Math.min(received, grandTotal) + tip)}</div>` : ""}
-          ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> Rs. ${formatMoney(remaining)}</div>` : ""}
-          ${remaining <= 0 ? `<div class="bold"><strong>Change:</strong> Rs. ${formatMoney(Math.abs(remaining))}</div>` : ""}
+          ${tip > 0 ? `<div><strong>Tip received (${escapeHtml(tipMethod)}):</strong> ${currency} ${tip.toFixed(2)}</div>` : ""}
+          <div><strong>Received:</strong> ${currency} ${formatMoney(received)}</div>
+          ${standaloneTip && tip > 0 ? `<div><strong>Total collected:</strong> ${currency} ${formatMoney(Math.min(received, grandTotal) + tip)}</div>` : ""}
+          ${remaining > 0 ? `<div class="bold"><strong>Due:</strong> ${currency} ${formatMoney(remaining)}</div>` : ""}
+          ${remaining <= 0 ? `<div class="bold"><strong>Change:</strong> ${currency} ${formatMoney(Math.abs(remaining))}</div>` : ""}
         `}
       </div>
 

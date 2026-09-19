@@ -1,3 +1,4 @@
+import { getShopCurrency } from '../../currency'
 import { useState } from "react";
 import { useChartSize } from "./useChartSize";
 import { styleObject } from "./analytics-ui";
@@ -24,7 +25,7 @@ export function BarChart({
     const y = height - paddingY - barHeight;
     const formattedSales = new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'INR',
+      currency: getShopCurrency(),
       maximumFractionDigits: 0
     }).format(dp.sales);
     const tooltip = <div className={"flex flex-col gap-0.5 z-[9999]"}>
@@ -127,7 +128,7 @@ export function LineChart({
         const y = getY(dp.sales);
         const formattedSales = new Intl.NumberFormat('en-IN', {
           style: 'currency',
-          currency: 'INR',
+          currency: getShopCurrency(),
           maximumFractionDigits: 0
         }).format(dp.sales);
         return <g className={"group/dot cursor-pointer select-none"} key={i}>
@@ -181,7 +182,7 @@ export function DonutChart({
     const color = colors[idx % colors.length];
     const formattedSales = new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'INR',
+      currency: getShopCurrency(),
       minimumFractionDigits: 0,
       maximumFractionDigits: 2
     }).format(s.sales);
@@ -208,7 +209,7 @@ export function DonutChart({
   });
   const formattedTotal = new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'INR',
+    currency: getShopCurrency(),
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
   }).format(totalValue);

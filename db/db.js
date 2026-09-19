@@ -864,6 +864,7 @@ if (!tableExists) {
     // Migration: Add receipt settings columns to shops
     const shopCols = db.prepare("PRAGMA table_info(shops)").all();
     const receiptColumns = [
+      { name: "currency", type: "TEXT NOT NULL DEFAULT 'PKR'" },
       { name: "logo_path", type: "TEXT" },
       { name: "receipt_header_text", type: "TEXT" },
       { name: "receipt_extended_name", type: "TEXT" },

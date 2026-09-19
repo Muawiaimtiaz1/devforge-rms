@@ -1,10 +1,11 @@
+import { getShopCurrency } from '../../../currency'
 import { useEffect, useState } from 'react'
 import { api } from '../../../api/client'
 import { money } from '../dashboard.utils'
 import '../shift-dashboard.css'
 
 const stamp = value => value ? new Date(value).toLocaleString('en-PK', { timeZone: 'Asia/Karachi', dateStyle: 'medium', timeStyle: 'short' }) : 'In progress'
-const amount = value => value == null ? '—' : 'Rs. ' + money(value)
+const amount = value => value == null ? '—' : `${getShopCurrency()} ` + money(value)
 
 export default function ShiftDashboard() {
   const [shifts, setShifts] = useState(null)

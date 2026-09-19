@@ -37,7 +37,7 @@ router.get("/", requireAuth, async (req, res) => {
     if (!shopId) return res.status(403).json({ error: "No shop assigned" });
 
     const isPostgres = usePostgres();
-    const query = `SELECT id, name, logo_path, logo_data, receipt_header_text, receipt_extended_name, receipt_phone, receipt_address, 
+    const query = `SELECT id, name, currency, logo_path, logo_data, receipt_header_text, receipt_extended_name, receipt_phone, receipt_address,
                 receipt_images_json, receipt_policies, use_logo_on_receipt, use_text_on_receipt, receipt_font_family,
                 header_font_size, header_font_weight, header_spacing,
                 extended_name_font_size, extended_name_font_weight, extended_name_spacing,
@@ -90,6 +90,14 @@ router.post("/", requireAuth, requireAdmin, upload.single("logo"), async (req, r
 
     const updates = [];
     const values = [];
+    if (req.body.currency !== undefined) {
+      const currency = String(req.body.currency).trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(currency) || !Intl.supportedValuesOf('currency').includes(currency)) {
+        return res.status(400).json({ error: "Select a valid currency" });
+      }
+      updates.push(`currency = ${isPostgres ? '$' + (values.push(currency)) : '?'}`);
+      if (!isPostgres) values.push(currency);
+    }
 
     fields.forEach(f => {
         if (req.body[f] !== undefined) {

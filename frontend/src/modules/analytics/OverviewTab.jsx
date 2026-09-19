@@ -1,3 +1,4 @@
+import { getShopCurrency } from '../../currency';
 import { analyticsAssetUrl } from './analytics-assets';
 import { BarChart, LineChart, DonutChart } from "./AnalyticsCharts";
 import { analyticsInfoIcon, analyticsLabelWithInfo, analyticsPanelTitle, styleObject } from "./analytics-ui";
@@ -10,7 +11,7 @@ export function OverviewTab({
   const tips = data.tipsBreakdown || {};
   const formatCurrency = val => new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'INR',
+    currency: getShopCurrency(),
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
   }).format(val);
@@ -430,7 +431,7 @@ function ActivityHeatmap({
       const bgClass = `analytics-heatmap-cell analytics-heatmap-level-${Math.ceil(intensity * 9)}`;
       const formattedSales = new Intl.NumberFormat('en-IN', {
         style: 'currency',
-        currency: 'INR',
+        currency: getShopCurrency(),
         maximumFractionDigits: 0
       }).format(block.sales);
       const cellTooltip = <div className={"flex flex-col gap-1 text-left min-w-[150px]"}>
@@ -544,7 +545,7 @@ function renderTopSellingProductsList(products) {
   return products.map((p, idx) => {
     const formattedSales = new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'INR',
+      currency: getShopCurrency(),
       maximumFractionDigits: 0
     }).format(p.sales);
     return <div className={"flex items-center justify-between text-xs py-1 border-b border-slate-50 dark:border-slate-800/10 last:border-b-0"} key={idx}>

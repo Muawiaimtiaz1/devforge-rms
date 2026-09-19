@@ -172,14 +172,14 @@ function renderReceiptPreview() {
       </div>
 
       <div style="text-align: right;">
-        <div>Subtotal: Rs. 1000</div>
-        <div style="font-weight: bold; font-size: 15px; margin-top: 5px;">GRAND TOTAL: Rs. 1000</div>
+        <div>Subtotal: ${shopCurrencyCode()} 1000</div>
+        <div style="font-weight: bold; font-size: 15px; margin-top: 5px;">GRAND TOTAL: ${shopCurrencyCode()} 1000</div>
       </div>
 
       <div style="font-size: 11px; margin-top: ${sectionGap}px; border-top: ${dividerCss}; padding-top: ${sectionGap}px;">
         <div><strong>Method:</strong> Cash</div>
-        <div><strong>Received:</strong> Rs. 1000</div>
-        <div style="font-weight: bold;"><strong>Change:</strong> Rs. 0</div>
+        <div><strong>Received:</strong> ${shopCurrencyCode()} 1000</div>
+        <div style="font-weight: bold;"><strong>Change:</strong> ${shopCurrencyCode()} 0</div>
       </div>
 
       ${promoHtml}
@@ -1481,7 +1481,7 @@ async function openExpensesHistory() {
                 <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
                 <span class="font-bold text-slate-800 dark:text-slate-100 text-base">${new Date(m + "-01").toLocaleDateString("default", { month: "long", year: "numeric" })}</span>
               </div>
-              <p class="text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-semibold ml-4">Total Monthly Expenses: Rs. ${monthsMap[m].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p class="text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-semibold ml-4">Total Monthly Expenses: ${shopCurrencyCode()} ${monthsMap[m].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
             <div class="flex items-center gap-2">
               <button onclick="window.open('/api/brands/pdf/monthly-report?month=${m}', '_blank')" class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/30 transition-all border border-transparent hover:border-emerald-200 dark:hover:border-emerald-900" title="View PDF">
@@ -1535,7 +1535,7 @@ async function openViewExpenses(month) {
                 <tr class="hover:bg-white dark:hover:bg-gray-800 transition-colors">
                   <td class="py-2 px-3 text-gray-700 dark:text-gray-300">${e.title}</td>
                   <td class="py-2 px-3 text-gray-500">${e.date}</td>
-                  <td class="py-2 px-3 text-right font-bold text-gray-800 dark:text-gray-200">Rs. ${e.amount.toLocaleString()}</td>
+                  <td class="py-2 px-3 text-right font-bold text-gray-800 dark:text-gray-200">${shopCurrencyCode()} ${e.amount.toLocaleString()}</td>
                 </tr>
               `,
         )
@@ -1544,7 +1544,7 @@ async function openViewExpenses(month) {
             <tfoot>
               <tr class="bg-indigo-50 dark:bg-indigo-900/20 font-bold text-indigo-700 dark:text-indigo-400">
                 <td colspan="2" class="py-2 px-3 text-right">Total Expenses:</td>
-                <td class="py-2 px-3 text-right">Rs. ${filtered.reduce((sum, e) => sum + e.amount, 0).toLocaleString()}</td>
+                <td class="py-2 px-3 text-right">${shopCurrencyCode()} ${filtered.reduce((sum, e) => sum + e.amount, 0).toLocaleString()}</td>
               </tr>
             </tfoot>
           </table>
@@ -1791,15 +1791,15 @@ async function renderSubscriptions() {
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Filtered Total</div>
-          <div class="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">Rs. ${total.toLocaleString()}</div>
+          <div class="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">${shopCurrencyCode()} ${total.toLocaleString()}</div>
         </div>
         <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Subscriptions</div>
-          <div class="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">Rs. ${subscriptionTotal.toLocaleString()}</div>
+          <div class="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">${shopCurrencyCode()} ${subscriptionTotal.toLocaleString()}</div>
         </div>
         <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Advance Payments</div>
-          <div class="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">Rs. ${advanceTotal.toLocaleString()}</div>
+          <div class="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">${shopCurrencyCode()} ${advanceTotal.toLocaleString()}</div>
         </div>
       </div>
 
@@ -1846,7 +1846,7 @@ async function renderSubscriptions() {
                       ${subscriptionInfo}
                     </td>
                     <td class="px-5 py-4 text-xs font-bold text-slate-500 dark:text-slate-400">${subscriptionEscapeHtml(log.payment_method || "Cash")}</td>
-                    <td class="px-5 py-4 text-right text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">Rs. ${Number(log.amount || 0).toLocaleString()}</td>
+                    <td class="px-5 py-4 text-right text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">${shopCurrencyCode()} ${Number(log.amount || 0).toLocaleString()}</td>
                     <td class="px-5 py-4">
                       <div class="flex justify-end gap-2">
                         <button onclick="openPlatformPaymentModal(${Number(log.id)})" class="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-xs font-black hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all">Edit</button>
@@ -1916,7 +1916,7 @@ async function openPlatformPaymentModal(paymentId = null, selectedShopId = null)
 
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Amount (Rs.)</label>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Amount (${shopCurrencyCode()})</label>
           <input type="number" id="platform-pay-amount" value="${Number(payment?.amount ?? 5000)}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none focus:border-indigo-500 transition-all">
         </div>
         <div>
@@ -2098,7 +2098,7 @@ async function renderPresetLists() {
       <div class="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm animate-in fade-in slide-in-from-bottom-2">
         <div>
           <p class="text-sm font-bold text-slate-800 dark:text-slate-200">${p.name}</p>
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${p.type === 'percentage' ? p.value + '%' : 'Rs. ' + p.value}</p>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${p.type === 'percentage' ? p.value + '%' : `${shopCurrencyCode()} ` + p.value}</p>
         </div>
         <button onclick="deleteDiscountPreset(${p.id})" class="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-all">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>

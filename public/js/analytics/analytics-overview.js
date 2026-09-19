@@ -9,7 +9,7 @@ function renderOverviewTab(data) {
   const tips = data.tipsBreakdown || {};
 
   // Formatting helpers
-  const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val);
+  const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: shopCurrencyCode(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val);
   const formatNum = (val) => new Intl.NumberFormat('en-IN').format(val);
 
   // Period label text matching
@@ -493,7 +493,7 @@ function renderOverviewHeatmap(containerId, data) {
       if (intensity > 0.5) bgClass = "bg-emerald-300 dark:bg-emerald-700/50 border-emerald-400 dark:border-emerald-600/80 text-white";
       if (intensity > 0.75) bgClass = "bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 text-white";
 
-      const formattedSales = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(block.sales);
+      const formattedSales = new Intl.NumberFormat('en-IN', { style: 'currency', currency: shopCurrencyCode(), maximumFractionDigits: 0 }).format(block.sales);
 
       const cellTooltip = `
         <div class="flex flex-col gap-1 text-left min-w-[150px]">
@@ -625,7 +625,7 @@ function renderTopSellingProductsList(products) {
   }
 
   return products.map((p, idx) => {
-    const formattedSales = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.sales);
+    const formattedSales = new Intl.NumberFormat('en-IN', { style: 'currency', currency: shopCurrencyCode(), maximumFractionDigits: 0 }).format(p.sales);
 
     return `
       <div class="flex items-center justify-between text-xs py-1 border-b border-slate-50 dark:border-slate-800/10 last:border-b-0">

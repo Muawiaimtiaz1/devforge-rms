@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS shops (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'PKR',
   status TEXT DEFAULT 'active', -- active, blocked
   allowed_panels TEXT, -- JSON array of panel IDs allotted by master
   auto_calculate_damage_to_loss INTEGER DEFAULT 1,

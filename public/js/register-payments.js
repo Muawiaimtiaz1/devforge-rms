@@ -8,7 +8,7 @@ const _registerPaymentSelectedDate = '';
 const _registerPaymentShiftCache = new Map();
 
 function registerPaymentMoney(value) {
-  return `Rs. ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${shopCurrencyCode()} ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function registerPaymentDate(value, includeTime = true) {

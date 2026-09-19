@@ -1,3 +1,4 @@
+import { getShopCurrency } from '../../currency';
 import { analyticsAssetUrl } from './analytics-assets';
 import { AiTab } from "./AiTab";
 import { analyticsLabelWithInfo, analyticsPanelTitle } from "./analytics-ui";
@@ -10,7 +11,7 @@ export function SpecificTab({
   const s = data.summary;
   const formatCurrency = val => new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'INR',
+    currency: getShopCurrency(),
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
   }).format(val);

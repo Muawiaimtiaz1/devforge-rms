@@ -7,7 +7,7 @@ function renderSpecificSubTab(tabId, data) {
   const k = data.kpi;
   const s = data.summary;
 
-  const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val);
+  const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: shopCurrencyCode(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val);
   const formatNum = (val) => new Intl.NumberFormat('en-IN').format(val);
   const renderMetricLabel = (label, info) => `
     <div class="text-[10px] font-black uppercase text-slate-400">
