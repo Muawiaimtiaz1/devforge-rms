@@ -6,6 +6,7 @@ import '../shift-dashboard.css'
 
 const stamp = value => value ? new Date(value).toLocaleString('en-PK', { timeZone: 'Asia/Karachi', dateStyle: 'medium', timeStyle: 'short' }) : 'In progress'
 const amount = value => value == null ? '—' : `${getShopCurrency()} ` + money(value)
+const orderLabel = sale => sale ? `#${sale.order_number || sale.id}` : '—'
 
 export default function ShiftDashboard() {
   const [shifts, setShifts] = useState(null)
@@ -41,6 +42,9 @@ export default function ShiftDashboard() {
   const visiblePage = Math.min(page, pages)
   const summary = details?.summary || {}
   const shift = details?.shift
+  const sales = details?.sales || []
+  const startingOrder = sales[0]
+  const lastOrder = sales[sales.length - 1]
   // Printed closed-shift receipts use the saved expected balance.
   const expected = shift?.status === 'closed' ? Number(shift.expected_balance || 0) : summary.expected_balance
   const metrics = [
@@ -68,6 +72,6 @@ export default function ShiftDashboard() {
       <footer className="shift-pagination"><button disabled={visiblePage <= 1} onClick={() => setPage(visiblePage - 1)}>Newer</button><span>Page {visiblePage} of {pages} · {filtered.length} shifts</span><button disabled={visiblePage >= pages} onClick={() => setPage(visiblePage + 1)}>Older</button></footer>
     </section>
     {selected && !details && !error && <p role="status">Loading shift #{selected}…</p>}
-    {shift && <><header className="dashboard-heading"><h2>Shift #{shift.id} summary</h2><p>{shift.cashier_name || shift.user_id} · {stamp(shift.start_time)} to {stamp(shift.end_time)} · {details.sales?.length || 0} orders</p><p>Compare with register summary #{shift.id}. Tips belong to the shift where they were collected.</p></header><div className="dashboard-metrics">{metrics.map(([label, value]) => <article className="metric-card" key={label}><span>{label}</span><strong>{amount(value)}</strong></article>)}</div></>}
+    {shift && <><header className="dashboard-heading"><h2>Shift #{shift.id} summary</h2><p>{shift.cashier_name || shift.user_id} · {stamp(shift.start_time)} to {stamp(shift.end_time)} · {sales.length} orders</p><p>Starting order {orderLabel(startingOrder)} · Last order {orderLabel(lastOrder)}</p><p>Compare with register summary #{shift.id}. Tips belong to the shift where they were collected.</p></header><div className="dashboard-metrics">{metrics.map(([label, value]) => <article className="metric-card" key={label}><span>{label}</span><strong>{amount(value)}</strong></article>)}</div></>}
   </section>
 }

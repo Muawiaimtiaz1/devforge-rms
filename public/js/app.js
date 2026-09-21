@@ -2161,7 +2161,8 @@ async function renderDashboard(period, brandId, from, to) {
 
     <!-- Metric Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7 gap-5 mb-8">
-      ${statCard("Total Revenue", `${shopCurrencyCode()} ` + Number(data.totalRevenue).toLocaleString(), `${data.totalSales} transaction${data.totalSales !== 1 ? "s" : ""}`, "blue", "Completed orders only. Revenue = bill subtotal - discount + tax - refunds. Includes both received money and pending dues.")}
+      ${statCard("Total Revenue", `${shopCurrencyCode()} ` + Number(data.totalRevenue).toLocaleString(), `${data.totalSales} transaction${data.totalSales !== 1 ? "s" : ""}`, "blue", "Completed orders only. Revenue excludes sales tax and refunds.")}
+      ${statCard("Tax Collected", `${shopCurrencyCode()} ` + Number(data.totalTax || 0).toLocaleString(), "Net of refunded tax", "amber", "Sales tax collected less tax returned through refunds. Excluded from revenue and profit.")}
       ${statCard("Payments Received", `${shopCurrencyCode()} ` + Number(data.totalPaymentsReceived || 0).toLocaleString(), `${(data.staffPerformance || []).length} receiver${(data.staffPerformance || []).length !== 1 ? "s" : ""}`, "emerald", "Money actually marked received, attributed to the staff member who confirmed it.")}
       ${statCard("Pending Dues", `${shopCurrencyCode()} ` + Number(data.totalPendingDues || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), `${data.pendingDuesCount || 0} bill${Number(data.pendingDuesCount || 0) !== 1 ? "s" : ""} pending`, "amber", "Completed bills where final total minus amount received is still greater than zero. Shows only the unpaid balance.")}
       ${statCard("Cost of Goods Sold", `${shopCurrencyCode()} ` + Number(data.totalCOGS).toLocaleString(), "Sum of buying prices", "purple", "Buying cost of sold items from completed orders, reduced by the buying cost of returned items.")}
@@ -4872,7 +4873,7 @@ async function renderPOS() {
   else if (!_editingOrderId) {
     if ($c("pos-discount")) $c("pos-discount").value = "0";
     if ($c("pos-tax")) $c("pos-tax").value = "0";
-    calculateCartTotal();
+    handlePOSMethodChange($c("pos-method")?.value || "cash");
   }
 }
 
@@ -7330,14 +7331,11 @@ function applyPOSTaxPreset() {
 function applyPOSLinkedTaxPreset(method) {
   const sel = $c("pos-tax-preset");
   const inp = $c("pos-tax");
-  if (!sel || !inp || !method) return false;
+  if (!inp || !method) return false;
 
-  const options = Array.from(sel.options);
-  const matchIndex = options.findIndex((opt, index) =>
-    index > 0 && opt.dataset.method === method
-  );
-  if (matchIndex === -1) {
-    const selectedMethod = sel.options[sel.selectedIndex]?.dataset.method || "";
+  const configuredTax = (_posTaxPresets || []).find(t => t.linked_payment_method === method);
+  if (!configuredTax) {
+    const selectedMethod = sel?.options[sel.selectedIndex]?.dataset.method || "";
     if (selectedMethod) {
       sel.value = "";
       inp.value = "";
@@ -7347,12 +7345,16 @@ function applyPOSLinkedTaxPreset(method) {
     return false;
   }
 
-  sel.selectedIndex = matchIndex;
-  inp.value = (parseFloat(sel.options[matchIndex].value) || 0).toString();
+  if (sel) {
+    const matchIndex = Array.from(sel.options).findIndex((opt, index) =>
+      index > 0 && opt.dataset.method === method
+    );
+    if (matchIndex !== -1) sel.selectedIndex = matchIndex;
+  }
+  inp.value = (parseFloat(configuredTax.percentage) || 0).toString();
   calculateCartTotal();
   return true;
 }
-
 function calculateCartTotal() {
   const subtotal = getPOSCartSubtotal();
   const discount = syncPOSDiscountPresetAmount(subtotal);
@@ -7567,15 +7569,12 @@ function toggleQuotationMode(isQuotation) {
  * Auto-fills Amount Received if method is Card or Online
  */
 function handlePOSMethodChange(method) {
+  applyPOSLinkedTaxPreset(method);
   if (method === "card" || method === "online") {
     const total = parseFloat($c("cart-total").dataset.total) || 0;
-    if (total > 0) {
-      $c("pos-received").value = total.toFixed(2);
-      calculateRemaining();
-    }
-  } else {
-    calculateRemaining();
+    if (total > 0) $c("pos-received").value = total.toFixed(2);
   }
+  calculateRemaining();
 }
 
 function getPOSActionButton(status = "completed") {
@@ -8622,6 +8621,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Date</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Customer</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Total</th>
+          <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Tax</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Paid</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Payment</th>
           <th class="px-5 py-3 text-xs font-medium text-slate-500 uppercase">Pending</th>
@@ -8730,6 +8730,7 @@ function _renderSalesTable() {
              </div>
           </td>
           <td class="px-5 py-4 text-slate-700 dark:text-slate-200 font-bold">${shopCurrencyCode()} ${parseFloat(s.total || 0).toFixed(0)}</td>
+          <td class="px-5 py-4 text-amber-600 dark:text-amber-400 font-bold">${shopCurrencyCode()} ${Number(s.tax_amount || 0).toFixed(2)}</td>
           <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">${shopCurrencyCode()} ${parseFloat(s.amount_received || 0).toFixed(0)}${Number(s.tip_amount || 0) > 0 ? `<div class="text-xs text-slate-500">Tip: ${shopCurrencyCode()} ${Number(s.tip_amount).toFixed(2)}</div>` : ""}</td>
           <td class="px-5 py-4">${salesPaymentMethodBadge(s.payment_method)}</td>
           <td class="px-5 py-4 font-black">
@@ -8760,7 +8761,7 @@ function _renderSalesTable() {
         </tr>`;
         })
         .join("")
-      : `<tr><td colspan="9" class="px-5 py-10 text-center text-slate-400 dark:text-slate-600 text-sm italic border-t border-slate-100 dark:border-slate-800">No sales found for this filter.</td></tr>`;
+      : `<tr><td colspan="10" class="px-5 py-10 text-center text-slate-400 dark:text-slate-600 text-sm italic border-t border-slate-100 dark:border-slate-800">No sales found for this filter.</td></tr>`;
 
     renderSalesPagination(pageItems.length);
   } catch (err) {

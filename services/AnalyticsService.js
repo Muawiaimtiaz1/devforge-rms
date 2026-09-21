@@ -139,7 +139,13 @@ class AnalyticsService {
         .as('item_totals');
       const itemCogsExpr = `si.quantity * si.buying_price_at_sale`;
       const returnCogsExpr = `ri.quantity * ri.buying_price_at_sale`;
-      const allocatedSalesExpr = `CASE WHEN COALESCE(item_totals.item_subtotal, 0) > 0 THEN (si.quantity * si.price_at_sale) * COALESCE(s.total, 0) / COALESCE(item_totals.item_subtotal, 0) ELSE 0 END`;
+// Bill totals include tax. Revenue and profit exclude it; tax is reported separately.
+      const saleRevenueExpr = `(COALESCE(s.total, 0) - COALESCE(s.tax_amount, 0))`;
+      const saleTaxExpr = `COALESCE(s.tax_amount, 0)`;
+      const receivedSaleAmountExpr = `(CASE WHEN COALESCE(s.amount_received, 0) > COALESCE(s.total, 0) THEN COALESCE(s.total, 0) ELSE COALESCE(s.amount_received, 0) END)`;
+      const collectedTaxExpr = `(CASE WHEN COALESCE(s.total, 0) > 0 THEN COALESCE(s.tax_amount, 0) * ${receivedSaleAmountExpr} / COALESCE(s.total, 0) ELSE 0 END)`;
+      const refundRevenueExpr = `(COALESCE(r.total_refund, 0) / (1 + COALESCE(s.tax_percentage, 0) / 100.0))`;
+      const allocatedSalesExpr = `CASE WHEN COALESCE(item_totals.item_subtotal, 0) > 0 THEN (si.quantity * si.price_at_sale) * ${saleRevenueExpr} / COALESCE(item_totals.item_subtotal, 0) ELSE 0 END`;
       const allocatedDiscountExpr = `CASE WHEN COALESCE(item_totals.item_subtotal, 0) > 0 THEN (si.quantity * si.price_at_sale) * COALESCE(s.discount, 0) / COALESCE(item_totals.item_subtotal, 0) ELSE 0 END`;
       const allocatedDueExpr = `CASE WHEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01 AND COALESCE(item_totals.item_subtotal, 0) > 0 THEN (si.quantity * si.price_at_sale) * (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) / COALESCE(item_totals.item_subtotal, 0) ELSE 0 END`;
       const pendingDueCondition = '(COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01';
@@ -182,6 +188,13 @@ class AnalyticsService {
             db.raw('COALESCE(SUM(CASE WHEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01 THEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) ELSE 0 END), 0) as total_pending_dues'),
             db.raw('COALESCE(SUM(CASE WHEN (COALESCE(s.total, 0) - COALESCE(s.amount_received, 0)) > 0.01 THEN 1 ELSE 0 END), 0) as pending_dues_count')
           ).first();
+
+const taxStats = await db('sales as s')
+        .modify(qb => applyShopScope(qb, 's.shop_id'))
+        .where({ 's.order_status': 'completed' })
+        .whereBetween('s.created_at', [bounds.start, bounds.end])
+        .select(db.raw(`COALESCE(SUM(${saleTaxExpr}), 0) as total_tax`), db.raw(`COALESCE(SUM(${collectedTaxExpr}), 0) as collected_tax`))
+        .first();
 
       const receivables = await db('sales as s')
         .modify(qb => applyShopScope(qb, 's.shop_id'))
@@ -242,6 +255,13 @@ class AnalyticsService {
             db.raw('COUNT(r.id) as return_count')
           ).first();
 
+const refundTaxStats = await db('returns as r')
+        .join('sales as s', 'r.sale_id', 's.id')
+        .modify(qb => applyShopScope(qb, 'r.shop_id'))
+        .whereBetween('r.created_at', [bounds.start, bounds.end])
+        .select(db.raw(`COALESCE(SUM(COALESCE(r.total_refund, 0) - ${refundRevenueExpr}), 0) as refunded_tax`))
+        .first();
+
       const cogsStats = await db('sale_items as si')
         .join('sales as s', 'si.sale_id', 's.id')
         .leftJoin('products as p', 'si.product_id', 'p.id')
@@ -281,7 +301,12 @@ class AnalyticsService {
       // Calculations
       const totalSalesVal = Number(kpi.total_sales || 0);
       const totalRefundsVal = Number(returnsStats.total_refunds || 0);
-      const adjustedRevenue = totalSalesVal - totalRefundsVal;
+      const totalTaxVal = Number(taxStats?.total_tax || 0);
+      const collectedTaxVal = Number(taxStats?.collected_tax || 0);
+      const refundedTaxVal = Number(refundTaxStats?.refunded_tax || 0);
+      const netTaxCollected = collectedTaxVal - refundedTaxVal;
+      const netBilledTax = totalTaxVal - refundedTaxVal;
+      const adjustedRevenue = totalSalesVal - totalRefundsVal - netBilledTax;
       
       const cogsVal = Number(cogsStats ? cogsStats.val : 0);
       const retCogsVal = Number(returnedCogs ? returnedCogs.val : 0);
@@ -855,7 +880,10 @@ class AnalyticsService {
           shopProfit,
           shopProfitMargin,
           profitMargin: profitMargin,
-          grossSales: totalSalesVal,
+          grossSales: totalSalesVal - totalTaxVal,
+          totalTax: netTaxCollected,
+          grossTax: totalTaxVal,
+          refundedTax: refundedTaxVal,
           netRevenue: adjustedRevenue,
           stockValue: productStockValue + rawStockValue,
           productStockValue,
@@ -875,6 +903,7 @@ class AnalyticsService {
         tipsBreakdown: tips,
         totalProducts: parseInt(totalProductsCount ? totalProductsCount.val : 0),
         totalRevenue: adjustedRevenue,
+        totalTax: netTaxCollected,
         totalPendingDues: Number(receivables?.total_pending_dues || 0),
         pendingDuesCount: parseInt(receivables?.pending_dues_count || 0),
         totalCOGS: adjustedCOGS,
@@ -886,7 +915,7 @@ class AnalyticsService {
         ,metricVersion: 'analytics-v2'
         ,reportingTimezone
         ,reconciliation: {
-          revenue: Number((totalSalesVal - totalRefundsVal - adjustedRevenue).toFixed(2)),
+          revenue: Number((totalSalesVal - totalRefundsVal - netBilledTax - adjustedRevenue).toFixed(2)),
           profit: Number((adjustedRevenue - adjustedCOGS - totalDamageLoss - shopProfit).toFixed(2)),
           partners: Number((totalPartnerProfit + retainedOwnerProfit - shopProfit).toFixed(2))
         }

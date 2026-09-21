@@ -95,6 +95,8 @@ try {
   db.exec("ALTER TABLE tables ADD COLUMN floor_id INTEGER REFERENCES floors(id);");
   console.log("✅ DB Migration Applied: added floor_id to tables");
 } catch (e) {}
+try { db.exec("ALTER TABLE sales ADD COLUMN tax_amount REAL NOT NULL DEFAULT 0;"); } catch (e) {}
+try { db.exec("UPDATE sales SET tax_amount = COALESCE(total, 0) - (COALESCE(total, 0) / (1 + COALESCE(tax_percentage, 0) / 100.0)) WHERE COALESCE(tax_amount, 0) = 0 AND COALESCE(tax_percentage, 0) > 0;"); } catch (e) {}
 try {
   db.exec("ALTER TABLE sales ADD COLUMN kitchen_id INTEGER REFERENCES users(id);");
   console.log("✅ DB Migration Applied: added kitchen_id to sales");

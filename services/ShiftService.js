@@ -874,9 +874,10 @@ class ShiftService {
     const [summary, sales, expenses, returns, ledgerEntries, handovers, cashDrops] = await Promise.all([
       this.calculateShiftSummary(shiftId, shopId),
       db('sales as s')
-        .select('s.id', 's.created_at', 's.customer_name', 's.customer_phone', 's.total', 's.amount_received', 's.tip_amount', 's.payment_method', 's.order_type', 's.order_status')
+        .select('s.id', 's.order_number', 's.created_at', 's.customer_name', 's.customer_phone', 's.total', 's.amount_received', 's.tip_amount', 's.payment_method', 's.order_type', 's.order_status')
         .where({ 's.shift_id': shiftId, 's.shop_id': shopId })
-        .orderBy('s.created_at', 'asc'),
+        .orderBy('s.created_at', 'asc')
+        .orderBy('s.id', 'asc'),
       db('expenses as e')
         .select('e.id', 'e.date', 'e.title', 'e.category', 'e.amount', 'e.note', 'e.created_at')
         .where({ 'e.shift_id': shiftId, 'e.shop_id': shopId })

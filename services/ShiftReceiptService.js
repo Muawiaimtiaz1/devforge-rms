@@ -17,6 +17,8 @@ function row(label, value, strong = false) {
 
 function renderShiftReceiptPage(details, options = {}) {
   const { shift, summary, shop } = details;
+  const sales = Array.isArray(details.sales) ? details.sales : [];
+  const orderLabel = sale => sale ? `#${sale.order_number || sale.id}` : '-';
   const currency = shop?.currency && shop.currency !== 'PKR' ? shop.currency : 'Rs.';
   const durationMs = Math.max(0, new Date(shift.end_time).getTime() - new Date(shift.start_time).getTime());
   const durationMinutes = Math.round(durationMs / 60000);
@@ -35,8 +37,10 @@ function renderShiftReceiptPage(details, options = {}) {
     ${row('Closed', dateTime(shift.end_time))}
     ${row('Duration', duration)}
     ${shift.terminal_id ? row('Terminal', shift.terminal_id) : ''}
+    ${row('Starting order', orderLabel(sales[0]))}
+    ${row('Last order', orderLabel(sales[sales.length - 1]))}
     <div class="rule"></div><div class="section">PAYMENT SUMMARY</div>
-    ${row('Orders in shift', Array.isArray(details.sales) ? details.sales.length : 0)}
+    ${row('Orders in shift', sales.length)}
     ${row('Cash sales', `${currency} ${money(summary.net_cash_sales)}`)}
     ${row('Card sales', `${currency} ${money(summary.net_card_sales)}`)}
     ${row('Online sales', `${currency} ${money(summary.net_online_sales)}`)}

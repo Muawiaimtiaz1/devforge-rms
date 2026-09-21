@@ -55,8 +55,9 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
     assert.equal(summary.expected_balance,6000); assert.equal(summary.expected_total,6000);
     const list=await shifts.listReceivedPayments(1,1,{shiftId:1});
     assert.equal(list.summary.total_amount,5000); assert.equal(list.items[0].tip_amount,500);
-    const receipt=renderShiftReceiptPage({shift:{id:1,closing_balance:6000},summary,shop:{name:'Test'}},{autoPrint:false});
+    const receipt=renderShiftReceiptPage({shift:{id:1,closing_balance:6000},summary,shop:{name:'Test'},sales:[{id:11,order_number:101},{id:12,order_number:105}]},{autoPrint:false});
     assert.match(receipt,/Tips collected/); assert.match(receipt,/6000.00/);
+    assert.match(receipt,/Starting order<\/span><span>#101/); assert.match(receipt,/Last order<\/span><span>#105/);
   });
   await t.test('paid receipt separates tips from change; kitchen and unpaid omit tips', async () => {
     const details={sale:await db('sales').first(),items:[],shop:{name:'Test'}};

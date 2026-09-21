@@ -184,6 +184,7 @@ CREATE TABLE IF NOT EXISTS sales (
   total REAL NOT NULL DEFAULT 0,
   discount REAL NOT NULL DEFAULT 0,
   tax_percentage REAL NOT NULL DEFAULT 0,
+  tax_amount REAL NOT NULL DEFAULT 0,
   payment_method TEXT NOT NULL DEFAULT 'cash',
   amount_received REAL NOT NULL DEFAULT 0,
   order_type TEXT DEFAULT 'dine_in', -- dine_in, takeaway, delivery

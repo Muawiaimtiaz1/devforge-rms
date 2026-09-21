@@ -169,7 +169,7 @@ export function OverviewTab({
         {renderInsightMetricCard("Total Period Sales", <>
           <h5 className={"text-base font-black mt-1.5"}>{formatCurrency(k.totalSales)}</h5>
           {formatGrowth(g.sales)}
-        </>, "Net completed-sales revenue for the selected period. Revenue = bill subtotal - discount + tax - refunds. Includes both received and pending money.")}
+        </>, "Net completed-sales revenue for the selected period. Revenue = bill subtotal - discount - refunds; tax is reported separately. Includes both received and pending money.")}
  
         {renderInsightMetricCard("Total Orders", <>
           <h5 className={"text-base font-black mt-1.5"}>{formatNum(k.totalOrders)}</h5>
@@ -279,7 +279,7 @@ export function OverviewTab({
         
         <div className={"w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-5 rounded-3xl shadow-sm flex flex-col justify-between h-fit"}>
           <div>
-            {analyticsPanelTitle("Sales by Channel", "Net completed-order revenue by order type. Revenue = bill subtotal - discount + tax - refunds.")}
+            {analyticsPanelTitle("Sales by Channel", "Net completed-order revenue by order type. Revenue = bill subtotal - discount - refunds; tax is reported separately.")}
             <span className={"text-[11px] font-medium text-slate-400 block mt-0.5"}>Store outlets vs POS</span>
           </div>
           <div id={"chart-channel-breakdown"} className={"h-44 mt-4 flex items-center justify-center"}><DonutChart containerId="chart-channel-breakdown" slices={channelSlices} totalValue={k.totalSales} /></div>
@@ -330,6 +330,7 @@ export function OverviewTab({
         </div>
         <div className={"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1"}>
           {renderSummaryCard("Total Discounts", formatCurrency(s.totalDiscounts), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"} /></svg>, "Selected period", "blue", "Promotional incentives and order price reductions", "Sum of sale-level discounts on completed orders in the selected period.")}
+          {renderSummaryCard("Tax Collected", formatCurrency(data.totalTax ?? s.totalTax ?? 0), "", "Net of refunded tax", "amber", "Sales tax collected", "Tax collected on completed sales less tax returned through refunds. It is excluded from revenue, profit, and partner shares.")}
           {renderSummaryCard("Tips Collected", formatCurrency(data.totalTipsCollected || 0), "", "Cash " + formatCurrency(tips.cash_tips || 0) + " | Card " + formatCurrency(tips.card_tips || 0) + " | Online " + formatCurrency(tips.online_tips || 0), "emerald", "Shop-wide tips collected during this period", "Tips use collection time and remain separate from revenue, tax, and partner profit. Brand filters do not allocate tips.")}
           {renderSummaryCard("Return Invoices", formatNum(s.totalReturns), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"} /></svg>, "Selected period", "rose", "Return records created", "Count of return invoices created in the selected period; one invoice can contain multiple items.")}
           {renderSummaryCard("Refunds", formatCurrency(s.totalRefunds), <svg className={"w-6 h-6"} fill={"none"} stroke={"currentColor"} strokeWidth={"2"} viewBox={"0 0 24 24"}><path strokeLinecap={"round"} strokeLinejoin={"round"} d={"M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"} /></svg>, "Selected period", "amber", "Refund value recorded", "Total refund amount from return invoices created in the selected period. This is subtracted from net revenue.")}

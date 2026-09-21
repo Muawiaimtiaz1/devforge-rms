@@ -47,7 +47,9 @@ async function initPostgres() {
     await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS table_visibility_mode TEXT NOT NULL DEFAULT 'all'");
     await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS realtime_printing_enabled INTEGER NOT NULL DEFAULT 0");
     await query("ALTER TABLE tables ADD COLUMN IF NOT EXISTS assigned_waiter_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
-    await query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS order_number INTEGER");
+await query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS order_number INTEGER");
+    await query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_amount DOUBLE PRECISION NOT NULL DEFAULT 0");
+    await query("UPDATE sales SET tax_amount = COALESCE(total, 0) - (COALESCE(total, 0) / (1 + COALESCE(tax_percentage, 0) / 100.0)) WHERE COALESCE(tax_amount, 0) = 0 AND COALESCE(tax_percentage, 0) > 0");
     await query("UPDATE sales SET order_number = id WHERE order_number IS NULL");
     await query("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_shop_order_number ON sales(shop_id, order_number) WHERE order_number IS NOT NULL");
     await query(`

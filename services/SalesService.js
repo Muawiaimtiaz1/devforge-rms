@@ -914,6 +914,7 @@ class SalesService {
           total: grandTotal,
           discount: data.discount,
           tax_percentage: data.tax_percentage,
+          tax_amount: taxAmount,
           payment_method: data.payment_method,
           amount_received: data.amount_received,
           order_type: data.order_type,
@@ -1400,6 +1401,7 @@ class SalesService {
         total: grandTotal,
         discount: data.discount,
         tax_percentage: data.tax_percentage,
+        tax_amount: taxAmount,
         payment_method: data.payment_method,
         amount_received: data.amount_received,
         order_type: data.order_type,
@@ -1808,12 +1810,14 @@ class SalesService {
       const items = await trx('sale_items').where({ sale_id: saleId });
       const subtotal = items.reduce((sum, item) => sum + Number(item.price_at_sale) * Number(item.quantity), 0);
       if (discount > subtotal) throw new Error('Discount cannot exceed the bill subtotal.');
-      const total = subtotal - discount + ((subtotal - discount) * taxPercentage / 100);
+      const taxAmount = (subtotal - discount) * taxPercentage / 100;
+      const total = subtotal - discount + taxAmount;
       await trx('sales').where({ id: saleId, shop_id: shopId }).update({
         customer_name: String(data.customer_name || '').trim().slice(0, 120),
         payment_method: ['cash', 'card', 'online'].includes(data.payment_method) ? data.payment_method : 'cash',
         discount,
         tax_percentage: taxPercentage,
+        tax_amount: taxAmount,
         total,
         updated_at: trx.fn.now()
       });
@@ -1879,6 +1883,7 @@ class SalesService {
 
         updateData.discount = newDiscount;
         updateData.tax_percentage = newTaxPct;
+        updateData.tax_amount = taxAmount;
         updateData.total = grandTotal;
       }
 
