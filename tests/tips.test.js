@@ -16,7 +16,7 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
   await db.schema.createTable('users', t => { t.increments('id'); t.integer('shop_id'); });
   await db.schema.createTable('tables', t => { t.increments('id'); t.integer('shop_id'); t.string('table_number'); });
   await db.schema.createTable('shifts', t => { t.increments('id'); t.integer('shop_id'); t.integer('user_id'); t.string('status'); t.decimal('opening_balance').defaultTo(0); t.decimal('cash_drops').defaultTo(0); });
-  await db.schema.createTable('sales', t => { t.increments('id'); t.integer('shop_id'); t.integer('user_id'); t.integer('waiter_id'); t.integer('shift_id'); t.integer('table_id'); t.integer('order_number'); t.integer('payment_receiver_id'); t.timestamp('payment_received_at'); t.timestamp('created_at'); t.timestamp('updated_at'); t.string('customer_name'); t.string('order_type'); t.string('order_status'); t.string('payment_method'); t.decimal('total'); t.decimal('amount_received'); });
+  await db.schema.createTable('sales', t => { t.increments('id'); t.integer('shop_id'); t.integer('user_id'); t.integer('waiter_id'); t.integer('shift_id'); t.integer('table_id'); t.integer('order_number'); t.integer('payment_receiver_id'); t.timestamp('payment_received_at'); t.timestamp('created_at'); t.timestamp('updated_at'); t.string('customer_name'); t.string('order_type'); t.string('order_status'); t.string('payment_method'); t.decimal('total'); t.decimal('tax_amount').defaultTo(0); t.decimal('amount_received'); });
   for (const name of ['customer_ledger', 'expenses', 'returns', 'cash_drops', 'cash_handovers']) {
     await db.schema.createTable(name, t => { t.increments('id'); t.integer('shop_id'); t.integer('shift_id'); t.integer('sale_id'); t.integer('created_by'); t.string('type'); t.string('status'); t.string('payment_method'); t.decimal('amount'); t.decimal('total_refund'); t.timestamp('created_at'); });
   }
@@ -26,7 +26,7 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
   await db('users').insert([{id:1,shop_id:1},{id:2,shop_id:2}]);
   await db('tables').insert([{id:1,shop_id:1,table_number:'A1'},{id:2,shop_id:2,table_number:'Other'}]);
   await db('shifts').insert([{id:1,shop_id:1,user_id:1,status:'open',opening_balance:1000},{id:2,shop_id:2,user_id:2,status:'open'}]);
-  await db('sales').insert({id:1,shop_id:1,shift_id:1,total:4500,amount_received:5000,payment_method:'cash',order_status:'completed',order_type:'takeaway'});
+  await db('sales').insert({id:1,shop_id:1,shift_id:1,total:4500,tax_amount:500,amount_received:5000,payment_method:'cash',order_status:'completed',order_type:'takeaway'});
   const input = {saleId:1,shopId:1,userId:1,amount:500,total:4500,received:5000,paymentMethod:'cash'};
   const collect = input => db.transaction(trx => tips.collect(trx,input));
   await t.test('validates money and overpayment explicitly', () => {
@@ -52,12 +52,18 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
   await t.test('4500 sale plus 500 cash tip reconciles to 6000 with 1000 opening', async () => {
     const summary=await shifts.calculateShiftSummary(1,1);
     assert.equal(summary.net_cash_sales,4500); assert.equal(summary.total_tips,500);
+    assert.equal(summary.cash_orders,1); assert.equal(summary.total_orders,1);
+    assert.equal(summary.cash_tax,500); assert.equal(summary.total_sales_ex_tax,4000);
+    assert.equal(summary.total_sales_collected,4500);
     assert.equal(summary.expected_balance,6000); assert.equal(summary.expected_total,6000);
     const list=await shifts.listReceivedPayments(1,1,{shiftId:1});
     assert.equal(list.summary.total_amount,5000); assert.equal(list.items[0].tip_amount,500);
     const receipt=renderShiftReceiptPage({shift:{id:1,closing_balance:6000},summary,shop:{name:'Test'},sales:[{id:11,order_number:101},{id:12,order_number:105}]},{autoPrint:false});
-    assert.match(receipt,/Tips collected/); assert.match(receipt,/6000.00/);
-    assert.match(receipt,/Starting order<\/span><span>#101/); assert.match(receipt,/Last order<\/span><span>#105/);
+    assert.match(receipt,/Total tips/); assert.match(receipt,/6000.00/);
+    assert.match(receipt,/TIPS — SEPARATE FROM SALES/);
+    assert.match(receipt,/Total sales \(excl\. tax\)/);
+    assert.match(receipt,/Expected closing cash/);
+    assert.match(receipt,/First order #<\/span><span>#101/); assert.match(receipt,/Last order #<\/span><span>#105/);
   });
   await t.test('paid receipt separates tips from change; kitchen and unpaid omit tips', async () => {
     const details={sale:await db('sales').first(),items:[],shop:{name:'Test'}};

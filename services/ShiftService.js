@@ -125,52 +125,43 @@ class ShiftService {
       WHEN COALESCE(s.amount_received, 0) > COALESCE(s.total, 0) THEN COALESCE(s.total, 0)
       ELSE COALESCE(s.amount_received, 0)
     END`;
-    const salesTotal = await db('sales as s')
-      .where({ 's.shift_id': shiftId, 's.shop_id': shopId, 's.payment_method': 'cash' })
+    const ledgerPaidAmount = `COALESCE((
+      SELECT SUM(amount)
+      FROM customer_ledger
+      WHERE sale_id = s.id AND type = 'payment'
+    ), 0)`;
+    const directSaleAmount = `((${retainedSaleAmount}) - (${ledgerPaidAmount}))`;
+    // Allocate tax proportionally when only part of a bill was collected directly.
+    // Existing gross fields remain unchanged because drawer reconciliation includes tax.
+    const directTaxAmount = `CASE
+      WHEN COALESCE(s.total, 0) > 0
+        THEN COALESCE(s.tax_amount, 0) * (${directSaleAmount}) / COALESCE(s.total, 0)
+      ELSE 0
+    END`;
+    const salesByMethodRows = await db('sales as s')
+      .where({ 's.shift_id': shiftId, 's.shop_id': shopId })
       .whereNot('s.order_status', 'payment_pending')
-      .select(db.raw(`
-        COALESCE(SUM(
-          (${retainedSaleAmount}) -
-          COALESCE((
-            SELECT SUM(amount) 
-            FROM customer_ledger 
-            WHERE sale_id = s.id AND type = 'payment'
-          ), 0)
-        ), 0) as total
-      `))
-      .first();
-
-    const cashSales = toMoney(salesTotal?.total);
-
-    // Total Card Sales (for reporting)
-    const cardTotal = await db('sales as s')
-      .where({ 's.shift_id': shiftId, 's.shop_id': shopId, 's.payment_method': 'card' })
-      .whereNot('s.order_status', 'payment_pending')
-      .select(db.raw(`
-        COALESCE(SUM(
-          (${retainedSaleAmount}) -
-          COALESCE((
-            SELECT SUM(amount) 
-            FROM customer_ledger 
-            WHERE sale_id = s.id AND type = 'payment'
-          ), 0)
-        ), 0) as total
-      `))
-      .first();
-
-    const cardSales = toMoney(cardTotal?.total);
-
-    const onlineTotal = await db('sales as s')
-      .where({ 's.shift_id': shiftId, 's.shop_id': shopId, 's.payment_method': 'online' })
-      .whereNot('s.order_status', 'payment_pending')
-      .select(db.raw(`
-        COALESCE(SUM(
-          (${retainedSaleAmount}) -
-          COALESCE((SELECT SUM(amount) FROM customer_ledger WHERE sale_id = s.id AND type = 'payment'), 0)
-        ), 0) as total
-      `))
-      .first();
-    const onlineSales = toMoney(onlineTotal?.total);
+      .whereIn('s.payment_method', ['cash', 'card', 'online'])
+      .select('s.payment_method')
+      .select(db.raw(`COALESCE(SUM(${directSaleAmount}), 0) as total`))
+      .select(db.raw(`COALESCE(SUM(${directTaxAmount}), 0) as tax_total`))
+      .count('s.id as order_count')
+      .groupBy('s.payment_method');
+    const salesByMethod = salesByMethodRows.reduce((totals, row) => {
+      totals[String(row.payment_method || '').toLowerCase()] = {
+        gross: toMoney(row.total),
+        tax: toMoney(row.tax_total),
+        count: Number(row.order_count || 0)
+      };
+      return totals;
+    }, {});
+    const methodSales = method => salesByMethod[method] || { gross: 0, tax: 0, count: 0 };
+    const cashBreakdown = methodSales('cash');
+    const cardBreakdown = methodSales('card');
+    const onlineBreakdown = methodSales('online');
+    const cashSales = cashBreakdown.gross;
+    const cardSales = cardBreakdown.gross;
+    const onlineSales = onlineBreakdown.gross;
 
     // Total Debt Collections (Customer Ledger payments in cash)
     const debtCollectionsCount = await db('customer_ledger')
@@ -255,6 +246,19 @@ class ShiftService {
       net_cash_sales: cashSales,
       net_card_sales: cardSales,
       net_online_sales: onlineSales,
+      cash_orders: cashBreakdown.count,
+      card_orders: cardBreakdown.count,
+      online_orders: onlineBreakdown.count,
+      total_orders: cashBreakdown.count + cardBreakdown.count + onlineBreakdown.count,
+      cash_tax: cashBreakdown.tax,
+      card_tax: cardBreakdown.tax,
+      online_tax: onlineBreakdown.tax,
+      total_tax: cashBreakdown.tax + cardBreakdown.tax + onlineBreakdown.tax,
+      cash_sales_ex_tax: cashSales - cashBreakdown.tax,
+      card_sales_ex_tax: cardSales - cardBreakdown.tax,
+      online_sales_ex_tax: onlineSales - onlineBreakdown.tax,
+      total_sales_ex_tax: cashSales + cardSales + onlineSales - cashBreakdown.tax - cardBreakdown.tax - onlineBreakdown.tax,
+      total_sales_collected: cashSales + cardSales + onlineSales,
       total_expenses: cashExpenses,
       total_cash_refunds: cashRefunds,
       total_card_refunds: cardRefunds,
@@ -874,7 +878,7 @@ class ShiftService {
     const [summary, sales, expenses, returns, ledgerEntries, handovers, cashDrops] = await Promise.all([
       this.calculateShiftSummary(shiftId, shopId),
       db('sales as s')
-        .select('s.id', 's.order_number', 's.created_at', 's.customer_name', 's.customer_phone', 's.total', 's.amount_received', 's.tip_amount', 's.payment_method', 's.order_type', 's.order_status')
+        .select('s.id', 's.order_number', 's.created_at', 's.customer_name', 's.customer_phone', 's.total', 's.amount_received', 's.tip_amount', 's.tax_amount', 's.payment_method', 's.order_type', 's.order_status')
         .where({ 's.shift_id': shiftId, 's.shop_id': shopId })
         .orderBy('s.created_at', 'asc')
         .orderBy('s.id', 'asc'),
