@@ -182,6 +182,7 @@ app.use("/api/ai", require("./routes/ai"));
 app.use("/api/customers", require("./routes/customers"));
 app.use("/api/shops", require("./routes/shops"));
 app.use("/api/subscriptions", require("./routes/subscriptions"));
+app.use('/api/reports', require('./routes/reports'));
 app.use('/api/raw-stock', require('./routes/raw-stock'));
 app.use('/api/recipes', require('./routes/recipes'));
 app.use("/api/waste", require("./routes/waste"));

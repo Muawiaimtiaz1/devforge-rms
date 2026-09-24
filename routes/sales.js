@@ -123,4 +123,10 @@ router.get("/returns/:id/receipt", requireAuth, async (req, res) => {
   res.json(data);
 });
 
+router.post('/:id/complete', requireAuth, async (req, res) => {
+  const result = await salesService.completeRetailOrder(req.params.id, req.session.user.shop_id, req.session.user.id);
+  void publishOrderChange('order.status_changed', req.params.id, req.session.user.shop_id);
+  res.json({ ok: true, ...result });
+});
+
 module.exports = router;

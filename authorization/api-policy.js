@@ -5,7 +5,7 @@ const RESOURCE_MODULE = {
   sales: 'orders', tips: 'orders', delivery: 'delivery', kds: 'kitchen_orders', products: 'products',
   'product-categories': 'products', 'raw-stock': 'raw_stock', recipes: 'recipes', brands: 'brands',
   customers: 'customers', expenses: 'expenses', 'expense-categories': 'expenses', tables: 'tables',
-  analytics: 'analytics', ai: 'analytics', shifts: 'register', 'shop-settings': 'settings', printers: 'settings',
+  analytics: 'analytics', reports: 'reports', ai: 'analytics', shifts: 'register', 'shop-settings': 'settings', printers: 'settings',
   users: 'users', staff: 'users', roles: 'roles', notifications: 'notifications', 'activity-logs': 'activity_logs', waste: 'waste',
   'notification-preferences': 'settings',
   attendance: 'attendance',
@@ -22,6 +22,7 @@ function actionFor(req, resource) {
   if (resource === 'tips') return 'take_payment';
   if (resource === 'tips') return 'take_payment';
   if (resource === 'sales') {
+    if (method === 'POST' && /\/complete$/.test(path)) return 'complete';
     if (method === 'POST' && /\/return$/.test(path)) return 'return';
     if (/\/tip$/.test(path) || /\/tip-options$/.test(path)) return 'take_payment';
     if (/\/tip$/.test(path) || /\/tip-options$/.test(path)) return 'take_payment';

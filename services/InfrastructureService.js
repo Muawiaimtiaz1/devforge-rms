@@ -258,10 +258,13 @@ class InfrastructureService {
       ORDER BY kou.updated_at DESC LIMIT 1
     ) as kitchen_updated_at`);
     const query = db('sales as s')
+      .join('shops as shop', 'shop.id', 's.shop_id')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .leftJoin('users as u', 's.waiter_id', 'u.id')
       .leftJoin('users as cb', 's.user_id', 'cb.id')
       .where('s.shop_id', shopId)
+      .whereNot('shop.shop_type', 'retail')
+      .whereNot('s.order_type', 'walk_in')
       .select(
         's.id', 's.order_number', 's.user_id as punched_by_user_id', 's.kitchen_id', 's.order_type', 's.order_status', 's.table_id', 's.token_number',
         's.guest_count', 's.created_at', 's.updated_at', 's.preparing_at', 's.kitchen_completed_at', 's.served_at', 's.special_instructions as order_notes',

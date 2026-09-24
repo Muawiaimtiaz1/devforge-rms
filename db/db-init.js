@@ -38,11 +38,14 @@ async function initPostgres() {
       console.log("✅ PostgreSQL schema applied successfully.");
     }
 
+    await query(`ALTER TABLE shops ADD COLUMN IF NOT EXISTS allowed_order_types TEXT NOT NULL DEFAULT 'dine_in,takeaway,delivery'`);
+
     // Keep existing deployments aligned with postgres-schema.sql. CREATE TABLE IF
     // NOT EXISTS does not add columns that were introduced after a table existed.
     await query("ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT");
+    await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS shop_type TEXT NOT NULL DEFAULT 'restaurant'");
     await query("ALTER TABLE shops ALTER COLUMN shop_type SET DEFAULT 'restaurant'");
-    await query("UPDATE shops SET shop_type = 'restaurant' WHERE shop_type IS NULL OR shop_type <> 'restaurant'");
+    await query("UPDATE shops SET shop_type = 'restaurant' WHERE shop_type IS NULL OR shop_type NOT IN ('restaurant', 'retail', 'retail_restaurant')");
     await query("UPDATE expense_categories SET name = 'Restaurant Expense' WHERE name = 'Shop Expense'");
     await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS table_visibility_mode TEXT NOT NULL DEFAULT 'all'");
     await query("ALTER TABLE shops ADD COLUMN IF NOT EXISTS realtime_printing_enabled INTEGER NOT NULL DEFAULT 0");

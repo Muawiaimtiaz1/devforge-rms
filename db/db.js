@@ -915,8 +915,12 @@ if (!tableExists) {
 
     if (!shopCols.some((c) => c.name === "shop_type")) {
       console.log("🔧 Updating database: Adding shop_type to shops...");
-      db.exec("ALTER TABLE shops ADD COLUMN shop_type TEXT DEFAULT 'restaurant';");
+      db.exec("ALTER TABLE shops ADD COLUMN shop_type TEXT NOT NULL DEFAULT 'restaurant';");
       console.log("✅ shop_type column added to shops.");
+    }
+
+    if (!shopCols.some((c) => c.name === 'allowed_order_types')) {
+      db.exec(`ALTER TABLE shops ADD COLUMN allowed_order_types TEXT NOT NULL DEFAULT 'dine_in,takeaway,delivery';`);
     }
 
     // Migration: Add kitchen printer assignment to users
@@ -1408,7 +1412,7 @@ try {
 // RESTAURANT-ONLY DATA MIGRATION
 // -----------------------------------------------------------------------------
 try {
-  db.prepare("UPDATE shops SET shop_type = 'restaurant' WHERE shop_type IS NULL OR shop_type != 'restaurant'").run();
+  db.prepare("UPDATE shops SET shop_type = 'restaurant' WHERE shop_type IS NULL OR shop_type NOT IN ('restaurant', 'retail', 'retail_restaurant')").run();
   db.prepare("UPDATE expense_categories SET name = 'Restaurant Expense' WHERE name = 'Shop Expense'").run();
 } catch (e) {
   console.error("Failed to apply restaurant-only data migration:", e.message);

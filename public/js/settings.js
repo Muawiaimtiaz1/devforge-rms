@@ -1194,6 +1194,7 @@ function toggleUserPanelPicker(role) {
 // ─── Shop Management Helpers ──────────────────────────────────────────
 function allPanels() {
   return [
+    { id: 'reports', name: 'Reports', icon: 'R', panels: ['reports'] },
     { id: "dashboard", name: "Main Dashboard", icon: "📊", panels: ["dashboard"] },
     { id: "pos", name: "POS Terminal", icon: "🛒", panels: ["pos", "product-categories", "expense-categories"] },
     { id: "delivery", name: "Delivery Panel", icon: "🚚", panels: ["delivery"] },

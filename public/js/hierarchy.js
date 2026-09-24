@@ -37,7 +37,7 @@ function renderHierarchyUI() {
       <div class="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
         <div>
           <h3 class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Master Platform Hierarchy</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Multi-tenant view of all restaurants, assigned admins, staff, and partners.</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Multi-tenant view of all shops, assigned admins, staff, and partners.</p>
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
           <div class="relative">
@@ -46,7 +46,7 @@ function renderHierarchyUI() {
           </div>
           <button onclick="openCreateShop()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all shadow-md flex items-center gap-2 justify-center">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-            New Restaurant
+            New Shop
           </button>
         </div>
       </div>
@@ -130,6 +130,27 @@ function renderHierarchyBlock(
       : isGlobal
         ? "SYSTEM"
         : "NONE";
+  const shopTypeMeta = {
+    restaurant: {
+      label: "Restaurant",
+      icon: "&#127860;",
+      badgeClass: "text-amber-600 bg-amber-50 dark:bg-amber-900/20",
+    },
+    retail: {
+      label: "Retail",
+      icon: "&#128722;",
+      badgeClass: "text-blue-600 bg-blue-50 dark:bg-blue-900/20",
+    },
+    retail_restaurant: {
+      label: "Retail + Restaurant",
+      icon: "&#127978;",
+      badgeClass: "text-violet-600 bg-violet-50 dark:bg-violet-900/20",
+    },
+  }[shop?.shop_type || "restaurant"] || {
+    label: "Shop",
+    icon: "&#127978;",
+    badgeClass: "text-slate-600 bg-slate-100 dark:bg-slate-800",
+  };
 
   return `
     <div class="glass rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800/80 hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-lg transition-all duration-300 flex flex-col justify-between h-full bg-white dark:bg-slate-900 group">
@@ -146,7 +167,7 @@ function renderHierarchyBlock(
                <h4 class="font-black text-lg text-slate-900 dark:text-white tracking-tight">${name}</h4>
                ${isGlobal ? "" : `<span class="w-2 h-2 rounded-full ${shop.status === "active" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"}"></span>`}
              </div>
-             <span class="text-[9px] uppercase font-black tracking-widest text-slate-400 mt-0.5 inline-block">Restaurant</span>
+             <span class="text-[9px] uppercase font-black tracking-widest text-slate-400 mt-0.5 inline-block">${shopTypeMeta.label}</span>
            </div>
          </div>
 
@@ -173,20 +194,20 @@ function renderHierarchyBlock(
 
       <!-- Card Footer Action -->
       <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/20 border-t border-slate-100 dark:border-slate-800/60 mt-auto flex items-center justify-between">
-        <span class="px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-widest text-amber-600 bg-amber-50 dark:bg-amber-900/20">
-          🍽️ Restaurant
+        <span class="px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-widest ${shopTypeMeta.badgeClass}">
+          ${shopTypeMeta.icon} ${shopTypeMeta.label}
         </span>
         
         <div class="flex items-center gap-2">
-          <button onclick="event.preventDefault(); event.stopPropagation(); openRenameShop(${shop.id})" class="px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-slate-700 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl transition-all shadow-sm" title="Rename Restaurant">
+          <button onclick="event.preventDefault(); event.stopPropagation(); openRenameShop(${shop.id})" class="px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-slate-700 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl transition-all shadow-sm" title="Rename ${shopTypeMeta.label}">
             Rename
           </button>
-          <button onclick="event.preventDefault(); event.stopPropagation(); deleteShop(${shop.id}, '${name.replace(/'/g, "\\'")}')" class="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all border border-transparent hover:border-rose-200 dark:hover:border-rose-800" title="Remove Restaurant">
+          <button onclick="event.preventDefault(); event.stopPropagation(); deleteShop(${shop.id}, '${name.replace(/'/g, "\\'")}')" class="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all border border-transparent hover:border-rose-200 dark:hover:border-rose-800" title="Remove ${shopTypeMeta.label}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
           </button>
-          <button onclick="event.preventDefault(); event.stopPropagation(); openEditShop(${shop.id})" class="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-indigo-600 dark:hover:bg-indigo-600 border border-slate-200 dark:border-slate-700 hover:border-indigo-600 dark:hover:border-indigo-600 rounded-xl transition-all shadow-sm flex items-center gap-1.5" title="Manage Restaurant">
+          <button onclick="event.preventDefault(); event.stopPropagation(); openEditShop(${shop.id})" class="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-indigo-600 dark:hover:bg-indigo-600 border border-slate-200 dark:border-slate-700 hover:border-indigo-600 dark:hover:border-indigo-600 rounded-xl transition-all shadow-sm flex items-center gap-1.5" title="Manage ${shopTypeMeta.label}">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-            Manage Restaurant
+            Manage ${shopTypeMeta.label}
           </button>
         </div>
       </div>
@@ -237,7 +258,7 @@ function openShopWizard() {
     name: "",
     adminUsername: "",
     adminPassword: "",
-    services: { dine_in: true, takeaway: true, delivery: true },
+    services: { dine_in: true, takeaway: true, delivery: true, walk_in: false },
     panels: [],
     employees: [],
     kitchens: []
@@ -247,19 +268,18 @@ function openShopWizard() {
 
 function setWizardType(t) {
   _wizardData.type = t;
-  wizardNext();
+  _wizardData.services.walk_in = t === 'retail' || t === 'retail_restaurant';
+  renderWizard();
 }
 
 function wizardNext() {
   if (_wizardStep === 2) {
     if (!_wizardData.name) return toast("Please enter a restaurant name", "warning");
-    // Capture services if restaurant
-    if (_wizardData.type === "restaurant") {
-      const checks = document.querySelectorAll(".service-check");
-      checks.forEach(c => {
-        _wizardData.services[c.dataset.service] = c.checked;
-      });
-    }
+    const checks = document.querySelectorAll(".service-check");
+    checks.forEach(c => {
+      _wizardData.services[c.dataset.service] = c.checked;
+    });
+    if (!Object.values(_wizardData.services).some(Boolean)) return toast('Select at least one ordering type', 'warning');
   }
   if (_wizardStep === 3) {
     const selectedTiles = Array.from(document.querySelectorAll('.wiz-panel-tile[data-selected="true"]'));
@@ -275,29 +295,21 @@ function wizardNext() {
     if (!_wizardData.adminUsername || !_wizardData.adminPassword) return toast("Admin credentials required", "warning");
   }
 
-  // Skip Kitchen Setup if not a restaurant
-  if (_wizardStep === 5 && _wizardData.type !== "restaurant") {
-    _wizardStep = 7;
-  } else {
-    _wizardStep++;
-  }
+  _wizardStep++;
 
   renderWizard();
 }
 
 function wizardPrev() {
-  if (_wizardStep === 7 && _wizardData.type !== "restaurant") {
-    _wizardStep = 5;
-  } else {
-    _wizardStep--;
-  }
+  _wizardStep--;
   renderWizard();
 }
 
 async function submitWizard(btn) {
   const payload = {
     name: _wizardData.name,
-    shop_type: "restaurant",
+    shop_type: _wizardData.type,
+    allowed_order_types: Object.entries(_wizardData.services).filter(([, enabled]) => enabled).map(([type]) => type),
     allowed_panels: _wizardData.panels,
     adminUsername: _wizardData.adminUsername,
     adminPassword: _wizardData.adminPassword,
@@ -344,7 +356,15 @@ function renderWizard() {
       content = `
         <div class="space-y-6 py-4">
           <div>
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2">Establishment Name</label>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2">Shop Type</label>
+            <select onchange="setWizardType(this.value)" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-indigo-500 outline-none font-bold text-base transition-all">
+              <option value="restaurant" ${_wizardData.type === "restaurant" ? "selected" : ""}>Restaurant</option>
+              <option value="retail" ${_wizardData.type === "retail" ? "selected" : ""}>Retail</option>
+              <option value="retail_restaurant" ${_wizardData.type === "retail_restaurant" ? "selected" : ""}>Retail + Restaurant</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2">Shop Name</label>
             <input type="text" oninput="_wizardData.name=this.value" value="${_wizardData.name}" placeholder="e.g. Blue Lagoon Diner" class="w-full px-6 py-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-indigo-500 outline-none font-bold text-lg transition-all">
           </div>
           <div class="space-y-3">
@@ -380,6 +400,17 @@ function renderWizard() {
                    </div>
                    <input type="checkbox" checked class="service-check w-6 h-6 rounded-lg border-slate-300 text-indigo-600 focus:ring-indigo-500" data-service="delivery">
                 </label>
+                ${_wizardData.type === 'retail' || _wizardData.type === 'retail_restaurant' ? `
+                <label class="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl cursor-pointer hover:border-indigo-400 transition-all group">
+                   <div class="flex items-center gap-4">
+                      <div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl group-hover:scale-110 transition-all">🛒</div>
+                      <div>
+                        <div class="font-bold text-sm text-slate-800 dark:text-slate-200">Walk-in</div>
+                        <div class="text-[10px] text-slate-400 font-medium">Retail counter order saved before payment</div>
+                      </div>
+                   </div>
+                   <input type="checkbox" ${_wizardData.services.walk_in !== false ? 'checked' : ''} class="service-check w-6 h-6 rounded-lg border-slate-300 text-indigo-600 focus:ring-indigo-500" data-service="walk_in">
+                </label>` : ''}
              </div>
           </div>
         </div>
@@ -532,6 +563,7 @@ function renderWizard() {
     </div>
   `;
 
+  setTimeout(restoreWizardServiceChecks, 0);
   openModal(titles[_wizardStep - 1], `
     <div class="flex flex-col min-h-[420px]">
       <div class="flex-1">${content}</div>
@@ -725,6 +757,12 @@ function removeWizardKitchen(idx) {
   renderWizard();
 }
 
+function restoreWizardServiceChecks() {
+  document.querySelectorAll('.service-check').forEach(check => {
+    check.checked = _wizardData.services[check.dataset.service] !== false;
+  });
+}
+
 function toggleWizPanel(el) {
   const isSelected = el.dataset.selected === "true";
   const next = !isSelected;
@@ -797,6 +835,14 @@ function shopFormHtml(shop = null) {
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Restaurant Name</label>
         <input id="shop-name" type="text" value="${shop ? (shop.name || shop.store_name || "").replace(/"/g, "&quot;") : ""}" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-indigo-500 transition-all">
       </div>
+      ${!shop ? `<div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Shop Type</label>
+        <select id="shop-type" class="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-indigo-500 transition-all">
+          <option value="restaurant">Restaurant</option>
+          <option value="retail">Retail</option>
+          <option value="retail_restaurant">Retail + Restaurant</option>
+        </select>
+      </div>` : ""}
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Launch Panels (Master Control)</label>
         <div class="grid grid-cols-2 gap-2">
@@ -847,6 +893,7 @@ async function saveShop(id) {
   if (!payload.name) return toast("Name required", "error");
 
   if (!id) {
+    payload.shop_type = $c("shop-type")?.value || "restaurant";
     const adminUsername = $c("shop-admin-username").value.trim();
     const adminPassword = $c("shop-admin-password").value.trim();
     if (!adminUsername || !adminPassword)

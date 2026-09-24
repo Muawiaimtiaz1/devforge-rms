@@ -72,6 +72,7 @@ function formatReceiptTime(value, timeZone) {
 function formatOrderType(type) {
   if (type === "dine_in") return "Dine-in";
   if (type === "takeaway") return "Takeaway";
+  if (type === "walk_in") return "Walk-in";
   return "Delivery";
 }
 

@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS shops (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  shop_type TEXT NOT NULL DEFAULT 'restaurant' CHECK (shop_type IN ('restaurant', 'retail', 'retail_restaurant')),
+  allowed_order_types TEXT NOT NULL DEFAULT 'dine_in,takeaway,delivery',
   currency TEXT NOT NULL DEFAULT 'PKR',
   status TEXT DEFAULT 'active', -- active, blocked
   allowed_panels TEXT, -- JSON array of panel IDs allotted by master
@@ -187,7 +189,7 @@ CREATE TABLE IF NOT EXISTS sales (
   tax_amount REAL NOT NULL DEFAULT 0,
   payment_method TEXT NOT NULL DEFAULT 'cash',
   amount_received REAL NOT NULL DEFAULT 0,
-  order_type TEXT DEFAULT 'dine_in', -- dine_in, takeaway, delivery
+  order_type TEXT DEFAULT 'dine_in', -- dine_in, takeaway, delivery, walk_in
   order_status TEXT DEFAULT 'pending', -- pending, preparing, ready, completed
   table_id INTEGER,
   waiter_id INTEGER,

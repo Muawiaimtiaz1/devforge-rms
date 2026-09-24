@@ -1,9 +1,12 @@
 const db = require('../db/knex');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
+const { ORDER_TYPES, RESTAURANT_ORDER_TYPES, normalizeOrderTypes } = require('./OrderTypePermissionService');
 
 const shopSchema = z.object({
   name: z.string().min(1),
+  shop_type: z.enum(['restaurant', 'retail', 'retail_restaurant']).default('restaurant'),
+  allowed_order_types: z.array(z.enum(ORDER_TYPES)).min(1).optional().default(RESTAURANT_ORDER_TYPES),
   allowed_panels: z.array(z.string()).optional().default([]),
   adminUsername: z.string().min(3),
   adminPassword: z.string().min(6),
@@ -31,7 +34,8 @@ class ShopService {
     const shops = await db('shops').orderBy('created_at', 'desc');
     return shops.map(s => ({
       ...s,
-      allowed_panels: typeof s.allowed_panels === 'string' ? JSON.parse(s.allowed_panels) : (s.allowed_panels || [])
+      allowed_panels: typeof s.allowed_panels === 'string' ? JSON.parse(s.allowed_panels) : (s.allowed_panels || []),
+      allowed_order_types: normalizeOrderTypes(s.allowed_order_types, s.shop_type)
     }));
   }
 
@@ -43,7 +47,8 @@ class ShopService {
       // 1. Create Restaurant
       const [idObj] = await trx('shops').insert({
         name: data.name,
-        shop_type: 'restaurant',
+        shop_type: data.shop_type,
+        allowed_order_types: JSON.stringify(data.allowed_order_types),
         allowed_panels: panelsJson,
         status: 'active'
       }).returning('id');
@@ -117,6 +122,9 @@ class ShopService {
     if (name) upData.name = name;
     if (status) upData.status = status;
     if (allowed_panels) upData.allowed_panels = JSON.stringify(ensureShopPanels(allowed_panels));
+    if (updates.allowed_order_types !== undefined) {
+      upData.allowed_order_types = JSON.stringify(z.array(z.enum(ORDER_TYPES)).min(1).parse(updates.allowed_order_types));
+    }
 
     if (Object.keys(upData).length === 0) return;
 

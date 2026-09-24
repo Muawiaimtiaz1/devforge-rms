@@ -179,6 +179,7 @@ class AuthService {
     let shopName = 'Master Control';
     let shopCurrency = 'PKR';
     let shopType = 'other';
+    let allowedOrderTypes = ['dine_in', 'takeaway', 'delivery'];
     let subscription = null;
 
     let shopStatus = 'active';
@@ -193,6 +194,7 @@ class AuthService {
       shopName = shop.name;
       shopCurrency = shop.currency || 'PKR';
       shopType = shop.shop_type || 'restaurant';
+      allowedOrderTypes = require('./OrderTypePermissionService').normalizeOrderTypes(shop.allowed_order_types, shop.shop_type);
       shopStatus = shop.status || 'active';
       shopCreatedAt = shop.created_at;
       shopPhone = shop.receipt_phone || '';
@@ -223,6 +225,7 @@ class AuthService {
       shop_name: shopName,
       shop_currency: shopCurrency,
       shop_type: shopType,
+      allowed_order_types: allowedOrderTypes,
       shop_status: shopStatus,
       shop_created_at: shopCreatedAt,
       shop_phone: shopPhone,

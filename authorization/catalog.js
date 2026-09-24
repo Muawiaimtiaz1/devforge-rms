@@ -12,6 +12,7 @@ const MODULES = {
   expenses: ['view', 'create', 'update', 'delete', 'export'],
   tables: ['view', 'manage', 'create', 'update', 'delete'],
   analytics: ['view'],
+  reports: ['view'],
   register: ['view', 'open', 'close', 'cash_drop', 'verify_cash', 'handover', 'view_history'],
   settings: ['view', 'update', 'manage_discounts', 'manage_taxes', 'manage_printers'],
   users: ['view', 'create', 'update', 'delete', 'assign_roles'],
@@ -49,14 +50,14 @@ const STANDARD_ROLES = {
   Rider: ['delivery.view', 'delivery.update_status', 'delivery.take_payment', 'orders.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
   Receptionist: ['dashboard.view', 'orders.view', 'orders.create', 'sales.view', 'sales.take_payment', 'customers.view', 'customers.create', 'register.view', 'register.open', 'register.close', 'register.cash_drop', 'register.handover', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
   'Inventory Staff': ['products.view', 'products.adjust_stock', 'raw_stock.view', 'raw_stock.create', 'raw_stock.adjust', 'raw_stock.record_waste', 'recipes.view', 'waste.view', 'waste.create', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'documents.view', 'documents.download', 'staff_activity.view'],
-  Accountant: ['dashboard.view', 'orders.view', 'sales.view', 'expenses.view', 'expenses.create', 'expenses.update', 'expenses.export', 'analytics.view', 'activity_logs.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'payroll.view', 'payroll.configure', 'payroll.run', 'payroll.review', 'payroll.approve', 'payroll.finalize', 'documents.view', 'documents.download', 'staff_activity.view'],
+  Accountant: ['dashboard.view', 'orders.view', 'sales.view', 'expenses.view', 'expenses.create', 'expenses.update', 'expenses.export', 'analytics.view', 'reports.view', 'activity_logs.view', 'attendance.view', 'attendance.clock', 'attendance.correct', 'leave.view', 'leave.request', 'payroll.view', 'payroll.configure', 'payroll.run', 'payroll.review', 'payroll.approve', 'payroll.finalize', 'documents.view', 'documents.download', 'staff_activity.view'],
 };
 
 const PANEL_MODULES = {
   dashboard: ['dashboard'], pos: ['orders'], 'sales-history': ['sales'], delivery: ['delivery'],
   kds: ['kitchen_orders'], products: ['products'], brands: ['brands'], 'raw-stock': ['raw_stock'],
   'waste-management': ['waste'], 'raw-stock': ['raw_stock', 'recipes'], customers: ['customers'], expenses: ['expenses'], tables: ['tables'],
-  analytics: ['analytics'], register: ['register'], logs: ['activity_logs'], settings: ['settings'],
+  analytics: ['analytics'], reports: ['reports'], register: ['register'], logs: ['activity_logs'], settings: ['settings'],
   users: ['users', 'roles', 'attendance', 'leave', 'payroll', 'documents', 'staff_activity'], notifications: ['notifications'],
 };
 

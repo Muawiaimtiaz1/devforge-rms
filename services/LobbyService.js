@@ -2,6 +2,7 @@ const { getUserPermissions } = require('../authorization/service');
 const shiftService = require('./ShiftService');
 
 const MODULES = [
+  { id: 'reports', label: 'Reports', desc: 'Filter, print, and export operational reports.', icon: '' },
   { id: 'dashboard', label: 'Dashboards', desc: 'Overview of sales, revenue, and store health analytics.', icon: '<rect x="3" y="3" width="7" height="7" rx="1" fill="#4F46E5"/><rect x="14" y="3" width="7" height="7" rx="1" fill="#0EA5E9"/><rect x="3" y="14" width="7" height="7" rx="1" fill="#10B981"/><rect x="14" y="14" width="7" height="7" rx="1" fill="#F59E0B"/>' },
   { id: 'pos', label: 'POS Terminal', desc: 'Process sales, generate bills, and manage customer checkouts.', icon: '<path d="M4 6h16v10c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V6z" fill="#F59E0B"/><path d="M3 6h18v2H3V6z" fill="#D97706"/><circle cx="12" cy="12" r="2" fill="white"/>' },
   { id: 'delivery', label: 'Delivery Panel', desc: 'Create shared delivery orders, update their status, and record who received payment.', icon: '<path d="M3 6h11v10H3z" fill="#2563EB"/><path d="M14 10h4l3 3v3h-7z" fill="#60A5FA"/><circle cx="7" cy="18" r="2" fill="#1D4ED8"/><circle cx="17" cy="18" r="2" fill="#1D4ED8"/>' },
@@ -29,7 +30,7 @@ const PLATFORM_OWNER_PANELS = new Set(['dashboard', 'hierarchy', 'subscriptions'
 const PANEL_MODULES = {
   dashboard: ['dashboard'], pos: ['orders'], delivery: ['delivery'], 'sales-history': ['sales'], customers: ['customers'],
   products: ['products'], brands: ['brands'], 'raw-stock': ['raw_stock', 'recipes'], 'waste-management': ['waste'],
-  kds: ['kitchen_orders'], expenses: ['expenses'], tables: ['tables'], analytics: ['analytics'], register: ['register'],
+  kds: ['kitchen_orders'], expenses: ['expenses'], tables: ['tables'], analytics: ['analytics'], reports: ['reports'], register: ['register'],
   logs: ['activity_logs'], settings: ['settings'], users: ['users', 'roles'], notifications: ['notifications'],
 };
 
@@ -75,7 +76,7 @@ async function getLobby(user, resolvedPermissions) {
     modules: allowed.map(module => ({
       ...module,
       frontend: ['dashboard', 'users', 'raw-stock', 'notifications', 'notification-inbox', 'analytics'].includes(module.id) ? 'react' : 'legacy',
-      target: module.id === 'analytics' ? '/app/analytics' : module.id === 'dashboard' ? '/app/dashboard' : module.id === 'users' ? '/app/staff' : module.id === 'raw-stock' ? '/app/inventory' : module.id === 'notifications' ? '/app/notifications' : module.id === 'notification-inbox' ? '/app/notification-inbox' : `/dashboard#${module.id}`,
+      target: module.id === 'analytics' ? '/app/analytics' : module.id === 'reports' ? '/app/reports' : module.id === 'dashboard' ? '/app/dashboard' : module.id === 'users' ? '/app/staff' : module.id === 'raw-stock' ? '/app/inventory' : module.id === 'notifications' ? '/app/notifications' : module.id === 'notification-inbox' ? '/app/notification-inbox' : `/dashboard#${module.id}`,
     })),
   };
 }

@@ -6,6 +6,7 @@ const ChangePassword = lazy(() => import('./modules/auth/ChangePassword'))
 const LoginPage = lazy(() => import('./modules/auth/LoginPage'))
 const InventoryPage = lazy(() => import('./modules/inventory/InventoryPage'))
 const AnalyticsPage = lazy(() => import('./modules/analytics/AnalyticsPage'))
+const ReportsPage = lazy(() => import('./modules/reports/ReportsPage'))
 const DashboardPage = lazy(() => import('./modules/dashboard/DashboardPage'))
 const NotificationsPage = lazy(() => import('./modules/notifications/NotificationsPage'))
 
@@ -24,6 +25,7 @@ function App() {
     : window.location.pathname.startsWith('/app/login') ? <LoginPage />
       : window.location.pathname.startsWith('/app/staff') ? <StaffDirectory />
       : window.location.pathname.startsWith('/app/inventory') ? <InventoryPage />
+        : window.location.pathname.startsWith('/app/reports') ? <ReportsPage />
         : window.location.pathname.startsWith('/app/analytics') ? <AnalyticsPage />
         : window.location.pathname.startsWith('/app/dashboard') ? <DashboardPage />
           : window.location.pathname.startsWith('/app/notification-inbox') ? <NotificationsPage channel={'inbox'} />

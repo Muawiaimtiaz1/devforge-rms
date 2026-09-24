@@ -4106,7 +4106,12 @@ function showPOSOrderTypeChooser() {
           <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Select Order Type</h2>
           <p class="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Choose how this order will be served.</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+          <button type="button" onclick="startPOSOrder('walk_in')" class="group p-8 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-cyan-500 hover:shadow-2xl hover:shadow-cyan-500/10 transition-all text-center">
+            <span class="mx-auto w-20 h-20 rounded-2xl bg-cyan-50 dark:bg-cyan-950/50 flex items-center justify-center text-4xl group-hover:scale-110 transition-transform">🛒</span>
+            <span class="block mt-5 text-xl font-black text-slate-900 dark:text-white">Walk-in</span>
+            <span class="block mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Retail counter order saved before payment</span>
+          </button>
           <button type="button" onclick="startPOSOrder('dine_in')" class="group p-8 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-indigo-500 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all text-center">
             <span class="mx-auto w-20 h-20 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center group-hover:scale-110 transition-transform">
               <svg class="w-12 h-12" viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="25" cy="25" r="14" fill="#c7d2fe"/><circle cx="25" cy="25" r="9" fill="#ffffff"/><path d="M10 8v13M6 8v8c0 3 2 5 4 5s4-2 4-5V8M10 21v19M39 8c-5 4-6 12-3 17h3v15" stroke="#4f46e5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -4134,13 +4139,23 @@ function showPOSOrderTypeChooser() {
         </div>
       </div>
     </div>`;
+  const defaultOrderTypes = ['retail', 'retail_restaurant'].includes(currentUser.shop_type)
+    ? ['dine_in', 'takeaway', 'delivery', 'walk_in']
+    : ['dine_in', 'takeaway', 'delivery'];
+  const allowedOrderTypes = Array.isArray(currentUser.allowed_order_types) ? currentUser.allowed_order_types : defaultOrderTypes;
+  document.querySelectorAll('#page-content button').forEach(button => {
+    const match = button.getAttribute('onclick')?.match(/^startPOSOrder\('([^']+)'\)$/);
+    if (match && !allowedOrderTypes.includes(match[1])) button.remove();
+  });
 }
 
 async function startPOSOrder(orderType) {
   if (!currentUserHasPermission('orders.create')) return toast('You do not have permission to create orders.', 'error');
-  const allowedTypes = ['dine_in', 'takeaway', 'delivery'];
+  const allowedTypes = ['dine_in', 'takeaway', 'delivery', 'walk_in'];
   if (!allowedTypes.includes(orderType)) return;
-  const labels = { dine_in: ['Opening dine-in', 'Loading your floor and available tables...'], takeaway: ['Opening takeaway', 'Preparing the counter order screen...'], delivery: ['Opening delivery', 'Loading customers, riders, and menu...'] };
+  const shopAllowedTypes = Array.isArray(currentUser.allowed_order_types) ? currentUser.allowed_order_types : allowedTypes;
+  if (!shopAllowedTypes.includes(orderType)) return toast('This order type is not enabled for this shop.', 'error');
+  const labels = { dine_in: ['Opening dine-in', 'Loading your floor and available tables...'], takeaway: ['Opening takeaway', 'Preparing the counter order screen...'], delivery: ['Opening delivery', 'Loading customers, riders, and menu...'], walk_in: ['Opening walk-in', 'Preparing the retail counter order...'] };
   const [title, detail] = labels[orderType];
   return withAppLoader(title, detail, async () => {
     if (orderType === 'dine_in') return renderPOSTableSelection();
@@ -4409,6 +4424,12 @@ async function renderPOS() {
       detail: 'Customer delivery',
       icon: '🚚',
       style: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+    },
+    walk_in: {
+      label: 'Walk-in Order',
+      detail: 'Retail counter sale',
+      icon: '🛒',
+      style: 'border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200'
     }
   };
   const activePOSOrderMeta = posOrderTypeMeta[activePOSOrderType] || posOrderTypeMeta.dine_in;
@@ -4418,7 +4439,7 @@ async function renderPOS() {
     const targetShop = (shops || []).find(s => s.id === managedShopId);
     if (targetShop) baseShopType = targetShop.shop_type;
   }
-  const isRetail = false;
+  const isRetail = baseShopType === 'retail' || activePOSOrderType === 'walk_in';
   window._posIsRetail = isRetail;
 
   const discountPresetOptions = _posDiscountPresets.map((preset) => {
@@ -4787,6 +4808,7 @@ async function renderPOS() {
                 <option value="dine_in">Dine-in</option>
                 <option value="takeaway">Takeaway</option>
                 <option value="delivery">Delivery</option>
+                <option value="walk_in">Walk-in</option>
               </select>
               <button onclick="renderPOSOrders()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-400 transition-all active:scale-95">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -4961,21 +4983,21 @@ function closePOSCheckout(immediate = false) {
 }
 
 function switchOrderType(type) {
-  const isRetail = false;
+  const isRetail = window._posIsRetail === true;
   if (type !== 'orders') {
     window._posOrderType = type;
     window._posLastOrderType = type;
   }
 
   const activeType = type === 'orders'
-    ? (window._posOrderType || (isRetail ? 'takeaway' : 'dine_in'))
+    ? (window._posOrderType || (isRetail ? 'walk_in' : 'dine_in'))
     : type;
   const compactOrderSelector = getPOSLayout() === "split" && _currentPage === "pos";
   const orderButtonSize = compactOrderSelector ? 'py-1.5 px-1 text-[10px]' : 'py-2.5 px-2 text-xs';
   const activeOrderClass = `flex items-center justify-center gap-1.5 ${orderButtonSize} rounded-xl bg-indigo-600 text-white font-bold transition-all`;
   const inactiveOrderClass = `flex items-center justify-center gap-1.5 ${orderButtonSize} rounded-xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all`;
 
-  ['dine_in', 'takeaway', 'delivery'].forEach(t => {
+  ['dine_in', 'takeaway', 'delivery', 'walk_in'].forEach(t => {
     const btn = $c(`otype-${t}`);
     if (!btn) return;
     btn.className = t === activeType ? activeOrderClass : inactiveOrderClass;
@@ -5221,7 +5243,7 @@ async function updateAndPrintBill(id, orderType) {
 
   try {
     await api(`/api/sales/${id}/details`, 'PATCH', data);
-    const completed = await completeOrderFromPOS(id, true);
+    const completed = await completeOrderFromPOS(id, true, orderType);
     if (!completed) return;
     if (fullyPaid) {
       await printCustomerBill(id);
@@ -5355,6 +5377,7 @@ async function renderPOSOrdersNow() {
             ${s.delivery_address ? `<div class="text-[10px] font-medium text-slate-400 truncate max-w-[180px]" title="${escapeOrderValue(s.delivery_address)}">${escapeOrderValue(s.delivery_address)}</div>` : ""}
           `
           : escapeOrderValue(s.customer_name || 'Walk-in');
+      const displayTypeLabel = s.order_type === 'walk_in' ? 'Walk-in' : typeLabel;
 
       let statusColor = 'bg-slate-100 text-slate-600';
       if (s.order_status === 'pending') statusColor = 'bg-amber-100 text-amber-600';
@@ -5373,12 +5396,12 @@ async function renderPOSOrdersNow() {
         : currentUserHasPermission('orders.take_payment') && currentUserHasPermission('orders.complete')
           ? `<button onclick="showOrderCompleteModal(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Payment & Complete</button>`
           : currentUserHasPermission('orders.complete')
-            ? `<button onclick="completeOrderFromPOS(${s.id})" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Complete</button>` : '';
+            ? `<button onclick="completeOrderFromPOS(${s.id}, false, '${s.order_type}')" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-sm">Complete</button>` : '';
 
       return `
         <tr class="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
           <td class="px-4 py-4 font-bold text-slate-900 dark:text-white text-sm">#${s.order_number || s.id}</td>
-          <td class="px-4 py-4 text-xs font-bold text-slate-500">${typeLabel}</td>
+          <td class="px-4 py-4 text-xs font-bold text-slate-500">${displayTypeLabel}</td>
           <td class="px-4 py-4">
             <div class="text-sm font-black text-slate-700 dark:text-slate-200">${detail}</div>
           </td>
@@ -5458,13 +5481,14 @@ function relativeOrderTime(value) {
 }
 
 function orderStatusLabel(order) {
+  if ((window._posIsRetail === true || order.order_type === 'walk_in') && order.order_status === 'payment_pending') return 'Saved';
   if (order.order_type === 'takeaway' && order.order_status === 'ready') return 'Ready for pickup';
   if (order.order_type === 'takeaway' && order.order_status === 'served') return 'Handed over';
   return String(order.order_status || 'pending').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
 function renderActiveOrderCard(order) {
-  const type = order.order_type === 'dine_in' ? 'Dine-in' : order.order_type === 'takeaway' ? 'Takeaway' : 'Delivery';
+  const type = order.order_type === 'dine_in' ? 'Dine-in' : order.order_type === 'takeaway' ? 'Takeaway' : order.order_type === 'walk_in' ? 'Walk-in' : 'Delivery';
   const context = order.order_type === 'dine_in'
     ? `Table ${escapeOrderValue(order.table_number || 'N/A')}`
     : order.order_type === 'delivery'
@@ -5486,7 +5510,7 @@ function renderActiveOrderCard(order) {
     <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
       ${currentUserHasPermission('orders.view') ? `<button onclick="viewOrderItems(${order.id})" class="flex-1 min-w-[120px] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black">Order Details</button>` : ''}
       ${currentUserHasPermission('orders.update') ? `<button onclick="editOrder(${order.id})" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-black">Edit</button>` : ''}
-      ${['dine_in', 'takeaway'].includes(order.order_type) && order.order_status === 'ready' && (Number(order.user_id) === Number(currentUser?.id) || Number(order.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist') ? `<button onclick="markOrderServed(${order.id}, '${order.order_type}')" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">${order.order_type === 'takeaway' ? 'Mark Handed Over' : 'Mark Served'}</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
+      ${['dine_in', 'takeaway'].includes(order.order_type) && order.order_status === 'ready' && (Number(order.user_id) === Number(currentUser?.id) || Number(order.waiter_id) === Number(currentUser?.id) || currentUser?.role === 'receptionist') ? `<button onclick="markOrderServed(${order.id}, '${order.order_type}')" class="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black">${order.order_type === 'takeaway' ? 'Mark Handed Over' : 'Mark Served'}</button>` : canPayAndComplete ? `<button onclick="showOrderCompleteModal(${order.id})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Pay</button>` : currentUserHasPermission('orders.complete') ? `<button onclick="completeOrderFromPOS(${order.id}, false, '${order.order_type}')" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-black">Complete</button>` : ''}
     </div>
   </article>`;
 }
@@ -5570,7 +5594,7 @@ async function viewOrderItems(id, readOnly = false) {
     const isPaymentPaid = Number(sale.amount_received || 0) >= Number(sale.total || 0) - 0.01;
     const canEditOrder = !readOnly && currentUserHasPermission('orders.update');
     const canEditDelivery = canEditOrder && isDelivery && !['ready', 'completed'].includes(sale.order_status);
-    const serviceLabel = sale.order_type === 'dine_in' ? 'Dine-in' : sale.order_type === 'takeaway' ? 'Takeaway' : 'Delivery';
+    const serviceLabel = sale.order_type === 'dine_in' ? 'Dine-in' : sale.order_type === 'takeaway' ? 'Takeaway' : sale.order_type === 'walk_in' ? 'Walk-in' : 'Delivery';
     const currentRiderId = Number(sale.rider_id || 0);
     const riderList = Array.isArray(assignableUsers) ? [...assignableUsers] : [];
     if (currentRiderId && !riderList.some(u => Number(u.id) === currentRiderId)) {
@@ -5884,11 +5908,14 @@ function cancelEdit() {
   toast("Edit cancelled");
 }
 
-async function completeOrderFromPOS(id, skipConfirm = false) {
+async function completeOrderFromPOS(id, skipConfirm = false, orderType = null) {
   if (!currentUserHasPermission('orders.complete')) return toast('You do not have permission to complete orders.', 'error');
   if (!skipConfirm && !confirm('Are you sure you want to complete this order and move it to sales history?')) return false;
   try {
-    const result = await api(_currentPage === 'delivery' ? `/api/delivery/${id}/status` : `/api/kds/${id}/status`, 'PATCH', { status: 'completed' });
+    const retailCompletion = window._posIsRetail === true || orderType === 'walk_in';
+    const result = retailCompletion
+      ? await api(`/api/sales/${id}/complete`, 'POST', {})
+      : await api(_currentPage === 'delivery' ? `/api/delivery/${id}/status` : `/api/kds/${id}/status`, 'PATCH', { status: 'completed' });
     if (result?.error) throw new Error(result.error);
     toast('Order completed!');
     renderPOSOrders();
@@ -6344,7 +6371,7 @@ async function updateAndCompleteOrder(id) {
     const updateResult = await api(`/api/sales/${id}/details`, 'PATCH', data);
     if (updateResult?.error) throw new Error(updateResult.error);
 
-    const completed = await completeOrderFromPOS(id, true);
+    const completed = await completeOrderFromPOS(id, true, s.order_type);
     if (!completed) return;
     if (fullyPaid) await printCustomerBill(id);
     else await printUnpaidBill(id);
@@ -7395,11 +7422,12 @@ function calculateCartTotal() {
   }
 
   if (checkoutBtn && !_posCheckoutSubmitting) {
+    checkoutBtn.onclick = window._posIsRetail ? () => checkout('payment_pending') : () => checkout('completed');
     if (_editingOrderId) {
       checkoutBtn.innerHTML = `<span>Update Order #${_tempEditSaleDetails?.order_number || _editingOrderId}</span>`;
       checkoutBtn.className = `${compactAction ? "py-1 text-xs h-9 rounded-xl gap-2" : "py-4 text-xl h-20 rounded-2xl gap-3"} bg-amber-500 hover:bg-amber-400 text-white font-black shadow-2xl transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center w-full`;
     } else {
-      checkoutBtn.innerHTML = `<span>Place Order</span>`;
+      checkoutBtn.innerHTML = `<span>${window._posIsRetail ? 'Save Order' : 'Place Order'}</span>`;
       checkoutBtn.className = `${compactAction ? "py-1 text-xs h-9 rounded-xl gap-2" : "py-4 text-xl h-20 rounded-2xl gap-3"} bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-100 text-white dark:text-slate-900 font-black shadow-2xl transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center`;
     }
   }
@@ -7558,7 +7586,7 @@ function toggleQuotationMode(isQuotation) {
     btn.classList.add("bg-amber-500", "dark:bg-amber-400", "text-amber-950", "dark:text-amber-950");
     btn.classList.remove("bg-slate-900", "dark:bg-white", "text-white", "dark:text-slate-900");
   } else {
-    btn.textContent = "Place Order";
+    btn.textContent = window._posIsRetail === true ? "Save Order" : "Place Order";
     btn.classList.remove("bg-amber-500", "dark:bg-amber-400", "text-amber-950", "dark:text-amber-950");
     btn.classList.add("bg-slate-900", "dark:bg-white", "text-white", "dark:text-slate-900");
   }
@@ -7584,6 +7612,7 @@ function getPOSActionButton(status = "completed") {
 }
 
 function getPOSActionLabel(status = "completed", isEditing = false) {
+  if (window._posIsRetail === true && status === "payment_pending") return isEditing ? "Update Order" : "Save Order";
   if (isEditing) return status === "pending" ? "Update Kitchen" : "Update Order";
   return status === "pending" ? "Kitchen" : "Place Order";
 }
@@ -7749,15 +7778,29 @@ async function checkout(status = 'completed') {
     orderPersisted = true;
     const completedSaleId = r.saleId || _editingOrderId;
     const completedOrderNumber = r.orderNumber || completedSaleId;
+    const savedRetailOrder = window._posIsRetail === true && status === 'payment_pending';
     
     if (isEditing) {
       toast("Order updated successfully!");
       _editingOrderId = null;
+    } else if (savedRetailOrder) {
+      toast(`Order #${completedOrderNumber} saved in View Orders.`);
     } else {
       toast(`Order placed! ${shopCurrencyCode()} ` + r.total);
     }
 
     closePOSCheckout(true);
+
+    if (savedRetailOrder) {
+      cart = [];
+      _editingOrderId = null;
+      _tempEditSaleDetails = null;
+      _posSelectedCustomer = null;
+      _posCheckoutSubmitting = false;
+      if (btn) btn.removeAttribute('aria-busy');
+      await openPOSOrdersView();
+      return;
+    }
 
     if (!isEditing && window._posIsRetail && status === 'completed') {
       printCustomerBill(completedSaleId);
@@ -7865,7 +7908,7 @@ async function printKitchenBill(saleId) {
     </div>
 
     <div class="order-info">
-      <div class="bold" style="font-size: 14px;">${sale.order_type === 'dine_in' ? '🍽️ DINE-IN' : sale.order_type === 'takeaway' ? '🥡 TAKEAWAY' : '🚚 DELIVERY'}</div>
+      <div class="bold" style="font-size: 14px;">${_formatOrderType(sale.order_type).toUpperCase()}</div>
       ${sale.table_id ? `<div class="bold" style="font-size: 16px;">TABLE: ${sale.table_number || 'N/A'}</div>` : ''}
       ${sale.token_number ? `<div class="bold" style="font-size: 16px;">TOKEN: ${sale.token_number}</div>` : ''}
       <div style="margin-top: 3px;">Time: ${new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
@@ -8189,7 +8232,7 @@ async function printBill(saleId, isUnpaid = false) {
       <strong>Staff:</strong> ${seller ? seller.name : "Staff"}<br>
       <strong>Customer:</strong> ${sale.customer_name || "Walk-in"}<br>
       ${sale.customer_phone ? `<strong>Phone:</strong> ${sale.customer_phone}<br>` : ""}
-      <strong>Type:</strong> ${sale.order_type === 'dine_in' ? 'Dine-in' : sale.order_type === 'takeaway' ? 'Takeaway' : 'Delivery'}<br>
+      <strong>Type:</strong> ${_formatOrderType(sale.order_type)}<br>
       <strong>Payment:</strong> ${method}<br>
     </div>
 
@@ -8600,6 +8643,7 @@ async function renderSalesHistory(onlyPendingDues = false) {
               <option value="dine_in">Dine-in</option>
               <option value="takeaway">Takeaway</option>
               <option value="delivery">Delivery</option>
+              <option value="walk_in">Walk-in</option>
             </select>
           </div>
           <button onclick="navigate('${onlyPendingDues ? 'sales-history' : 'pending-dues'}')" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-100 dark:border-transparent hover:bg-indigo-100 transition-all text-xs">
@@ -8669,7 +8713,7 @@ function _renderRestrictedSalesTable() {
   body.innerHTML = rows.length ? rows.map(sale => `
     <tr class="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
       <td class="px-5 py-4 font-bold text-indigo-600 dark:text-indigo-400">#${escapeOrderValue(sale.order_number || sale.id)}${sale.order_type === 'takeaway' && sale.token_number ? `<div class="mt-1 text-xs text-slate-500">Token ${escapeOrderValue(sale.token_number)}</div>` : ''}</td>
-      <td class="px-5 py-4 text-xs font-bold text-slate-600 dark:text-slate-300">${escapeOrderValue(sale.order_type === 'takeaway' ? 'Takeaway' : sale.order_type === 'dine_in' ? 'Dine-in' : 'Delivery')}</td>
+      <td class="px-5 py-4 text-xs font-bold text-slate-600 dark:text-slate-300">${escapeOrderValue(_formatOrderType(sale.order_type))}</td>
       <td class="px-5 py-4 text-xs font-bold text-slate-700 dark:text-slate-200">${escapeOrderValue(orderStatusLabel(sale))}</td>
       <td class="px-5 py-4 text-right">
         ${sale.order_type === 'takeaway' && sale.order_status === 'ready' ? `<button onclick="markOrderServed(${Number(sale.id)}, 'takeaway')" class="mr-2 inline-flex items-center rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white">Mark Handed Over</button>` : ''}

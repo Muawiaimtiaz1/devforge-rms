@@ -1,4 +1,5 @@
 const db = require('../db/knex');
+const { assertOrderTypeAllowed } = require('./OrderTypePermissionService');
 const tipsService = require('../src/modules/tips/tips.service');
 const customerService = require('./CustomerService');
 const notificationService = require('./NotificationService');
@@ -746,6 +747,9 @@ class SalesService {
    */
   async createSale(payload, shopId, userId) {
     const data = checkoutSchema.parse(payload);
+    await assertOrderTypeAllowed(shopId, data.order_type);
+    const shop = await db('shops').where({ id: shopId }).select('shop_type').first();
+    const isRetailOrder = shop?.shop_type === 'retail' || data.order_type === 'walk_in';
     const creator = await db('users').where({ id: userId, shop_id: shopId }).first('role');
     if (['waiter', 'order_taker'].includes(String(creator?.role || '').toLowerCase())
       && (data.order_type === 'takeaway' || !data.waiter_id)) {
@@ -1077,7 +1081,7 @@ class SalesService {
       if (!existing) throw error;
       return { saleId: existing.id, orderNumber: existing.order_number || existing.id, total: Number(existing.total || 0), duplicate: true };
     }
-    const routedKitchenIds = await this.getRoutedKitchenIdsForSale(result.saleId, shopId);
+    const routedKitchenIds = isRetailOrder ? [] : await this.getRoutedKitchenIdsForSale(result.saleId, shopId);
     await this.notifyNewOrder({
       saleId: result.saleId,
       orderNumber: result.orderNumber,
@@ -1239,6 +1243,9 @@ class SalesService {
 
   async updateSaleItems(saleId, payload, shopId, userId, options = {}) {
     const data = checkoutSchema.parse(payload);
+    await assertOrderTypeAllowed(shopId, data.order_type);
+    const shop = await db('shops').where({ id: shopId }).select('shop_type').first();
+    const isRetailOrder = shop?.shop_type === 'retail' || data.order_type === 'walk_in';
     
     const result = await db.transaction(async (trx) => {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
@@ -1540,12 +1547,12 @@ class SalesService {
         ? await this.generatePrintJobs(saleId, itemChanges, shopId, trx, { isUpdate: true })
         : { queued: 0, printer_configured: true };
       const updatedSaleForRouting = { ...sale, kitchen_id: data.kitchen_id || sale.kitchen_id };
-      const [oldKitchenIds, newKitchenIds] = await Promise.all([
+      const [oldKitchenIds, newKitchenIds] = isRetailOrder ? [[], []] : await Promise.all([
         this.getKitchenIdsForItems(trx, sale, oldItems, shopId),
         this.getKitchenIdsForItems(trx, updatedSaleForRouting, resolvedItems, shopId),
       ]);
 
-      const kitchenChangeGroups = await this.getKitchenChangeGroups(
+      const kitchenChangeGroups = isRetailOrder ? new Map() : await this.getKitchenChangeGroups(
         trx,
         updatedSaleForRouting,
         kitchenChanges,
@@ -1604,16 +1611,18 @@ class SalesService {
       }
       // Preserve the legacy shared row for rollback compatibility. New KDS
       // reads prefer the isolated per-kitchen record above.
-      await trx('kitchen_order_updates').insert({
-        sale_id: saleId,
-        shop_id: shopId,
-        changes_json: JSON.stringify(kitchenChanges),
-        updated_at: trx.fn.now(),
-      }).onConflict('sale_id').merge({
-        shop_id: shopId,
-        changes_json: JSON.stringify(kitchenChanges),
-        updated_at: trx.fn.now(),
-      });
+      if (!isRetailOrder) {
+        await trx('kitchen_order_updates').insert({
+          sale_id: saleId,
+          shop_id: shopId,
+          changes_json: JSON.stringify(kitchenChanges),
+          updated_at: trx.fn.now(),
+        }).onConflict('sale_id').merge({
+          shop_id: shopId,
+          changes_json: JSON.stringify(kitchenChanges),
+          updated_at: trx.fn.now(),
+        });
+      }
 
       return {
         saleId,
@@ -1643,6 +1652,48 @@ class SalesService {
     return result;
   }
 
+
+  async completeRetailOrder(saleId, shopId, userId) {
+    return db.transaction(async (trx) => {
+      const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
+      if (!sale) {
+        const error = new Error('Sale not found');
+        error.status = 404;
+        throw error;
+      }
+      const shop = await trx('shops').where({ id: shopId }).select('shop_type').first();
+      if (!shop || (shop.shop_type !== 'retail' && sale.order_type !== 'walk_in')) {
+        const error = new Error('Retail completion is available only for retail or walk-in orders.');
+        error.status = 409;
+        throw error;
+      }
+      if (sale.order_status === 'completed') {
+        const error = new Error('This order is already completed.');
+        error.status = 409;
+        throw error;
+      }
+      if (sale.order_status !== 'payment_pending') {
+        const error = new Error('Only saved retail orders can be completed here.');
+        error.status = 409;
+        throw error;
+      }
+
+      const activeShift = await trx('shifts').where({ shop_id: shopId, user_id: userId, status: 'open' }).first();
+      if (!activeShift) throw new Error('Open a register shift before completing this order.');
+
+      const updated = await trx('sales')
+        .where({ id: saleId, shop_id: shopId, order_status: 'payment_pending' })
+        .update({ order_status: 'completed', shift_id: sale.shift_id || activeShift.id, updated_at: trx.fn.now() });
+      if (Number(updated) !== 1) {
+        const error = new Error('This order was already completed or changed. Refresh View Orders.');
+        error.status = 409;
+        throw error;
+      }
+
+      await cashDrawerService.queueForPaidCompletedSale(saleId, shopId, trx);
+      return { saleId: Number(saleId), orderNumber: sale.order_number || sale.id, status: 'completed' };
+    });
+  }
 
   async getSales(shopId, currentUser = null) {
     const query = db('sales as s')
