@@ -27,6 +27,7 @@ export default function PosTableSelection({ tables, floors, user, selectedId, ch
     return [...floorGroups, other].filter(group => group.rows.length)
   }, [floors, groupByWaiter, tables])
 
+  const floorNames = useMemo(() => new Map(floors.map(floor => [Number(floor.id), floor.name])), [floors])
   const visibleGroups = view === 'cards' && !groupByWaiter ? [{ id:'all', name:'All Tables', rows:tables }] : groups
 
   return <main className={'table-choice table-' + view}>
@@ -41,7 +42,7 @@ export default function PosTableSelection({ tables, floors, user, selectedId, ch
     <div className="table-counts"><span className="available">{counts.available || 0} Available</span><span className="reserved">{counts.reserved || 0} Reserved</span><span className="occupied">{counts.occupied || 0} Occupied</span></div>
     {visibleGroups.map(group => <section key={group.id}>
       <header><b>{group.name}</b><small>{group.rows.length} tables · {groupByWaiter ? 'Waiter' : 'Floor'}</small></header>
-      <div>{group.rows.map(table => <button className={(table.status || 'available') + (String(selectedId) === String(table.id) ? ' selected' : '')} disabled={table.status === 'occupied'} key={table.id} onClick={() => choose(table)}><small>{table.status || 'available'}</small><b>Table {table.table_number}</b><span>Up to {table.capacity || 4} guests</span></button>)}</div>
+      <div>{group.rows.map(table => <button className={(table.status || 'available') + (String(selectedId) === String(table.id) ? ' selected' : '')} disabled={table.status === 'occupied'} key={table.id} onClick={() => choose(table)}><small>{table.status || 'available'}</small><b>Table {table.table_number}</b><span>Floor: {floorNames.get(Number(table.floor_id)) || 'Other Tables'}</span><span>Up to {table.capacity || 4} guests</span></button>)}</div>
     </section>)}
     {!visibleGroups.length && <p className="table-empty">No tables are configured.</p>}
   </main>
