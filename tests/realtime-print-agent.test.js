@@ -25,6 +25,7 @@ test('realtime agent is generated separately without changing polling template',
   const generated = buildRealtimeAgentSource(template, {
     websiteName: 'test', shopName: 'Test', shopId: 7, serverUrl: 'https://example.test', printers: ['Kitchen A'], realtimeToken: 'token'
   });
+  assert.ok(generated.includes('C:\\\\Users\\\\Home\\\\AppData\\\\Local\\\\SumatraPDF'));
   assert.match(template, /api\/print-jobs\/poll/);
   assert.match(template, /setInterval\(pollJobs, CONFIG\.POLL_INTERVAL_MS\)/);
   assert.doesNotMatch(generated, /api\/print-jobs\/poll/);
@@ -42,7 +43,10 @@ test('realtime agent is generated separately without changing polling template',
   assert.match(generated, /finally \{\r?\n\s*releasePdfRenderSlot\(\);/);
   assert.match(generated, /Authorization: `Bearer/);
   assert.match(generated, /api\/realtime-print-jobs\/\$\{id\}\/\$\{path\}/);
-  assert.match(generated, /15 \* 60 \* 1000/);
+  assert.match(generated, /REALTIME_RECONCILE_MS/);
+  assert.match(generated, /REALTIME_RECONCILE_MS \|\| 5000/);
+  assert.doesNotMatch(generated, /transports: \['websocket'\]/);
+  assert.match(generated, /Realtime connection established/);
   assert.match(generated, /print:heartbeat/);
   new vm.Script(generated);
 });

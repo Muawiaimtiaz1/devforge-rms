@@ -31,7 +31,7 @@ const CONFIG = {
     SERVER_URL: process.env.SERVER_URL || AGENT_PROFILE.serverUrl,
     POLL_INTERVAL_MS: Number(process.env.POLL_INTERVAL_MS || 500),      // Fast polling keeps drawer pulses responsive
     BROWSER_PATH: process.env.PRINT_BROWSER_PATH || '',                // Optional explicit Chrome/Edge/Chromium path
-    SUMATRA_PATH: process.env.SUMATRA_PATH || '',                      // Optional explicit SumatraPDF.exe path (Windows only)
+    SUMATRA_PATH: process.env.SUMATRA_PATH || 'C:\\Users\\Home\\AppData\\Local\\SumatraPDF', // Directory or SumatraPDF.exe path (Windows only)
     PRINT_TIMEOUT_MS: Number(process.env.PRINT_TIMEOUT_MS || 30000),
     CASH_DRAWER_PIN: Number(process.env.CASH_DRAWER_PIN || 0),          // 0 = drawer pin 2, 1 = drawer pin 5
 };

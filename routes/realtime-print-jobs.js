@@ -14,6 +14,7 @@ function buildRealtimeAgentSource(template, profile) {
   source = source.replace(/const AGENT_PROFILE = Object\.freeze\(\{[^\r\n]*\}\);/, `const AGENT_PROFILE = Object.freeze(${JSON.stringify(profile)});`);
   const laneController = [
     'const MAX_CONCURRENT_PDF_RENDERS = Math.max(1, Number(process.env.MAX_CONCURRENT_PDF_RENDERS || 2));',
+    'const REALTIME_RECONCILE_MS = Math.max(1000, Number(process.env.REALTIME_RECONCILE_MS || 5000));',
     'let activePdfRenders = 0;',
     'const pdfRenderWaiters = [];',
     'async function acquirePdfRenderSlot() {',
@@ -72,7 +73,7 @@ function buildRealtimeAgentSource(template, profile) {
     '    } finally {\r\n        setTimeout(() => {\r\n            try {\r\n                if (fs.existsSync(pdfPath))',
     '    } finally {\r\n        releasePdfRenderSlot();\r\n        setTimeout(() => {\r\n            try {\r\n                if (fs.existsSync(pdfPath))'
   );
-  source = source.replace(/setInterval\(pollJobs, CONFIG\.POLL_INTERVAL_MS\);\r?\npollJobs\(\);/, "const socket = io(`${CONFIG.SERVER_URL}/realtime-print-agent`, { auth: { token: AGENT_PROFILE.realtimeToken }, transports: ['websocket'], reconnection: true });\nsocket.on('print:ready', event => (event.printers || ASSIGNED_PRINTERS).forEach(requestPrinterDrain));\nsocket.on('print:available', event => requestPrinterDrain(event.stationName));\nsocket.on('connect_error', error => console.error('Realtime connection error:', error.message));\nsetInterval(() => socket.connected && socket.emit('print:heartbeat'), 30000);\n// A slow safety reconciliation recovers any event missed during an unusual disconnect.\nsetInterval(pollJobs, 15 * 60 * 1000);\npollJobs();");
+  source = source.replace(/setInterval\(pollJobs, CONFIG\.POLL_INTERVAL_MS\);\r?\npollJobs\(\);/, "const socket = io(`${CONFIG.SERVER_URL}/realtime-print-agent`, { auth: { token: AGENT_PROFILE.realtimeToken }, reconnection: true });\nsocket.on('connect', () => console.log('Realtime connection established.'));\nsocket.on('print:ready', event => (event.printers || ASSIGNED_PRINTERS).forEach(requestPrinterDrain));\nsocket.on('print:available', event => requestPrinterDrain(event.stationName));\nsocket.on('connect_error', error => console.error('Realtime connection error:', error.message));\nsetInterval(() => socket.connected && socket.emit('print:heartbeat'), 30000);\n// Frequent reconciliation recovers missed events and keeps printing available when a proxy blocks WebSockets.\nsetInterval(pollJobs, REALTIME_RECONCILE_MS);\npollJobs();");
   return source;
 }
 
