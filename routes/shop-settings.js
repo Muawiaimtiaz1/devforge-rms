@@ -4,6 +4,7 @@ const { requireAuth, requireAdmin } = require("../middleware/auth");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { toDatabaseBoolean } = require("../utils/form-values");
 const router = express.Router();
 
 const storage = multer.diskStorage({
@@ -103,7 +104,7 @@ router.post("/", requireAuth, requireAdmin, upload.single("logo"), async (req, r
         if (req.body[f] !== undefined) {
             let val = req.body[f];
             if (["use_logo_on_receipt", "use_text_on_receipt", "auto_calculate_damage_to_loss", "realtime_printing_enabled"].includes(f)) {
-                val = (val === "true" || val === true || val === 1) ? 1 : 0;
+                val = toDatabaseBoolean(val);
             }
             updates.push(`${f} = ${isPostgres ? '$' + (values.push(val)) : '?'}`);
             if (!isPostgres) values.push(val);
