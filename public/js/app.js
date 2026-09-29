@@ -4234,11 +4234,14 @@ function renderPOSTableSelectionContent() {
     const selected = Number(table.id) === selectedId;
     const disabled = table.status === 'occupied';
     const style = getPOSTableStatusStyle(table.status, selected);
+    const floor = _posFloors.find(item => Number(item.id) === Number(table.floor_id));
+    const floorName = floor?.name || 'Other Tables';
     return `<button type="button" ${disabled ? 'disabled aria-disabled="true"' : ''} onclick="selectPOSTable(${table.id})"
       class="${mapView ? 'min-h-28 min-w-32' : 'min-h-36'} relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${style} ${disabled ? 'cursor-not-allowed opacity-70' : 'hover:-translate-y-0.5 hover:shadow-lg'}">
       <span class="absolute right-3 top-3 h-2.5 w-2.5 rounded-full ${table.status === 'available' ? 'bg-emerald-500' : table.status === 'reserved' ? 'bg-amber-500' : 'bg-rose-500'}"></span>
       <span class="block text-[10px] font-black uppercase tracking-[0.16em] opacity-70">${escapeOrderValue(table.status || 'available')}</span>
       <span class="mt-2 block text-xl font-black">Table ${escapeOrderValue(table.table_number)}</span>
+      <span class="mt-1 block text-[10px] font-black uppercase tracking-wider opacity-75">Floor: ${escapeOrderValue(floorName)}</span>
       <span class="mt-1 block text-xs font-bold opacity-70">Up to ${Number(table.capacity || 4)} guests</span>
       ${selected ? '<span class="mt-3 inline-flex rounded-full bg-white/20 px-2 py-1 text-[10px] font-black uppercase">Selected</span>' : ''}
     </button>`;
