@@ -9,6 +9,10 @@ const AnalyticsPage = lazy(() => import('./modules/analytics/AnalyticsPage'))
 const ReportsPage = lazy(() => import('./modules/reports/ReportsPage'))
 const DashboardPage = lazy(() => import('./modules/dashboard/DashboardPage'))
 const NotificationsPage = lazy(() => import('./modules/notifications/NotificationsPage'))
+const SalesPage = lazy(() => import('./modules/sales/SalesPage'))
+const TablesPage = lazy(() => import('./modules/tables/TablesPage'))
+const ExpensesPage = lazy(() => import('./modules/expenses/ExpensesPage'))
+const PosPage = lazy(() => import('./modules/pos/PosPage'))
 
 function RouteLoader() {
   return (
@@ -25,6 +29,10 @@ function App() {
     : window.location.pathname.startsWith('/app/login') ? <LoginPage />
       : window.location.pathname.startsWith('/app/staff') ? <StaffDirectory />
       : window.location.pathname.startsWith('/app/inventory') ? <InventoryPage />
+      : window.location.pathname.startsWith('/app/tables') ? <TablesPage />
+      : window.location.pathname.startsWith('/app/sales') ? <SalesPage />
+      : window.location.pathname.startsWith('/app/expenses') ? <ExpensesPage />
+      : window.location.pathname.startsWith('/app/pos') ? <PosPage />
         : window.location.pathname.startsWith('/app/reports') ? <ReportsPage />
         : window.location.pathname.startsWith('/app/analytics') ? <AnalyticsPage />
         : window.location.pathname.startsWith('/app/dashboard') ? <DashboardPage />

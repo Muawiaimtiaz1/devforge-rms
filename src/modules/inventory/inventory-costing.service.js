@@ -1,28 +1,28 @@
-const db = require('../../../db/knex');
+const { MIN_ACTIVE_QUANTITY, quantity: normalizeQuantity, positiveQuantity, subtractQuantity, addQuantity } = require('./inventory-quantity');
 
-const EPSILON = 0.000001;
+const EPSILON = MIN_ACTIVE_QUANTITY / 2;
 const money = (value) => Number(Number(value || 0).toFixed(2));
 
 function planFifoAllocations(batches, requestedQuantity) {
-  let remaining = Number(requestedQuantity);
+  let remaining = positiveQuantity(requestedQuantity, 'FIFO quantity must be greater than zero.');
   const allocations = [];
   for (const batch of batches) {
     if (remaining <= EPSILON) break;
-    const take = Math.min(remaining, Number(batch.quantity));
+    const batchQuantity = normalizeQuantity(batch.quantity);
+    const take = normalizeQuantity(Math.min(remaining, batchQuantity));
     if (take <= EPSILON) continue;
     const unitCost = Number(batch.buying_price || 0);
     allocations.push({ batchId: batch.id, quantity: take, unitCost, totalCost: money(take * unitCost) });
-    remaining -= take;
+    remaining = subtractQuantity(remaining, take);
   }
   return { allocations, remaining };
 }
 
 class InventoryCostingService {
   async consumeRawFifo(trx, { shopId, saleId, saleItemId, rawStockId, quantity }) {
-    const requested = Number(quantity);
+    const requested = positiveQuantity(quantity, 'FIFO quantity must be greater than zero.');
     if (!Number.isInteger(Number(shopId)) || Number(shopId) <= 0) throw new Error('Shop is required for FIFO consumption.');
     if (!Number.isInteger(Number(rawStockId)) || Number(rawStockId) <= 0) throw new Error('Ingredient is required for FIFO consumption.');
-    if (!Number.isFinite(requested) || requested <= 0) throw new Error('FIFO quantity must be greater than zero.');
 
     const raw = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId, is_deleted: 0 }).forUpdate().first();
     if (!raw) throw new Error('Raw ingredient not found.');
@@ -40,9 +40,9 @@ class InventoryCostingService {
     for (const allocation of allocations) {
       await trx('raw_stock_batches')
         .where({ id: allocation.batchId, raw_stock_id: rawStockId, shop_id: shopId })
-        .update({ quantity: db.raw('quantity - ?', [allocation.quantity]) });
+        .update({ quantity: subtractQuantity(batches.find((batch) => Number(batch.id) === Number(allocation.batchId)).quantity, allocation.quantity) });
     }
-    await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).update({ current_stock: db.raw('current_stock - ?', [requested]) });
+    await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).update({ current_stock: subtractQuantity(raw.current_stock, requested) });
 
     if (saleId && saleItemId) {
       await trx('sale_inventory_consumptions').insert(allocations.map((allocation) => ({
@@ -70,9 +70,16 @@ class InventoryCostingService {
       if (!allocation.raw_stock_id || !allocation.raw_stock_batch_id) throw new Error('An original FIFO batch is unavailable; this order cannot be safely edited.');
       const restored = await trx('raw_stock_batches')
         .where({ id: allocation.raw_stock_batch_id, raw_stock_id: allocation.raw_stock_id, shop_id: shopId })
-        .update({ quantity: db.raw('quantity + ?', [Number(allocation.quantity)]) });
+        .forUpdate()
+        .first();
       if (!restored) throw new Error('An original FIFO batch is unavailable; this order cannot be safely edited.');
-      await trx('raw_stocks').where({ id: allocation.raw_stock_id, shop_id: shopId }).update({ current_stock: db.raw('current_stock + ?', [Number(allocation.quantity)]) });
+      const restoredBatchQuantity = addQuantity(restored.quantity, allocation.quantity);
+      await trx('raw_stock_batches')
+        .where({ id: allocation.raw_stock_batch_id, raw_stock_id: allocation.raw_stock_id, shop_id: shopId })
+        .update({ quantity: restoredBatchQuantity });
+      const raw = await trx('raw_stocks').where({ id: allocation.raw_stock_id, shop_id: shopId }).forUpdate().first();
+      if (!raw) throw new Error('Raw ingredient not found while restoring inventory.');
+      await trx('raw_stocks').where({ id: allocation.raw_stock_id, shop_id: shopId }).update({ current_stock: addQuantity(raw.current_stock, allocation.quantity) });
     }
     return true;
   }

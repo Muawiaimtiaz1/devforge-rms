@@ -9,12 +9,14 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "build:analytics-css": "tailwindcss -c analytics.tailwind.cjs -i src/modules/analytics/analytics.source.css -o src/modules/analytics/analytics.generated.css --minify",
-    "predev": "npm run build:analytics-css",
-    "prebuild": "npm run build:analytics-css",
+    "predev": "npm run build:analytics-css && npm run build:pos-css",
+    "prebuild": "npm run build:analytics-css && npm run build:pos-css",
     "test:analytics": "node tests/analytics-parity.cjs",
-    "test:tip-filter": "node tests/tip-date-filter.cjs"
+    "test:tip-filter": "node tests/tip-date-filter.cjs",
+    "build:pos-css": "tailwindcss -c pos.tailwind.cjs -i src/modules/pos/pos.source.css -o src/modules/pos/pos.generated.css --minify"
   },
   "dependencies": {
+    "lucide-react": "^1.48.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

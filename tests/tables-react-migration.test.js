@@ -1,0 +1,22 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+
+test('Tables is routed to React while permissions and vanilla fallback remain available', () => {
+  const app = fs.readFileSync(path.join(__dirname, '../frontend/src/App.jsx'), 'utf8')
+  const lobby = fs.readFileSync(path.join(__dirname, '../services/LobbyService.js'), 'utf8')
+  const reactTables = fs.readFileSync(path.join(__dirname, '../frontend/src/modules/tables/TablesPage.jsx'), 'utf8')
+  const vanilla = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8')
+
+  assert.match(app, /startsWith\('\/app\/tables'\) \? <TablesPage \/>/)
+  assert.match(lobby, /'sales-history', 'tables'\]\.includes\(module\.id\) \? 'react'/)
+  assert.match(lobby, /module\.id === 'tables' \? '\/app\/tables'/)
+  assert.match(reactTables, /permissions\?\.includes\('tables\.' \+ action\)/)
+  assert.match(reactTables, /permissions\?\.includes\('tables\.manage'\)/)
+  assert.match(reactTables, /\/api\/tables\/access-config/)
+  assert.match(reactTables, /\/assignment/)
+  assert.match(reactTables, /action: 'update'/)
+  assert.match(reactTables, /action: 'delete'/)
+  assert.match(vanilla, /async function renderTables\(\)/)
+})

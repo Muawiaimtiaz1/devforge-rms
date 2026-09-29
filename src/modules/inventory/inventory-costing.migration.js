@@ -15,6 +15,18 @@ async function ensureInventoryCostingSchema(query) {
   `);
   await query('CREATE INDEX IF NOT EXISTS idx_sale_inventory_consumptions_sale_item ON sale_inventory_consumptions(shop_id, sale_item_id)');
   await query('CREATE INDEX IF NOT EXISTS idx_sale_inventory_consumptions_batch ON sale_inventory_consumptions(shop_id, raw_stock_batch_id)');
+  await query('UPDATE raw_stock_batches SET quantity = ROUND(quantity::numeric, 3)::double precision WHERE quantity <> ROUND(quantity::numeric, 3)::double precision');
+  await query(`UPDATE raw_stocks AS stock
+    SET current_stock = COALESCE((
+      SELECT ROUND(SUM(batch.quantity)::numeric, 3)::double precision
+      FROM raw_stock_batches AS batch
+      WHERE batch.raw_stock_id = stock.id AND batch.shop_id = stock.shop_id AND batch.quantity >= 0.001
+    ), 0)
+    WHERE current_stock <> COALESCE((
+      SELECT ROUND(SUM(batch.quantity)::numeric, 3)::double precision
+      FROM raw_stock_batches AS batch
+      WHERE batch.raw_stock_id = stock.id AND batch.shop_id = stock.shop_id AND batch.quantity >= 0.001
+    ), 0)`);
 }
 
 module.exports = { ensureInventoryCostingSchema };

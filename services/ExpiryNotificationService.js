@@ -2,6 +2,7 @@ const db = require('../db/knex');
 const preferenceService = require('../src/modules/notification-preferences/notification-preferences.service');
 const pushNotificationService = require('./PushNotificationService');
 const { getUserPermissions } = require('../authorization/service');
+const { MIN_ACTIVE_QUANTITY } = require('../src/modules/inventory/inventory-quantity');
 
 function dateKey(value) {
   if (typeof value === 'string') {
@@ -58,7 +59,7 @@ class ExpiryNotificationService {
       .where('b.shop_id', shopId)
       .where('rs.shop_id', shopId)
       .where('rs.is_deleted', 0)
-      .where('b.quantity', '>', 0)
+      .where('b.quantity', '>=', MIN_ACTIVE_QUANTITY)
       .whereNotNull('b.expiry_date')
       .where('b.expiry_date', '<=', dateKey(warningEnd))
       .select('b.id', 'b.quantity', 'b.expiry_date', 'rs.name', 'rs.unit');

@@ -75,8 +75,8 @@ async function getLobby(user, resolvedPermissions) {
     },
     modules: allowed.map(module => ({
       ...module,
-      frontend: ['dashboard', 'users', 'raw-stock', 'notifications', 'notification-inbox', 'analytics'].includes(module.id) ? 'react' : 'legacy',
-      target: module.id === 'analytics' ? '/app/analytics' : module.id === 'reports' ? '/app/reports' : module.id === 'dashboard' ? '/app/dashboard' : module.id === 'users' ? '/app/staff' : module.id === 'raw-stock' ? '/app/inventory' : module.id === 'notifications' ? '/app/notifications' : module.id === 'notification-inbox' ? '/app/notification-inbox' : `/dashboard#${module.id}`,
+      frontend: ['dashboard', 'users', 'raw-stock', 'notifications', 'notification-inbox', 'analytics', 'reports', 'sales-history', 'tables', 'expenses'].includes(module.id) ? 'react' : 'legacy',
+      target: module.id === 'analytics' ? '/app/analytics' : module.id === 'reports' ? '/app/reports' : module.id === 'sales-history' ? '/app/sales' : module.id === 'tables' ? '/app/tables' : module.id === 'expenses' ? '/app/expenses' : module.id === 'dashboard' ? '/app/dashboard' : module.id === 'users' ? '/app/staff' : module.id === 'raw-stock' ? '/app/inventory' : module.id === 'notifications' ? '/app/notifications' : module.id === 'notification-inbox' ? '/app/notification-inbox' : `/dashboard#${module.id}`,
     })),
   };
 }

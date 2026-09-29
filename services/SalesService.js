@@ -7,6 +7,7 @@ const pushNotificationService = require('./PushNotificationService');
 const infrastructureService = require('./InfrastructureService');
 const cashDrawerService = require('./CashDrawerService');
 const inventoryCostingService = require('../src/modules/inventory/inventory-costing.service');
+const { quantity: normalizeQuantity, addQuantity } = require('../src/modules/inventory/inventory-quantity');
 const { effectiveKitchenStatuses } = require('../utils/kitchen-status');
 const { classifyAffectedKitchenQueues } = require('../utils/kitchen-queue');
 const { mergeKitchenChanges } = require('../utils/kitchen-pending-changes');
@@ -266,7 +267,8 @@ class SalesService {
     for (const [rawStockId, usageQuantity] of totals) {
       const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).forUpdate().first();
       if (!stock) throw new Error(`An ingredient configured for "${productName}" no longer exists.`);
-      const totalNeeded = usageQuantity / Number(stock.conversion_factor || 1);
+      const totalNeeded = normalizeQuantity(usageQuantity / Number(stock.conversion_factor || 1));
+      if (totalNeeded <= 0) continue;
       if (Number(stock.current_stock) < totalNeeded) throw new Error(`Insufficient stock of ingredient "${stock.name}" for "${productName}".`);
     }
   }
@@ -279,7 +281,8 @@ class SalesService {
       const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).first();
       if (!stock) throw new Error('An ingredient configured for this product no longer exists.');
       if (!Number.isFinite(Number(stock.conversion_factor)) || Number(stock.conversion_factor) <= 0) throw new Error(`Ingredient "${stock.name}" has an invalid conversion factor.`);
-      const totalNeeded = usageQuantity / Number(stock.conversion_factor || 1);
+      const totalNeeded = normalizeQuantity(usageQuantity / Number(stock.conversion_factor || 1));
+      if (totalNeeded <= 0) continue;
       const result = await inventoryCostingService.consumeRawFifo(trx, {
         shopId, rawStockId, quantity: totalNeeded,
         saleId: consumption.saleId,
@@ -310,10 +313,11 @@ class SalesService {
     for (const [rawStockId, usageQuantity] of totals) {
       const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).first();
       if (!stock) continue;
-      const totalToRestore = usageQuantity / Number(stock.conversion_factor || 1);
-      await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).update({ current_stock: db.raw('current_stock + ?', [totalToRestore]) });
+      const totalToRestore = normalizeQuantity(usageQuantity / Number(stock.conversion_factor || 1));
+      if (totalToRestore <= 0) continue;
+      await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).update({ current_stock: addQuantity(stock.current_stock, totalToRestore) });
       const newestBatch = await trx('raw_stock_batches').where({ raw_stock_id: rawStockId, shop_id: shopId }).orderBy('created_at', 'desc').first();
-      if (newestBatch) await trx('raw_stock_batches').where({ id: newestBatch.id }).update({ quantity: db.raw('quantity + ?', [totalToRestore]) });
+      if (newestBatch) await trx('raw_stock_batches').where({ id: newestBatch.id }).update({ quantity: addQuantity(newestBatch.quantity, totalToRestore) });
     }
   }
 
@@ -1311,12 +1315,13 @@ class SalesService {
               for (const link of activeLinks) {
                 const ingredients = await trx('recipe_ingredients').where({ recipe_id: link.recipe_id });
                 for (const ing of ingredients) {
-                  const rs = await trx('raw_stocks').where({ id: ing.raw_stock_id }).first();
+                  const rs = await trx('raw_stocks').where({ id: ing.raw_stock_id, shop_id: shopId }).first();
                   const factor = rs.conversion_factor || 1;
-                  const totalToRestore = (ing.quantity * item.quantity) / factor;
-                  await trx('raw_stocks').where({ id: ing.raw_stock_id }).update({ current_stock: db.raw('current_stock + ?', [totalToRestore]) });
+                  const totalToRestore = normalizeQuantity((ing.quantity * item.quantity) / factor);
+                  if (totalToRestore <= 0) continue;
+                  await trx('raw_stocks').where({ id: ing.raw_stock_id, shop_id: shopId }).update({ current_stock: addQuantity(rs.current_stock, totalToRestore) });
                   const newestBatch = await trx('raw_stock_batches').where({ raw_stock_id: ing.raw_stock_id, shop_id: shopId }).orderBy('created_at', 'desc').first();
-                  if (newestBatch) await trx('raw_stock_batches').where({ id: newestBatch.id }).update({ quantity: db.raw('quantity + ?', [totalToRestore]) });
+                  if (newestBatch) await trx('raw_stock_batches').where({ id: newestBatch.id }).update({ quantity: addQuantity(newestBatch.quantity, totalToRestore) });
                 }
               }
             } else {

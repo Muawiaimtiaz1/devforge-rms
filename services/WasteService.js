@@ -1,5 +1,6 @@
 const db = require('../db/knex');
 const { usageToStockQuantity } = require('../src/modules/inventory/restock-units');
+const { quantity: normalizeQuantity, positiveQuantity, subtractQuantity } = require('../src/modules/inventory/inventory-quantity');
 
 function toNumber(value, fallback = 0) {
   const n = Number(value);
@@ -260,9 +261,9 @@ class WasteService {
     const acceptedUnits = [raw.unit, raw.usage_unit].filter(Boolean);
     if (event.unit && !acceptedUnits.includes(event.unit)) throw new Error('Waste unit does not match the selected ingredient.');
     const usesUsageUnit = raw.usage_unit && event.unit === raw.usage_unit;
-    const stockQuantity = usesUsageUnit
+    const stockQuantity = positiveQuantity(usesUsageUnit
       ? usageToStockQuantity(event.quantity, raw.conversion_factor)
-      : event.quantity;
+      : event.quantity, 'Waste quantity must be at least 0.001.');
 
     if (event.stock_action === 'already_deducted' || event.stock_action === 'no_stock') {
       return {
@@ -275,7 +276,7 @@ class WasteService {
 
     if (toNumber(raw.current_stock) < stockQuantity) throw new Error(`Not enough stock of ${raw.name}.`);
     const { lines, totalCost } = await this.deductRawBatches(trx, shopId, raw, stockQuantity, event.batch_id);
-    await trx('raw_stocks').where({ id: raw.id, shop_id: shopId }).update({ current_stock: db.raw('current_stock - ?', [stockQuantity]) });
+    await trx('raw_stocks').where({ id: raw.id, shop_id: shopId }).update({ current_stock: subtractQuantity(raw.current_stock, stockQuantity) });
     await trx('raw_stock_waste').insert({
       raw_stock_id: raw.id,
       shop_id: shopId,
@@ -288,7 +289,7 @@ class WasteService {
   }
 
   async deductRawBatches(trx, shopId, raw, quantity, batchId) {
-    let remaining = quantity;
+    let remaining = positiveQuantity(quantity);
     const lines = [];
     let totalCost = 0;
     const query = trx('raw_stock_batches')
@@ -299,12 +300,12 @@ class WasteService {
 
     for (const batch of batches) {
       if (remaining <= 0) break;
-      const take = Math.min(remaining, toNumber(batch.quantity));
-      await trx('raw_stock_batches').where({ id: batch.id }).update({ quantity: db.raw('quantity - ?', [take]) });
+      const take = normalizeQuantity(Math.min(remaining, normalizeQuantity(batch.quantity)));
+      await trx('raw_stock_batches').where({ id: batch.id }).update({ quantity: subtractQuantity(batch.quantity, take) });
       const cost = take * toNumber(batch.buying_price);
       totalCost += cost;
       lines.push({ item_type: 'raw_ingredient', raw_stock_id: raw.id, batch_id: batch.id, quantity: take, unit: raw.unit, cost_amount: cost });
-      remaining -= take;
+      remaining = subtractQuantity(remaining, take);
     }
 
     if (remaining > 0.0001) throw new Error('Not enough batch stock for ingredient waste.');
@@ -343,10 +344,10 @@ class WasteService {
           unit: ingredient.unit,
           current_stock: ingredient.current_stock
         };
-        const totalNeeded = (toNumber(ingredient.amount_per_unit) * event.quantity) / (toNumber(ingredient.conversion_factor, 1) || 1);
+        const totalNeeded = positiveQuantity((toNumber(ingredient.amount_per_unit) * event.quantity) / (toNumber(ingredient.conversion_factor, 1) || 1), 'Recipe waste quantity is below 0.001.');
         if (toNumber(raw.current_stock) < totalNeeded) throw new Error(`Not enough stock of ${raw.name}.`);
         const { lines, totalCost: lineCost } = await this.deductRawBatches(trx, shopId, raw, totalNeeded, null);
-        await trx('raw_stocks').where({ id: raw.id }).update({ current_stock: db.raw('current_stock - ?', [totalNeeded]) });
+        await trx('raw_stocks').where({ id: raw.id, shop_id: shopId }).update({ current_stock: subtractQuantity(raw.current_stock, totalNeeded) });
         await trx('raw_stock_waste').insert({
           raw_stock_id: raw.id,
           shop_id: shopId,

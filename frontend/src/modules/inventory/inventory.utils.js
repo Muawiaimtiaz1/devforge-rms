@@ -1,6 +1,7 @@
 export const PURCHASE_UNITS = ['kg', 'liter', 'piece', 'packet', 'box', 'dozen', 'bag', 'crate', 'lb']
 export const USAGE_UNITS = ['g', 'ml', 'piece', 'mg', 'oz', 'lb']
 export const PAGE_SIZE = 20
+export const MIN_ACTIVE_QUANTITY = 0.001
 
 export function number(value, digits = 3) {
   return Number(Number(value || 0).toFixed(digits))
@@ -19,7 +20,7 @@ export function automaticCode(id) {
 }
 
 export function activeBatches(stock) {
-  return (stock?.batches || []).filter((batch) => Number(batch.quantity) > 0)
+  return (stock?.batches || []).filter((batch) => number(batch.quantity) >= MIN_ACTIVE_QUANTITY)
 }
 
 export function nearestExpiry(stock) {

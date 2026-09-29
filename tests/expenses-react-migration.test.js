@@ -1,0 +1,22 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+
+test('Expenses is routed to React while the complete vanilla fallback remains available', () => {
+  const app = fs.readFileSync(path.join(__dirname, '../frontend/src/App.jsx'), 'utf8')
+  const lobby = fs.readFileSync(path.join(__dirname, '../services/LobbyService.js'), 'utf8')
+  const reactExpenses = fs.readFileSync(path.join(__dirname, '../frontend/src/modules/expenses/ExpensesPage.jsx'), 'utf8')
+  const vanilla = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8')
+
+  assert.match(app, /startsWith\('\/app\/expenses'\) \? <ExpensesPage \/>/)
+  assert.match(lobby, /'tables', 'expenses'\]\.includes\(module\.id\) \? 'react'/)
+  assert.match(lobby, /module\.id === 'expenses' \? '\/app\/expenses'/)
+  assert.match(reactExpenses, /permissions\?\.includes\('expenses\.view'\)/)
+  assert.match(reactExpenses, /\/api\/brands\/expense-shares\?month=/)
+  assert.match(reactExpenses, /\/api\/brands\/all-months-dues/)
+  assert.match(reactExpenses, /\/api\/expenses\/bulk/)
+  assert.match(reactExpenses, /\/api\/expense-categories/)
+  assert.match(reactExpenses, /\/api\/brands\/expense-payments/)
+  assert.match(vanilla, /async function renderExpenses\(\)/)
+})

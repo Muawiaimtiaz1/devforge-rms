@@ -47,6 +47,22 @@ try {
   console.log("DB Migration Applied: added expiry_date to raw_stock_batches");
 } catch (e) {}
 db.exec("UPDATE raw_stocks SET ingredient_code = 'ING-' || printf('%05d', id) WHERE ingredient_code IS NULL OR trim(ingredient_code) = '';");
+db.exec('UPDATE raw_stock_batches SET quantity = ROUND(quantity, 3) WHERE quantity <> ROUND(quantity, 3);');
+db.exec(`UPDATE raw_stocks
+  SET current_stock = COALESCE((
+    SELECT ROUND(SUM(raw_stock_batches.quantity), 3)
+    FROM raw_stock_batches
+    WHERE raw_stock_batches.raw_stock_id = raw_stocks.id
+      AND raw_stock_batches.shop_id = raw_stocks.shop_id
+      AND raw_stock_batches.quantity >= 0.001
+  ), 0)
+  WHERE current_stock <> COALESCE((
+    SELECT ROUND(SUM(raw_stock_batches.quantity), 3)
+    FROM raw_stock_batches
+    WHERE raw_stock_batches.raw_stock_id = raw_stocks.id
+      AND raw_stock_batches.shop_id = raw_stocks.shop_id
+      AND raw_stock_batches.quantity >= 0.001
+  ), 0);`);
 db.exec(`
   CREATE TABLE IF NOT EXISTS menu_addons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

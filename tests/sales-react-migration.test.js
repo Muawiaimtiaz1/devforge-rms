@@ -1,0 +1,22 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+
+test('Sales is routed to React while the vanilla fallback remains available', () => {
+  const app = fs.readFileSync(path.join(__dirname, '../frontend/src/App.jsx'), 'utf8')
+  const lobby = fs.readFileSync(path.join(__dirname, '../services/LobbyService.js'), 'utf8')
+  const reactSales = fs.readFileSync(path.join(__dirname, '../frontend/src/modules/sales/SalesPage.jsx'), 'utf8')
+  const vanilla = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8')
+
+  assert.match(app, /startsWith\('\/app\/sales'\) \? <SalesPage \/>/)
+  assert.match(lobby, /'sales-history'(?:, '[^']+')*\]\.includes\(module\.id\) \? 'react'/)
+  assert.match(lobby, /module\.id === 'sales-history' \? '\/app\/sales'/)
+  assert.match(reactSales, /view: 'sales_panel'/)
+  assert.match(reactSales, /payment_status/)
+  assert.match(reactSales, /sales\.take_payment/)
+  assert.match(reactSales, /sales\.return/)
+  assert.match(reactSales, /\/api\/print-jobs\/queue/)
+  assert.match(reactSales, /new URLSearchParams\(\{ format, autoprint: '1'/)
+  assert.match(vanilla, /async function renderSalesHistory/)
+})

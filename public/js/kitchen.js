@@ -271,7 +271,7 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search =
     window._inventoryStockProducts = stockProducts;
     const todayUtc = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     const expiryWarnings = rawStocks.flatMap(stock => (stock.batches || [])
-      .filter(batch => Number(batch.quantity) > 0 && batch.expiry_date)
+      .filter(batch => Number(Number(batch.quantity).toFixed(3)) >= 0.001 && batch.expiry_date)
       .map(batch => ({
         name: stock.name, unit: stock.unit, quantity: Number(batch.quantity),
         expiryDate: String(batch.expiry_date).slice(0, 10),
@@ -322,7 +322,7 @@ async function renderRawStock(ingredientPage = 1, stockProductPage = 1, search =
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
               ${rawStocks.map(rs => {
-                const activeBatches = (rs.batches || []).filter(batch => Number(batch.quantity) > 0);
+                const activeBatches = (rs.batches || []).filter(batch => Number(Number(batch.quantity).toFixed(3)) >= 0.001);
                 const nearestExpiry = activeBatches.map(batch => batch.expiry_date ? String(batch.expiry_date).slice(0, 10) : '').filter(Boolean).sort()[0] || '';
                 return `<tr data-inventory-search="${escapeWasteValue(`${rs.ingredient_code || ''} ${rs.name} ${rs.unit} ${rs.usage_unit || ''}`.toLowerCase())}" class="inventory-catalog-item hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                   <td class="px-5 py-4"><span class="rounded-lg bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[10px] font-black text-slate-500">${escapeWasteValue(rs.ingredient_code || `ING-${String(rs.id).padStart(5, '0')}`)}</span></td>
@@ -1718,7 +1718,7 @@ async function deleteRecipe(id) {
 function viewRawStockBatches(id) {
   const stock = (window._rawStocksList || []).find(item => Number(item.id) === Number(id));
   if (!stock) return toast('Ingredient not found', 'error');
-  const batches = (stock.batches || []).filter(batch => Number(batch.quantity) > 0);
+  const batches = (stock.batches || []).filter(batch => Number(Number(batch.quantity).toFixed(3)) >= 0.001);
   const totalStockValue = batches.reduce((total, batch) => total + (Number(batch.quantity) * Number(batch.buying_price || 0)), 0);
   const formatStockValue = value => Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const modal = document.createElement('div');

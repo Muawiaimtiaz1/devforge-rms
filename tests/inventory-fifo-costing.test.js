@@ -33,6 +33,15 @@ test('FIFO exposes an unmet balance when batches are insufficient', () => {
   assert.ok(Math.abs(result.remaining - 0.3) < 0.000001);
 });
 
+test('FIFO rounds allocations to three decimals and ignores exhausted residuals', () => {
+  const result = planFifoAllocations([
+    { id: 1, quantity: 0.100000000023, buying_price: 500 },
+    { id: 2, quantity: 0.200000000031, buying_price: 600 }
+  ], 0.3);
+  assert.equal(result.remaining, 0);
+  assert.deepEqual(result.allocations.map(row => row.quantity), [0.1, 0.2]);
+});
+
 test('FIFO persistence is tenant scoped, deterministic, and auditable', () => {
   const service = fs.readFileSync(path.join(__dirname, '../src/modules/inventory/inventory-costing.service.js'), 'utf8');
   const migration = fs.readFileSync(path.join(__dirname, '../src/modules/inventory/inventory-costing.migration.js'), 'utf8');
@@ -44,4 +53,7 @@ test('FIFO persistence is tenant scoped, deterministic, and auditable', () => {
   assert.match(migration, /sale_item_id INTEGER NOT NULL REFERENCES sale_items\(id\) ON DELETE CASCADE/);
   assert.match(migration, /quantity NUMERIC\(18, 6\)/);
   assert.match(migration, /total_cost NUMERIC\(18, 2\)/);
+  assert.match(migration, /ROUND\(quantity::numeric, 3\)::double precision/);
+  assert.match(migration, /ROUND\(SUM\(batch\.quantity\)::numeric, 3\)::double precision/);
+  assert.match(migration, /SET current_stock = COALESCE/);
 });

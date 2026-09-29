@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../../api/client'
-import { PAGE_SIZE } from '../inventory.utils'
+import { MIN_ACTIVE_QUANTITY, PAGE_SIZE, number } from '../inventory.utils'
 
 const EMPTY_PAGE = { items: [], pagination: { page: 1, page_size: PAGE_SIZE, total: 0, total_pages: 1 } }
 
 function matchesExpiry(stock, filter) {
   const today = new Date(); const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
   return (stock.batches || []).some((batch) => {
-    if (Number(batch.quantity) <= 0 || !batch.expiry_date) return false
+    if (number(batch.quantity) < MIN_ACTIVE_QUANTITY || !batch.expiry_date) return false
     const days = Math.ceil((Date.parse(`${String(batch.expiry_date).slice(0, 10)}T00:00:00Z`) - todayUtc) / 86400000)
     return filter === 'expiry-expired' ? days < 0 : days >= 0 && days <= 3
   })

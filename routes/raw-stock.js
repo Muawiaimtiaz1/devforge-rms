@@ -3,6 +3,7 @@ const { getSqlite, getPostgres, usePostgres } = require('../db/runtime');
 const { requireAuth } = require('../middleware/auth');
 const wasteService = require('../services/WasteService');
 const { normalizeUsageRestock } = require('../src/modules/inventory/restock-units');
+const { quantity: normalizeQuantity, positiveQuantity, subtractQuantity, addQuantity } = require('../src/modules/inventory/inventory-quantity');
 const router = express.Router();
 
 function ingredientCode(value) {
@@ -69,7 +70,7 @@ router.get('/', requireAuth, async (req, res) => {
                     )
                 )
                 FROM raw_stock_batches rsb
-                WHERE rsb.raw_stock_id = rs.id AND rsb.quantity > 0
+                WHERE rsb.raw_stock_id = rs.id AND rsb.quantity >= 0.001
             ) as batches
             FROM raw_stocks rs
             WHERE rs.shop_id = $1 AND rs.is_deleted = 0${postgresSearchClause}
@@ -89,7 +90,7 @@ router.get('/', requireAuth, async (req, res) => {
                     )
                 )
                 FROM raw_stock_batches rsb
-                WHERE rsb.raw_stock_id = rs.id AND rsb.quantity > 0
+                WHERE rsb.raw_stock_id = rs.id AND rsb.quantity >= 0.001
             ) as batches
             FROM raw_stocks rs
             WHERE rs.shop_id = ? AND rs.is_deleted = 0
@@ -150,6 +151,8 @@ router.post('/', requireAuth, async (req, res) => {
 
     try {
         const expiry = optionalExpiryDate(expiry_date);
+        const openingStock = normalizeQuantity(initial_stock || 0);
+        if (openingStock < 0) throw new Error('Initial stock cannot be negative.');
         let stockId;
         if (usePostgres()) {
             stockId = await getPostgres().withTransaction(async (client) => {
@@ -160,12 +163,12 @@ router.post('/', requireAuth, async (req, res) => {
                 if (code_mode === 'manual' && !requestedCode) throw new Error('Manual Ingredient ID is required.');
                 const { rows } = await client.query(
                     'INSERT INTO raw_stocks (shop_id, ingredient_code, name, unit, usage_unit, conversion_factor, current_stock, min_stock_level) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-                    [shopId, requestedCode, name.trim(), unit, usage_unit || null, conversion_factor || 1, initial_stock || 0, min_stock_level || 0]
+                    [shopId, requestedCode, name.trim(), unit, usage_unit || null, conversion_factor || 1, openingStock, normalizeQuantity(min_stock_level || 0)]
                 );
                 const sid = rows[0].id;
                 if (!requestedCode) await client.query('UPDATE raw_stocks SET ingredient_code = $1 WHERE id = $2 AND shop_id = $3', [automaticIngredientCode(sid), sid, shopId]);
-                if (initial_stock > 0) {
-                    await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES ($1, $2, $3, $4, $5)', [sid, shopId, buying_price || 0, initial_stock, expiry]);
+                if (openingStock > 0) {
+                    await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES ($1, $2, $3, $4, $5)', [sid, shopId, buying_price || 0, openingStock, expiry]);
                 }
                 return sid;
             });
@@ -177,11 +180,11 @@ router.post('/', requireAuth, async (req, res) => {
                 if (code_mode === 'manual' && !requestedCode) throw new Error('Manual Ingredient ID is required.');
                 const result = getSqlite().prepare(
                     'INSERT INTO raw_stocks (shop_id, ingredient_code, name, unit, usage_unit, conversion_factor, current_stock, min_stock_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-                ).run(shopId, requestedCode, name.trim(), unit, usage_unit || null, conversion_factor || 1, initial_stock || 0, min_stock_level || 0);
+                ).run(shopId, requestedCode, name.trim(), unit, usage_unit || null, conversion_factor || 1, openingStock, normalizeQuantity(min_stock_level || 0));
                 const sid = result.lastInsertRowid;
                 if (!requestedCode) getSqlite().prepare('UPDATE raw_stocks SET ingredient_code = ? WHERE id = ? AND shop_id = ?').run(automaticIngredientCode(sid), sid, shopId);
-                if (initial_stock > 0) {
-                    getSqlite().prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES (?, ?, ?, ?, ?)').run(sid, shopId, buying_price || 0, initial_stock, expiry);
+                if (openingStock > 0) {
+                    getSqlite().prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES (?, ?, ?, ?, ?)').run(sid, shopId, buying_price || 0, openingStock, expiry);
                 }
                 return sid;
             })();
@@ -276,31 +279,34 @@ router.patch('/:id/stock', requireAuth, async (req, res) => {
             const normalized = usesSmallUnitInput
                 ? normalizeUsageRestock({ quantityUsageUnit: quantity_usage_unit, totalCost: total_cost, conversionFactor: stock.conversion_factor })
                 : null;
-            const diff = normalized ? normalized.quantity : parseFloat(delta || 0);
+            const diff = normalized ? normalized.quantity : normalizeQuantity(parseFloat(delta || 0));
             const price = normalized ? normalized.buyingPrice : parseFloat(buying_price || 0);
-            if (!Number.isFinite(diff) || diff === 0) throw new Error('Stock quantity must be a non-zero number.');
+            if (!Number.isFinite(diff) || diff === 0) throw new Error('Stock quantity must be at least 0.001.');
             if (!Number.isFinite(price) || price < 0) throw new Error('Buying price cannot be negative.');
 
             if (diff > 0) {
-                if (isPostgres) await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES ($1, $2, $3, $4, $5)', [stockId, shopId, price, diff, expiry]);
-                else client.prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES (?, ?, ?, ?, ?)').run(stockId, shopId, price, diff, expiry);
+                const addition = positiveQuantity(diff);
+                if (isPostgres) await client.query('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES ($1, $2, $3, $4, $5)', [stockId, shopId, price, addition, expiry]);
+                else client.prepare('INSERT INTO raw_stock_batches (raw_stock_id, shop_id, buying_price, quantity, expiry_date) VALUES (?, ?, ?, ?, ?)').run(stockId, shopId, price, addition, expiry);
             } else if (diff < 0) {
                 let toRemove = Math.abs(diff);
                 let batches;
-                if (isPostgres) batches = (await client.query('SELECT * FROM raw_stock_batches WHERE raw_stock_id = $1 AND shop_id = $2 AND quantity > 0 ORDER BY created_at ASC', [stockId, shopId])).rows;
-                else batches = client.prepare('SELECT * FROM raw_stock_batches WHERE raw_stock_id = ? AND shop_id = ? AND quantity > 0 ORDER BY created_at ASC').all(stockId, shopId);
+                if (isPostgres) batches = (await client.query('SELECT * FROM raw_stock_batches WHERE raw_stock_id = $1 AND shop_id = $2 AND quantity >= 0.001 ORDER BY created_at ASC', [stockId, shopId])).rows;
+                else batches = client.prepare('SELECT * FROM raw_stock_batches WHERE raw_stock_id = ? AND shop_id = ? AND quantity >= 0.001 ORDER BY created_at ASC').all(stockId, shopId);
                 
                 for (const b of batches) {
                     if (toRemove <= 0) break;
-                    const take = Math.min(b.quantity, toRemove);
-                    if (isPostgres) await client.query('UPDATE raw_stock_batches SET quantity = quantity - $1 WHERE id = $2', [take, b.id]);
-                    else client.prepare('UPDATE raw_stock_batches SET quantity = quantity - ? WHERE id = ?').run(take, b.id);
-                    toRemove -= take;
+                    const take = normalizeQuantity(Math.min(normalizeQuantity(b.quantity), toRemove));
+                    const remainingBatch = subtractQuantity(b.quantity, take);
+                    if (isPostgres) await client.query('UPDATE raw_stock_batches SET quantity = $1 WHERE id = $2', [remainingBatch, b.id]);
+                    else client.prepare('UPDATE raw_stock_batches SET quantity = ? WHERE id = ?').run(remainingBatch, b.id);
+                    toRemove = subtractQuantity(toRemove, take);
                 }
             }
 
-            if (isPostgres) await client.query('UPDATE raw_stocks SET current_stock = current_stock + $1 WHERE id = $2 AND shop_id = $3', [diff, stockId, shopId]);
-            else client.prepare('UPDATE raw_stocks SET current_stock = current_stock + ? WHERE id = ? AND shop_id = ?').run(diff, stockId, shopId);
+            const nextStock = addQuantity(stock.current_stock, diff);
+            if (isPostgres) await client.query('UPDATE raw_stocks SET current_stock = $1 WHERE id = $2 AND shop_id = $3', [nextStock, stockId, shopId]);
+            else client.prepare('UPDATE raw_stocks SET current_stock = ? WHERE id = ? AND shop_id = ?').run(nextStock, stockId, shopId);
         };
 
         if (isPostgres) await getPostgres().withTransaction(performUpdate);
@@ -341,17 +347,18 @@ router.post('/waste', requireAuth, async (req, res) => {
 
             client.prepare('INSERT INTO raw_stock_waste (raw_stock_id, shop_id, user_id, quantity, reason) VALUES (?, ?, ?, ?, ?)').run(raw_stock_id, shopId, userId, quantity, reason || '');
 
-            let toRemove = parseFloat(quantity);
-            const batches = client.prepare('SELECT * FROM raw_stock_batches WHERE raw_stock_id = ? AND shop_id = ? AND quantity > 0 ORDER BY created_at ASC').all(raw_stock_id, shopId);
+            const wasteQuantity = positiveQuantity(quantity);
+            let toRemove = wasteQuantity;
+            const batches = client.prepare('SELECT * FROM raw_stock_batches WHERE raw_stock_id = ? AND shop_id = ? AND quantity >= 0.001 ORDER BY created_at ASC').all(raw_stock_id, shopId);
             
             for (const b of batches) {
                 if (toRemove <= 0) break;
-                const take = Math.min(b.quantity, toRemove);
-                client.prepare('UPDATE raw_stock_batches SET quantity = quantity - ? WHERE id = ?').run(take, b.id);
-                toRemove -= take;
+                const take = normalizeQuantity(Math.min(normalizeQuantity(b.quantity), toRemove));
+                client.prepare('UPDATE raw_stock_batches SET quantity = ? WHERE id = ?').run(subtractQuantity(b.quantity, take), b.id);
+                toRemove = subtractQuantity(toRemove, take);
             }
 
-            client.prepare('UPDATE raw_stocks SET current_stock = current_stock - ? WHERE id = ? AND shop_id = ?').run(quantity, raw_stock_id, shopId);
+            client.prepare('UPDATE raw_stocks SET current_stock = ? WHERE id = ? AND shop_id = ?').run(subtractQuantity(stock.current_stock, wasteQuantity), raw_stock_id, shopId);
         };
 
         getSqlite().transaction(() => performWaste(getSqlite()))();
