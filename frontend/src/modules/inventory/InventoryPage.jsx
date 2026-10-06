@@ -26,6 +26,9 @@ const ProductRestockModal = lazy(
 const StockProductFormModal = lazy(
   () => import("./components/StockProductFormModal"),
 );
+const ProductCategoriesView = lazy(
+  () => import("./components/ProductCategoriesView"),
+);
 
 export default function InventoryPage() {
   const [session, setSession] = useState(null);
@@ -35,6 +38,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
+  const [view, setView] = useState(() => new URLSearchParams(window.location.search).get("view") === "categories" ? "categories" : "inventory");
   const inventory = useInventory(activeTab, search);
   const has = useCallback(
     (permission) =>
@@ -67,6 +71,19 @@ export default function InventoryPage() {
     const timer = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(timer);
   }, [toast]);
+  useEffect(() => {
+    const syncView = () => setView(new URLSearchParams(window.location.search).get("view") === "categories" ? "categories" : "inventory");
+    window.addEventListener("popstate", syncView);
+    return () => window.removeEventListener("popstate", syncView);
+  }, []);
+
+  function changeView(nextView) {
+    const url = new URL(window.location.href);
+    if (nextView === "categories") url.searchParams.set("view", "categories");
+    else url.searchParams.delete("view");
+    window.history.pushState({}, "", url);
+    setView(nextView);
+  }
 
   function notify(message, type = "success") {
     setToast({ message, type });
@@ -164,11 +181,13 @@ export default function InventoryPage() {
             </button>
           </div>
         )}
-        <InventoryHeader
+        {view === "categories" ? <Suspense fallback={<div className="inventory-content-loader"><span />Loading categories…</div>}><ProductCategoriesView canCreate={has("products.create")} canUpdate={has("products.update")} canDelete={has("products.delete")} onBack={() => changeView("inventory")} notify={notify} /></Suspense> : <><InventoryHeader
           canCreateIngredient={has("raw_stock.create")}
           canCreateProduct={has("products.create")}
+          canManageCategories={has("products.view")}
           onAddIngredient={() => setModal({ type: "add-ingredient" })}
           onAddProduct={() => setModal({ type: "add-product" })}
+          onManageCategories={() => changeView("categories")}
         />
         <ExpiryNotifications warnings={expiryWarnings(ingredients)} />
         <InventoryToolbar
@@ -220,7 +239,7 @@ export default function InventoryPage() {
               />
             )}
           </>
-        )}
+        )}</>}
       </section>
       <Suspense
         fallback={
