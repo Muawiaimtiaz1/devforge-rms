@@ -96,6 +96,10 @@ async function updateStaff(currentUser, id, payload) {
   return db.transaction(async (trx) => {
     await trx('staff_profiles').where({ id: profileId, shop_id: shopId })
       .update({ ...writableProfile(data), updated_at: trx.fn.now() });
+    if (existing.user_id && data.full_name !== existing.full_name) {
+      await trx('users').where({ id: existing.user_id, shop_id: shopId })
+        .update({ name: data.full_name, updated_at: trx.fn.now() });
+    }
     if (data.employment_status === 'terminated' && existing.user_id) {
       await sessionSecurity.revokeUserSessions(trx, existing.user_id, currentUser.id, 'EMPLOYMENT_TERMINATED');
     }

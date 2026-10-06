@@ -5,9 +5,9 @@ const dbPath = require.resolve('../db/knex');
 const repositoryPath = require.resolve('../src/modules/staff/staff.repository');
 const servicePath = require.resolve('../src/modules/staff/staff.service');
 
-function loadService(repository) {
+function loadService(repository, database = {}) {
   delete require.cache[servicePath];
-  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {} };
+  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: database };
   require.cache[repositoryPath] = { id: repositoryPath, filename: repositoryPath, loaded: true, exports: repository };
   return require(servicePath);
 }
@@ -53,4 +53,43 @@ test('staff profile validation accepts lifecycle values and rejects unknown fiel
   });
   assert.equal(profile.employment_status, 'inactive');
   assert.throws(() => staffProfileSchema.parse({ full_name: 'Ayesha Khan', shop_id: 999 }));
+});
+test('staff name changes synchronize only the linked same-shop user account', async () => {
+  const updates = [];
+  const trx = (table) => ({
+    where(scope) {
+      return {
+        async update(values) {
+          updates.push({ table, scope, values });
+          return 1;
+        },
+      };
+    },
+  });
+  trx.fn = { now: () => 'now' };
+
+  let lookup = 0;
+  const service = loadService({
+    findById: async () => {
+      lookup += 1;
+      return lookup === 1
+        ? { id: 7, shop_id: 42, user_id: 19, full_name: 'Old Name' }
+        : { id: 7, shop_id: 42, user_id: 19, full_name: 'New Name' };
+    },
+  }, {
+    transaction: async (callback) => callback(trx),
+  });
+
+  await service.updateStaff(
+    { id: 8, shop_id: 42 },
+    7,
+    { full_name: 'New Name', employment_type: 'full_time', employment_status: 'active' },
+  );
+
+  const userUpdate = updates.find((entry) => entry.table === 'users');
+  assert.deepEqual(userUpdate, {
+    table: 'users',
+    scope: { id: 19, shop_id: 42 },
+    values: { name: 'New Name', updated_at: 'now' },
+  });
 });

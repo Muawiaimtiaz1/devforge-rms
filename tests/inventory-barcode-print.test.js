@@ -13,9 +13,9 @@ test('barcode printing is restricted to retail product rows', () => {
   assert.ok(row.includes('Print barcode for'))
 })
 
-test('variant modal prints a complete 30mm label', () => {
+test('variant modal prints a complete 30mm label with the shop-currency price', () => {
   const modal = read('frontend/src/modules/inventory/components/BarcodePrintModal.jsx')
-  for (const text of ['Which variant do you want to print?', 'No barcode assigned', 'size:30mm 15mm', 'svg.outerHTML', 'class=\'name\'', 'class=\'number\'']) {
+  for (const text of ['Which variant do you want to print?', 'No barcode assigned', 'formatShopCurrency(variant.selling_price)', 'size:30mm 15mm', 'svg.outerHTML', 'class=\'name\'', 'class=\'number\'', 'class=\'price\'']) {
     assert.ok(modal.includes(text), text)
   }
 })

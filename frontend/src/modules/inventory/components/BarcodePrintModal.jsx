@@ -1,5 +1,6 @@
 import JsBarcode from "jsbarcode";
 import { useState } from "react";
+import { formatShopCurrency } from "../../../currency";
 import InventoryModal from "./InventoryModal";
 
 const safe = (value) =>
@@ -31,9 +32,10 @@ function printVariantBarcode(productName, variant) {
   }
   const name = safe(productName);
   const number = safe(barcode);
+  const price = safe(formatShopCurrency(variant.selling_price));
   doc.open();
   doc.write(
-    `<!doctype html><style>@page{size:30mm 15mm;margin:0}*{box-sizing:border-box}html,body{width:30mm;height:15mm;margin:0;font-family:Arial}.label{width:30mm;height:15mm;padding:.8mm 1mm .65mm;display:grid;grid-template-rows:2.5mm 8.2mm 2mm;place-items:center;overflow:hidden}.name{width:100%;overflow:hidden;text-align:center;text-overflow:ellipsis;white-space:nowrap;font-size:2.2mm;font-weight:700}svg{max-width:28mm;width:auto;height:8mm}.number{font:700 1.9mm/2mm monospace;letter-spacing:.12mm;white-space:nowrap}</style><main class='label'><div class='name'>${name}</div>${svg.outerHTML}<div class='number'>${number}</div></main>`,
+    `<!doctype html><style>@page{size:30mm 15mm;margin:0}*{box-sizing:border-box}html,body{width:30mm;height:15mm;margin:0;font-family:Arial}.label{width:30mm;height:15mm;padding:.7mm 1mm .55mm;display:grid;grid-template-rows:2.3mm 6.2mm 1.8mm 2.4mm;place-items:center;overflow:hidden}.name{width:100%;overflow:hidden;text-align:center;text-overflow:ellipsis;white-space:nowrap;font-size:2.1mm;font-weight:700}svg{max-width:28mm;width:auto;height:6mm}.number{font:700 1.75mm/1.8mm monospace;letter-spacing:.1mm;white-space:nowrap}.price{font:700 2.1mm/2.4mm Arial,sans-serif;white-space:nowrap}</style><main class='label'><div class='name'>${name}</div>${svg.outerHTML}<div class='number'>${number}</div><div class='price'>${price}</div></main>`,
   );
   doc.close();
   window.setTimeout(() => {
