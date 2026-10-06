@@ -141,6 +141,6 @@ async function payments(shopId, shiftId, connection = db) {
     .where({ 'tip.shop_id': shopId, 'tip.shift_id': shiftId })
     .select('tip.sale_id', 'tip.amount_cents', 'tip.payment_method as tip_payment_method',
       'tip.collection_mode', 'tip.collected_at as payment_time', 's.payment_method as bill_payment_method',
-      's.order_type', 's.order_status', 's.customer_name', 't.table_number');
+      's.order_number', 's.order_type', 's.order_status', 's.customer_name', 't.table_number');
 }
 module.exports = { collect, recordStandalone, listEligibleOrders, summary, payments, validateTip, toCents };

@@ -129,7 +129,7 @@ test('tip collection, isolation, retries, receipts, and shift reconciliation', a
     const original=customers.resolveOrCreateCustomer;
     customers.resolveOrCreateCustomer=async()=>null;
     try {
-      await require('../services/SalesService').updateDetails(5,1,{amount_received:110,tip_amount:10,payment_method:'card'},1);
+      await require('../services/SalesService').updateDetails(5,1,{amount_received:110,tip_amount:10,payment_method:'cash',tip_payment_method:'card'},1);
       const sale=await db('sales').where({id:5}).first();
       assert.equal(sale.shift_id,1); assert.equal(sale.payment_method,'cash');
       const tip=await db('sale_tips').where({sale_id:5}).first();

@@ -4106,7 +4106,7 @@ function showPOSOrderTypeChooser() {
           <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Select Order Type</h2>
           <p class="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Choose how this order will be served.</p>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        <div class="grid gap-5" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr))">
           <button type="button" onclick="startPOSOrder('walk_in')" class="group p-8 rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 hover:border-cyan-500 hover:shadow-2xl hover:shadow-cyan-500/10 transition-all text-center">
             <span class="mx-auto w-20 h-20 rounded-2xl bg-cyan-50 dark:bg-cyan-950/50 flex items-center justify-center text-4xl group-hover:scale-110 transition-transform">🛒</span>
             <span class="block mt-5 text-xl font-black text-slate-900 dark:text-white">Walk-in</span>
@@ -5688,7 +5688,7 @@ async function viewOrderItems(id, readOnly = false) {
     openModal(`Order #${sale.order_number || id} - Details`, `
       <div class="space-y-4">
         ${orderInfoHtml}
-        ${Number(sale.tip_amount || 0) > 0 ? `<div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 font-bold text-emerald-700 dark:text-emerald-300">Tip received: ${shopCurrencyCode()} ${Number(sale.tip_amount).toFixed(2)}</div>` : ""}
+        ${Number(sale.tip_amount || 0) > 0 ? `<div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 font-bold text-emerald-700 dark:text-emerald-300">Tip received: ${shopCurrencyCode()} ${Number(sale.tip_amount).toFixed(2)} · ${escapeOrderValue(String(sale.tip_payment_method || sale.payment_method || 'cash').toUpperCase())}</div>` : ""}
         ${kitchenStatusesHtml}
         <div class="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[60vh] overflow-y-auto">
           ${itemsHtml}
@@ -6199,11 +6199,22 @@ async function showOrderCompleteModal(id) {
           <div id="op-phone-suggestions" class="hidden absolute z-[130] left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"></div>
         </div>
       </div>
-      <div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
         <label for="op-tip" class="block text-xs font-bold text-slate-500 mb-1">Tip Received</label>
         <input id="op-tip" type="number" min="0" step="0.01" value="${Number(s.tip_amount || 0)}" ${Number(s.tip_amount || 0) > 0 ? 'readonly' : ''}
           oninput="updateCompleteOrderSummary(${total})" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold" />
         <p class="mt-1 text-xs text-slate-500">Enter the tip included in Amount Received. Any remaining extra money is change.</p>
+        </div>
+        <div id="op-tip-method-wrap" class="${Number(s.tip_amount || 0) > 0 ? '' : 'hidden'}">
+          <label for="op-tip-method" class="block text-xs font-bold text-slate-500 mb-1">Tip Method</label>
+          <select id="op-tip-method" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold">
+            <option value="cash" ${(s.tip_payment_method || s.payment_method) === 'cash' ? 'selected' : ''}>Cash</option>
+            <option value="card" ${(s.tip_payment_method || s.payment_method) === 'card' ? 'selected' : ''}>Card</option>
+            <option value="online" ${(s.tip_payment_method || s.payment_method) === 'online' ? 'selected' : ''}>Online</option>
+          </select>
+          <p class="mt-1 text-xs text-slate-500">How the tip was received; it may differ from the bill method.</p>
+        </div>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
@@ -6311,6 +6322,7 @@ function updateCompleteOrderSummary(total) {
 
   const received = parseFloat(receivedInp.value) || 0;
   const tip = Number(document.getElementById('op-tip')?.value || 0);
+  document.getElementById('op-tip-method-wrap')?.classList.toggle('hidden', tip <= 0);
   const diff = (Math.round(received * 100) - Math.round(total * 100) - Math.round(tip * 100)) / 100;
 
   const dueRow = document.getElementById('oc-due-row');
@@ -6365,6 +6377,7 @@ async function updateAndCompleteOrder(id) {
     customer_name: customerName,
     customer_phone: customerPhone,
     tip_amount: tipAmount,
+    tip_payment_method: tipAmount > 0 ? ($c('op-tip-method')?.value || $c('op-method')?.value || s.payment_method || 'cash') : undefined,
     payment_method: $c('op-method')?.value || s.payment_method || 'cash'
   };
   if (Math.abs(amountReceived - previousReceived) > 0.01) data.amount_received = amountReceived;
@@ -8778,7 +8791,7 @@ function _renderSalesTable() {
           </td>
           <td class="px-5 py-4 text-slate-700 dark:text-slate-200 font-bold">${shopCurrencyCode()} ${parseFloat(s.total || 0).toFixed(0)}</td>
           <td class="px-5 py-4 text-amber-600 dark:text-amber-400 font-bold">${shopCurrencyCode()} ${Number(s.tax_amount || 0).toFixed(2)}</td>
-          <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">${shopCurrencyCode()} ${parseFloat(s.amount_received || 0).toFixed(0)}${Number(s.tip_amount || 0) > 0 ? `<div class="text-xs text-slate-500">Tip: ${shopCurrencyCode()} ${Number(s.tip_amount).toFixed(2)}</div>` : ""}</td>
+          <td class="px-5 py-4 text-emerald-600 dark:text-emerald-400 font-medium">${shopCurrencyCode()} ${parseFloat(s.amount_received || 0).toFixed(0)}${Number(s.tip_amount || 0) > 0 ? `<div class="text-xs text-slate-500">Tip: ${shopCurrencyCode()} ${Number(s.tip_amount).toFixed(2)} · ${escapeOrderValue(String(s.tip_payment_method || s.payment_method || 'cash').toUpperCase())}</div>` : ""}</td>
           <td class="px-5 py-4">${salesPaymentMethodBadge(s.payment_method)}</td>
           <td class="px-5 py-4 font-black">
              ${isPending ? `<span class="text-rose-600 dark:text-rose-400">${shopCurrencyCode()} ${parseFloat(due).toFixed(0)}</span>` : `<span class="text-slate-400 dark:text-slate-600 font-normal">None</span>`}

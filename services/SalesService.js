@@ -28,6 +28,7 @@ const checkoutSchema = z.object({
   })).min(1, "Cart cannot be empty"),
   discount: z.number().nonnegative().default(0),
   tax_percentage: z.number().nonnegative().default(0),
+  tip_payment_method: z.enum(['cash', 'card', 'online']).optional(),
   payment_method: z.string().default("cash"),
   amount_received: z.number().nonnegative().default(0),
   tip_amount: z.number().nonnegative().optional(),
@@ -941,7 +942,7 @@ class SalesService {
         .returning('id');
       const saleId = typeof saleIdObj === 'object' ? saleIdObj.id : saleIdObj;
       await tipsService.collect(trx, { saleId, shopId, userId, amount: data.tip_amount,
-        total: grandTotal, received: data.amount_received, paymentMethod: data.payment_method });
+        total: grandTotal, received: data.amount_received, paymentMethod: data.tip_payment_method || data.payment_method });
 
       // Keep occupancy derived from active dine-in orders. A sale can be
       // created directly as completed, in which case the table must remain
@@ -1431,7 +1432,7 @@ class SalesService {
       });
 
       await tipsService.collect(trx, { saleId, shopId, userId, amount: data.tip_amount,
-        total: grandTotal, received: data.amount_received, paymentMethod: data.payment_method });
+        total: grandTotal, received: data.amount_received, paymentMethod: data.tip_payment_method || data.payment_method });
 
       // Editing may complete the order, change its table, or change it away
       // from dine-in. Recalculate both the former and current table so neither
@@ -1702,7 +1703,7 @@ class SalesService {
 
   async getSales(shopId, currentUser = null) {
     const query = db('sales as s')
-      .select('s.*', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select('s.*', 'tip.payment_method as tip_payment_method', 'tip.collection_mode as tip_collection_mode', 'tip.collected_at as tip_collected_at', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
       .select(db.raw("COALESCE(w.name, CASE WHEN LOWER(u.role) IN ('waiter', 'order_taker') THEN COALESCE(u.name, u.username) END) as waiter_name"))
       .select(db.raw('(SELECT SUM(quantity) FROM return_items WHERE return_id IN (SELECT id FROM returns WHERE sale_id = s.id)) as items_returned'))
       .leftJoin('users as u', 's.user_id', 'u.id')
@@ -1711,6 +1712,7 @@ class SalesService {
       .leftJoin('users as r', 's.rider_id', 'r.id')
       .leftJoin('users as k', 's.kitchen_id', 'k.id')
       .leftJoin('tables as t', 's.table_id', 't.id')
+      .leftJoin('sale_tips as tip', function () { this.on('tip.sale_id', 's.id').andOn('tip.shop_id', 's.shop_id'); })
       .where('s.shop_id', shopId);
 
     const role = currentUser?.role;
@@ -1741,6 +1743,7 @@ class SalesService {
     const page = Math.max(1, Number(filters.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 25));
     const query = db('sales as s')
+      .leftJoin('sale_tips as tip', function () { this.on('tip.sale_id', 's.id').andOn('tip.shop_id', 's.shop_id'); })
       .leftJoin('users as u', 's.user_id', 'u.id')
       .leftJoin('users as pr', 's.payment_receiver_id', 'pr.id')
       .leftJoin('users as w', 's.waiter_id', 'w.id')
@@ -1803,7 +1806,7 @@ class SalesService {
     }
 
     const rows = await query.clone()
-      .select('s.*', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
+      .select('s.*', 'tip.payment_method as tip_payment_method', 'tip.collection_mode as tip_collection_mode', 'tip.collected_at as tip_collected_at', 'u.name as served_by_name', 'u.username as served_by_username', 'pr.name as payment_receiver_name', 'r.name as rider_name', 'k.name as kitchen_name', 't.table_number')
       .select(db.raw("COALESCE(w.name, CASE WHEN LOWER(u.role) IN ('waiter', 'order_taker') THEN COALESCE(u.name, u.username) END) as waiter_name"))
       .select(db.raw('(SELECT SUM(quantity) FROM return_items WHERE return_id IN (SELECT id FROM returns WHERE sale_id = s.id)) as items_returned'))
       .orderBy('s.created_at', 'desc')
@@ -1881,7 +1884,7 @@ class SalesService {
     });
   }
 
-  async updateDetails(saleId, shopId, { customer_id, customer_name, customer_phone, delivery_address, rider_id, payment_method, amount_received, discount, tax_percentage, tip_amount }, userId = null) {
+  async updateDetails(saleId, shopId, { customer_id, customer_name, customer_phone, delivery_address, rider_id, payment_method, tip_payment_method, amount_received, discount, tax_percentage, tip_amount }, userId = null) {
     return await db.transaction(async (trx) => {
       const sale = await trx('sales').where({ id: saleId, shop_id: shopId }).forUpdate().first();
       if (!sale) throw new Error("Sale not found");
@@ -1945,7 +1948,7 @@ class SalesService {
 
       await tipsService.collect(trx, { saleId, shopId, userId, amount: tip_amount,
         total: updateData.total ?? sale.total, received: updateData.amount_received ?? sale.amount_received,
-        paymentMethod: payment_method ?? sale.payment_method });
+        paymentMethod: tip_payment_method ?? payment_method ?? sale.payment_method });
 
       if (shouldSyncSaleLedger) {
         const oldSaleLedgerEntries = await trx('customer_ledger')

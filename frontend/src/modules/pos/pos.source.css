@@ -9,6 +9,9 @@
 .pos-product-scroll:hover{background:transparent!important;color:#4f46e5}
 .dark .pos-product-scroll{background:transparent!important;color:#cbd5e1}
 .pos-products{max-height:calc(100vh - 238px)}
+.pos-start section.types{justify-content:center}
+.pos-start section.types button{align-items:center;text-align:center}
+.pos-start section.types button i{margin-inline:auto}
 .pos-page,.pos-page :where(.pos-products,.pos-cart,.pos-cats,.pos-suggestions,.orders-table,.order-details,.pos-modal,.table-choice){scrollbar-width:none;-ms-overflow-style:none}
 .pos-page :where(.pos-products,.pos-cart,.pos-cats,.pos-suggestions,.orders-table,.order-details,.pos-modal,.table-choice)::-webkit-scrollbar{display:none;width:0;height:0}
 /* React POS fixed terminal viewport */

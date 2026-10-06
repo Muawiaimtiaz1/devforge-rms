@@ -13,8 +13,9 @@ const ITEMS = (data) => [
   ['Products', integer(data.totalProducts), 'in catalog', 'amber', 'Active catalog products, excluding deleted products.'],
 ]
 export default function DashboardMetrics({ data }) {
+  const tips = data.tipsBreakdown || {}
   return <section className="dashboard-metrics">
-    <article className="metric-card emerald"><span>Tips Collected</span><strong>{getShopCurrency()} {money(data.totalTipsCollected)}</strong><small>Selected date period · all shop shifts</small></article>
+    <article className="metric-card emerald"><span>Tips Collected</span><strong>{getShopCurrency()} {money(data.totalTipsCollected)}</strong><small>Cash {getShopCurrency()} {money(tips.cash_tips)} · Card {getShopCurrency()} {money(tips.card_tips)} · Online {getShopCurrency()} {money(tips.online_tips)}</small></article>
     {ITEMS(data).map(([label, value, detail, tone, explanation]) => <article className={`metric-card ${tone}`} key={label} title={explanation}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}
   </section>
 }

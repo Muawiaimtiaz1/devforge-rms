@@ -731,7 +731,7 @@ class ShiftService {
     if (!shift) { const error = new Error('Shift not found'); error.status = 404; throw error; }
 
     const directSales = await db('sales as s')
-      .select('s.id', 's.order_type', 's.order_status', 's.payment_method', 's.total', 's.amount_received', 's.created_at', 's.payment_received_at', 's.customer_name', 't.table_number')
+      .select('s.id', 's.order_number', 's.order_type', 's.order_status', 's.payment_method', 's.total', 's.amount_received', 's.created_at', 's.payment_received_at', 's.customer_name', 't.table_number')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .where({ 's.shop_id': shopId, 's.shift_id': shiftId })
       .where('s.amount_received', '>', 0)
@@ -752,7 +752,7 @@ class ShiftService {
     }
 
     const receivedLedger = await db('customer_ledger as cl')
-      .select('cl.sale_id', 'cl.amount', 'cl.payment_method', 'cl.created_at', 's.order_type', 's.order_status', 's.customer_name', 't.table_number')
+      .select('cl.sale_id', 'cl.amount', 'cl.payment_method', 'cl.created_at', 's.order_number', 's.order_type', 's.order_status', 's.customer_name', 't.table_number')
       .leftJoin('sales as s', 'cl.sale_id', 's.id')
       .leftJoin('tables as t', 's.table_id', 't.id')
       .where({ 'cl.shop_id': shopId, 'cl.shift_id': shiftId, 'cl.created_by': userId, 'cl.type': 'payment' });
@@ -763,6 +763,7 @@ class ShiftService {
       if (!id || toMoney(payment.amount) <= 0) return;
       const existing = orders.get(id) || {
         order_id: id,
+        order_number: payment.order_number || null,
         order_type: payment.order_type || 'dine_in',
         order_status: payment.order_status || '',
         customer_name: payment.customer_name || '',
@@ -807,7 +808,7 @@ class ShiftService {
     const shiftTotalOrders = rows.length;
     const shiftTotalAmount = Number(rows.reduce((sum, row) => sum + row.payment_amount, 0).toFixed(2));
     const search = String(filters.search || '').trim().toLowerCase();
-    if (search) rows = rows.filter(row => String(row.order_id).includes(search) || String(row.customer_name).toLowerCase().includes(search));
+    if (search) rows = rows.filter(row => String(row.order_number || '').includes(search) || String(row.order_id).includes(search) || String(row.customer_name).toLowerCase().includes(search));
     if (filters.paymentMethod) rows = rows.filter(row => row.payment_method === filters.paymentMethod);
     if (filters.orderType) rows = rows.filter(row => row.order_type === filters.orderType);
     rows.sort((a, b) => new Date(b.payment_time || 0) - new Date(a.payment_time || 0));
