@@ -1,0 +1,188 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Print Agent: Five-Day Health Check",
+    "generatedAt": "2026-10-07T05:35:52.261Z",
+    "tables": [
+      {
+        "id": "readiness",
+        "title": "Restaurant print readiness",
+        "subtitle": "Observed October 3–7, 2026 through 10:35 PKT.",
+        "dataset": "shops",
+        "sourceId": "print_readiness",
+        "defaultSort": {
+          "field": "restaurant",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "restaurant",
+            "label": "Restaurant"
+          },
+          {
+            "field": "realtime",
+            "label": "Realtime enabled"
+          },
+          {
+            "field": "printers",
+            "label": "Printers",
+            "format": "number"
+          },
+          {
+            "field": "sales",
+            "label": "Sales",
+            "format": "number"
+          },
+          {
+            "field": "jobs",
+            "label": "Print jobs",
+            "format": "number"
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "readiness_gap",
+        "title": "Missing activation prerequisites",
+        "subtitle": "Each restaurant lacks realtime enablement, a registered printer, and an assigned print route.",
+        "type": "bar",
+        "dataset": "shops",
+        "sourceId": "print_readiness",
+        "encodings": {
+          "x": {
+            "field": "restaurant",
+            "type": "nominal"
+          },
+          "y": {
+            "field": "missing_prerequisites",
+            "type": "quantitative",
+            "unit": "steps"
+          }
+        }
+      }
+    ],
+    "sources": [
+      {
+        "id": "print_readiness",
+        "label": "RMS print readiness query"
+      },
+      {
+        "id": "realtime_tests",
+        "label": "Realtime Print Agent test suite"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Print Agent: Five-Day Health Check\n\n**Window:** October 3–7, 2026 through 10:35 PKT."
+      },
+      {
+        "id": "summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **No live benefit was recorded.** The configured RMS database has zero print jobs in the five-day window and zero print jobs across all history.\n- **Realtime printing is not active.** All three restaurants have realtime printing disabled, no registered printers, and no print routes.\n- **The implementation passes its automated checks.** All four WebSocket tests passed, covering signed tokens, agent generation, tenant/printer isolation, PostgreSQL notifications, and atomic claiming.\n- **Verdict: technically ready, operationally unproven.** There is no evidence that WebSocket printing is failing, but there is also no live usage from which to measure speed or reliability."
+      },
+      {
+        "id": "finding",
+        "type": "markdown",
+        "body": "## The system has not processed any print workload\n\nThere were no sales, printers, or print jobs for any configured restaurant during the reporting window. Success rate and latency are therefore **undefined**, not 0%. The environment has received no measurable benefit from WebSocket printing because the feature has not been enabled or exercised."
+      },
+      {
+        "id": "readiness_chart",
+        "type": "chart",
+        "chartId": "readiness_gap"
+      },
+      {
+        "id": "table",
+        "type": "table",
+        "tableId": "readiness"
+      },
+      {
+        "id": "design",
+        "type": "markdown",
+        "body": "## The WebSocket design has a resilient fallback\n\nWhen enabled, PostgreSQL queue notifications trigger printer-specific Socket.IO events for immediate pickup. A five-second reconciliation poll remains active to recover missed events or work through proxies that block WebSockets.\n\nExpected benefits are faster pickup, fewer empty polling requests, and tenant/printer isolation. The current schema does not persist whether a claim came from WebSocket or reconciliation polling, so those benefits cannot be quantified retrospectively."
+      },
+      {
+        "id": "next",
+        "type": "markdown",
+        "body": "## Recommended next steps\n\n1. Register a physical printer for one test restaurant.\n2. Configure a customer, unpaid-bill, or kitchen printer route.\n3. Enable realtime printing and install the generated realtime agent.\n4. Run controlled orders and verify the queue reaches `printed`.\n5. Record connection uptime, notification time, claim source, claim latency, retries, and confirmation latency."
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n- Is this configured database production, staging, or development?\n- Which restaurant and printer should be used for the controlled trial?\n- Should the service target be 99% successful printing and 95% claimed within two seconds?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Caveats and assumptions\n\n- Asia/Karachi time is used; October 7 is a partial day through 10:35 PKT.\n- Findings apply only to the database configured by this workspace.\n- Zero sales means the lack of print jobs is consistent with no transaction demand, not necessarily a malfunction.\n- No chart is shown because every observed operational value is zero; a chart would imply a trend that the data cannot support."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-10-07T05:35:52.261Z",
+    "status": "ready",
+    "datasets": {
+      "shops": [
+        {
+          "restaurant": "City Mart",
+          "realtime": "No",
+          "printers": 0,
+          "sales": 0,
+          "jobs": 0,
+          "missing_prerequisites": 3
+        },
+        {
+          "restaurant": "Food & Grocery",
+          "realtime": "No",
+          "printers": 0,
+          "sales": 0,
+          "jobs": 0,
+          "missing_prerequisites": 3
+        },
+        {
+          "restaurant": "Main Restaurant",
+          "realtime": "No",
+          "printers": 0,
+          "sales": 0,
+          "jobs": 0,
+          "missing_prerequisites": 3
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "print_readiness",
+      "query": {
+        "engine": "postgresql",
+        "language": "sql",
+        "executed_at": "2026-10-07T05:35:52.261Z",
+        "description": "Checks realtime settings, printer registration, sales activity, and print jobs for all restaurants.",
+        "tables_used": [
+          "shops",
+          "printers",
+          "sales",
+          "print_queue"
+        ],
+        "filters": [
+          "October 3–7, 2026 Asia/Karachi",
+          "All configured restaurants"
+        ],
+        "sql": "SELECT s.name, s.realtime_printing_enabled, COUNT(DISTINCT p.id) AS printers, COUNT(DISTINCT sa.id) AS sales, COUNT(DISTINCT pq.id) AS print_jobs FROM shops s LEFT JOIN printers p ON p.shop_id=s.id LEFT JOIN sales sa ON sa.shop_id=s.id AND sa.created_at >= TIMESTAMPTZ '2026-10-02 19:00:00+00' AND sa.created_at < TIMESTAMPTZ '2026-10-07 19:00:00+00' LEFT JOIN print_queue pq ON pq.shop_id=s.id AND pq.created_at >= TIMESTAMPTZ '2026-10-02 19:00:00+00' AND pq.created_at < TIMESTAMPTZ '2026-10-07 19:00:00+00' GROUP BY s.id, s.name, s.realtime_printing_enabled ORDER BY s.name;"
+      }
+    },
+    {
+      "id": "realtime_tests",
+      "document": {
+        "title": "Realtime Print Agent automated tests",
+        "type": "test-output",
+        "description": "Four passing tests covering token security, generated agent separation, shop/printer event isolation, and atomic PostgreSQL queue claiming."
+      }
+    }
+  ]
+}

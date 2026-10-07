@@ -159,6 +159,7 @@ app.use(enforceApiPermissions);
 app.use('/api/tips', require('./src/modules/tips/tips.routes'));
 
 // API Routes
+app.use('/api/admin/print-analytics', require('./src/modules/print-analytics/print-analytics.routes'));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/auth", require("./src/modules/session-security/session-security.routes"));
 app.use("/api/lobby", require("./routes/lobby"));

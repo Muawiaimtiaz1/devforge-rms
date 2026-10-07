@@ -13,7 +13,20 @@ function toggleTheme() {
     if (charts.growth) initCharts(); // Re-render charts to match theme
 }
 
-const COMMAND_CENTER_TABS = new Set(['overview', 'activity', 'health', 'ledger']);
+const COMMAND_CENTER_TABS = new Set(['overview', 'activity', 'health', 'print-analytics', 'ledger']);
+
+function ensurePrintAnalyticsTab() {
+    const nav = document.getElementById('dashboard-tabs');
+    if (!nav || nav.querySelector('[data-tab=print-analytics]')) return;
+    const button = document.createElement('button');
+    button.dataset.tab = 'print-analytics';
+    button.onclick = () => switchTab('print-analytics');
+    button.title = 'Print Analytics';
+    button.className = 'tab-btn rail-btn w-11 h-11 rounded-full flex items-center justify-center transition-all font-black';
+    button.textContent = 'P';
+    const ledgerButton = Array.from(nav.querySelectorAll('button')).find((item) => item.title === 'Payment Ledger');
+    nav.insertBefore(button, ledgerButton || nav.firstChild);
+}
 
 function getCommandCenterTabFromHash() {
     const tab = window.location.hash.replace('#', '').trim();
@@ -44,6 +57,8 @@ function switchTab(tabId, options = {}) {
     if (activeBtn) {
         activeBtn.classList.add('active');
     }
+    const dynamicTabButton = document.querySelector(`button[data-tab=${targetTab}]`);
+    if (dynamicTabButton) dynamicTabButton.classList.add('active');
 
     if (options.syncHash !== false) {
         const nextUrl = targetTab === 'overview'
@@ -152,6 +167,7 @@ async function init() {
             window.location.href = '/dashboard';
             return;
         }
+        ensurePrintAnalyticsTab();
         switchTab(getCommandCenterTabFromHash(), { syncHash: false });
 
         // Parallel Data Fetching
@@ -160,7 +176,8 @@ async function init() {
             fetchStores(),
             fetchActivity(),
             fetchHealth(),
-            fetchLedger()
+            fetchLedger(),
+            fetchPrintAnalytics()
         ]);
 
 
@@ -744,6 +761,116 @@ async function executeResetPassword(storeId) {
 
 // Init on load
 document.addEventListener('DOMContentLoaded', init);
+
+let selectedPrintShopId = null;
+
+function escapePrintHtml(value) {
+    const node = document.createElement('div');
+    node.textContent = String(value ?? '');
+    return node.innerHTML;
+}
+
+function printAnalyticsDays() {
+    return Number(document.getElementById('print-analytics-days')?.value || 5);
+}
+
+function formatPrintDuration(milliseconds) {
+    if (milliseconds === null || milliseconds === undefined) return 'No data';
+    if (milliseconds < 1000) return milliseconds + ' ms';
+    return (milliseconds / 1000).toFixed(milliseconds < 10000 ? 1 : 0) + ' sec';
+}
+
+async function refreshPrintAnalytics() {
+    return selectedPrintShopId ? openPrintShopDetail(selectedPrintShopId) : fetchPrintAnalytics();
+}
+
+async function fetchPrintAnalytics() {
+    const container = document.getElementById('print-shop-cards');
+    if (!container) return;
+    try {
+        const data = await api('/api/admin/print-analytics/shops?days=' + printAnalyticsDays());
+        document.getElementById('print-shop-list-meta').textContent =
+            data.shops.length + ' shops · last ' + data.days + ' day' + (data.days === 1 ? '' : 's');
+        if (!data.shops.length) {
+            container.innerHTML = '<div class=\'col-span-full py-12 text-center text-slate-500\'>No shops found.</div>';
+            return;
+        }
+        container.innerHTML = data.shops.map((shop) => {
+            const rate = shop.success_rate === null ? 'No completed jobs' : shop.success_rate + '% success';
+            const connection = shop.agent_connected ? 'Agent online' : (shop.realtime_enabled ? 'Agent offline' : 'Realtime disabled');
+            const connectionClass = shop.agent_connected ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10' : 'text-amber-600 bg-amber-50 dark:bg-amber-500/10';
+            return `<button onclick='openPrintShopDetail(${shop.id})' class='text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-950/50 p-5 hover:border-indigo-400 hover:-translate-y-0.5 transition-all'>
+                <div class='flex items-start justify-between gap-3'><div><div class='font-black text-slate-950 dark:text-white'>${escapePrintHtml(shop.name)}</div><div class='text-xs text-slate-500 mt-1'>${shop.printer_count} registered printer${shop.printer_count === 1 ? '' : 's'}</div></div><span class='px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${connectionClass}'>${connection}</span></div>
+                <div class='grid grid-cols-3 gap-2 mt-5'><div><div class='text-xl font-black'>${shop.total_jobs}</div><div class='text-[10px] uppercase text-slate-400 font-bold'>Jobs</div></div><div><div class='text-xl font-black text-emerald-600'>${shop.printed_jobs}</div><div class='text-[10px] uppercase text-slate-400 font-bold'>Printed</div></div><div><div class='text-xl font-black text-rose-600'>${shop.failed_jobs}</div><div class='text-[10px] uppercase text-slate-400 font-bold'>Failed</div></div></div>
+                <div class='mt-4 text-xs font-bold text-slate-500'>${rate}<span class='float-right text-indigo-500'>View analytics →</span></div></button>`;
+        }).join('');
+    } catch (error) {
+        container.innerHTML = `<div class='col-span-full py-12 text-center text-rose-600'>${escapePrintHtml(error.message)}</div>`;
+    }
+}
+
+async function openPrintShopDetail(shopId) {
+    selectedPrintShopId = Number(shopId);
+    document.getElementById('print-shop-list-panel').classList.add('hidden');
+    document.getElementById('print-shop-detail').classList.remove('hidden');
+    document.getElementById('print-detail-title').textContent = 'Loading shop analytics...';
+    try {
+        const data = await api('/api/admin/print-analytics/shops/' + selectedPrintShopId + '?days=' + printAnalyticsDays());
+        renderPrintShopDetail(data);
+    } catch (error) {
+        document.getElementById('print-detail-title').textContent = 'Analytics unavailable';
+        document.getElementById('print-detail-meta').textContent = error.message;
+    }
+}
+
+function closePrintShopDetail() {
+    selectedPrintShopId = null;
+    document.getElementById('print-shop-detail').classList.add('hidden');
+    document.getElementById('print-shop-list-panel').classList.remove('hidden');
+    fetchPrintAnalytics();
+}
+
+function printStatusRow(label, value, good) {
+    return `<div class='flex items-center justify-between rounded-xl bg-slate-50 dark:bg-slate-900 p-3'><span class='text-xs font-bold text-slate-500'>${label}</span><span class='text-xs font-black ${good ? 'text-emerald-600' : 'text-amber-600'}'>${value}</span></div>`;
+}
+
+function renderPrintShopDetail(data) {
+    const summary = data.summary;
+    document.getElementById('print-detail-title').textContent = data.shop.name;
+    document.getElementById('print-detail-meta').textContent =
+        'Last ' + data.days + ' day' + (data.days === 1 ? '' : 's') + ' · generated ' + new Date(data.generated_at).toLocaleString();
+    const cards = [
+        ['Total jobs', summary.total_jobs, 'text-slate-950 dark:text-white'],
+        ['Printed', summary.printed_jobs, 'text-emerald-600'],
+        ['Failed', summary.failed_jobs, 'text-rose-600'],
+        ['Success rate', summary.success_rate === null ? '—' : summary.success_rate + '%', 'text-indigo-600'],
+        ['Average claim', formatPrintDuration(summary.avg_claim_ms), 'text-violet-600'],
+        ['Average completion', formatPrintDuration(summary.avg_completion_ms), 'text-amber-600'],
+    ];
+    document.getElementById('print-detail-cards').innerHTML = cards.map((card) =>
+        `<div class='soft-panel p-5'><div class='text-[10px] uppercase tracking-widest font-black text-slate-400'>${card[0]}</div><div class='text-2xl font-black mt-2 ${card[2]}'>${card[1]}</div></div>`
+    ).join('');
+
+    const maximum = Math.max(1, ...data.daily.map((row) => row.total));
+    document.getElementById('print-daily-bars').innerHTML = data.daily.map((row) =>
+        `<div><div class='flex justify-between text-xs font-bold mb-1.5'><span>${new Date(row.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><span>${row.printed} printed · ${row.failed} failed</span></div><div class='h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden'><div class='h-full rounded-full bg-indigo-500' style='width:${(row.total / maximum) * 100}%'></div></div></div>`
+    ).join('');
+
+    const transport = data.transport;
+    document.getElementById('print-transport-health').innerHTML =
+        printStatusRow('Realtime setting', transport.websocket_enabled ? 'Enabled' : 'Disabled', transport.websocket_enabled) +
+        printStatusRow('Agent connection', transport.agent_connected ? 'Online now' : 'Offline now', transport.agent_connected) +
+        printStatusRow('Polling fallback', 'Every ' + transport.polling_fallback_seconds + ' seconds', true) +
+        `<div class='rounded-xl bg-amber-50 dark:bg-amber-500/10 p-3 text-xs leading-5 text-amber-800 dark:text-amber-200'>The current system does not store which transport triggered each job. This reports connection health and outcomes without guessing WebSocket-versus-polling counts.</div>`;
+
+    document.getElementById('print-station-table').innerHTML = data.stations.length
+        ? `<table class='w-full text-left text-sm'><thead class='text-[10px] uppercase tracking-widest text-slate-400'><tr><th class='px-6 py-3'>Station</th><th class='px-4 py-3'>Jobs</th><th class='px-4 py-3'>Printed</th><th class='px-4 py-3'>Failed</th></tr></thead><tbody>${data.stations.map((station) => `<tr class='border-t border-slate-100 dark:border-slate-800'><td class='px-6 py-4 font-bold'>${escapePrintHtml(station.station_name)}</td><td class='px-4 py-4'>${station.total}</td><td class='px-4 py-4 text-emerald-600'>${station.printed}</td><td class='px-4 py-4 text-rose-600'>${station.failed}</td></tr>`).join('')}</tbody></table>`
+        : `<div class='p-8 text-center text-slate-500'>No print jobs for this period.</div>`;
+
+    document.getElementById('print-failure-list').innerHTML = data.recent_failures.length
+        ? data.recent_failures.map((failure) => `<div class='rounded-xl border border-rose-100 dark:border-rose-900/40 p-3'><div class='flex justify-between gap-3'><span class='font-bold text-sm'>${escapePrintHtml(failure.station_name)}</span><span class='text-[10px] uppercase font-black text-rose-600'>${escapePrintHtml(failure.status)}</span></div><p class='text-xs text-slate-500 mt-1'>${escapePrintHtml(failure.error)}</p><div class='text-[10px] text-slate-400 mt-2'>Attempts: ${failure.attempts} · ${new Date(failure.occurred_at).toLocaleString()}</div></div>`).join('')
+        : `<div class='py-8 text-center text-emerald-600 font-bold'>No failures recorded in this period.</div>`;
+}
 
 // ─── Payment Ledger ───────────────────────────────────────────────
 async function fetchLedger() {
