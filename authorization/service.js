@@ -58,16 +58,53 @@ async function ensureAuthorizationSchema() {
       await db.schema.alterTable('users', (table) => table.boolean('use_custom_permissions').notNullable().defaultTo(false));
     }
 
-    const salesPermissionsAlreadyExist = await db('permissions').where('key', 'sales.view').first('id');
+    const [salesPermissionsAlreadyExist, staffPermissionsAlreadyExist] = await Promise.all([
+      db('permissions').where('key', 'sales.view').first('id'),
+      db('permissions').where('key', 'staff.view').first('id'),
+    ]);
     await db('permissions')
       .insert(PERMISSIONS)
       .onConflict('key')
       .merge(['module', 'action', 'label']);
     if (!salesPermissionsAlreadyExist) await backfillSalesPermissions();
+    if (!staffPermissionsAlreadyExist) await backfillStaffPermissions();
     await migrateLegacyUsers();
     await seedStandardRoles();
   })().catch((error) => { initialization = null; throw error; });
   return initialization;
+}
+
+async function backfillStaffPermissions() {
+  const permissionRows = await db('permissions')
+    .whereIn('key', ['users.view', 'users.create', 'users.update', 'staff.view', 'staff.create', 'staff.update', 'staff.manage_organization'])
+    .select('id', 'key');
+  const permissionId = new Map(permissionRows.map((row) => [row.key, row.id]));
+  const mappings = {
+    'users.view': ['staff.view'],
+    'users.create': ['staff.create'],
+    'users.update': ['staff.update', 'staff.manage_organization'],
+  };
+  const rows = [];
+  for (const [sourceKey, targetKeys] of Object.entries(mappings)) {
+    const sourceId = permissionId.get(sourceKey);
+    if (!sourceId) continue;
+    const roleIds = await db('role_permissions').where({ permission_id: sourceId }).select('role_id');
+    for (const { role_id } of roleIds) {
+      for (const targetKey of targetKeys) {
+        const targetId = permissionId.get(targetKey);
+        if (targetId) rows.push({ role_id, permission_id: targetId });
+      }
+    }
+  }
+
+  const standardRoles = await db('roles').whereIn('name', Object.keys(STANDARD_ROLES)).select('id', 'name');
+  for (const role of standardRoles) {
+    for (const key of STANDARD_ROLES[role.name].filter((permission) => permission.startsWith('staff.'))) {
+      const targetId = permissionId.get(key);
+      if (targetId) rows.push({ role_id: role.id, permission_id: targetId });
+    }
+  }
+  await insertIgnoreInChunks('role_permissions', rows, ['role_id', 'permission_id']);
 }
 
 async function backfillSalesPermissions() {

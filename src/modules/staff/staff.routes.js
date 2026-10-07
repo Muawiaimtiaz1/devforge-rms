@@ -12,15 +12,15 @@ router.use((req, res, next) => {
   return next();
 });
 
-router.get('/', requirePermission('users.view'), controller.list);
+router.get('/', requirePermission('staff.view'), controller.list);
 router.use('/', organizationRoutes);
 router.get('/options/accounts', requirePermission('users.view'), controller.accounts);
 router.get('/:id/access', requirePermission('users.view'), accessController.get);
 router.post('/:id/access', requirePermission('users.create', 'users.update'), accessController.create);
 router.patch('/:id/access', requirePermission('users.update', 'users.assign_roles'), accessController.update);
 router.post('/:id/access/reset-password', requirePermission('users.update'), accessController.resetPassword);
-router.get('/:id', requirePermission('users.view'), controller.get);
-router.post('/', requirePermission('users.create'), controller.create);
-router.put('/:id', requirePermission('users.update'), controller.update);
+router.get('/:id', requirePermission('staff.view'), controller.get);
+router.post('/', requirePermission('staff.create'), controller.create);
+router.put('/:id', requirePermission('staff.update'), controller.update);
 
 module.exports = router;

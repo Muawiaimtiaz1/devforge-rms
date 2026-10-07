@@ -6,7 +6,7 @@ const RESOURCE_MODULE = {
   'product-categories': 'products', 'raw-stock': 'raw_stock', recipes: 'recipes', brands: 'brands',
   customers: 'customers', expenses: 'expenses', 'expense-categories': 'expenses', tables: 'tables',
   analytics: 'analytics', reports: 'reports', ai: 'analytics', shifts: 'register', 'shop-settings': 'settings', printers: 'settings',
-  users: 'users', staff: 'users', roles: 'roles', notifications: 'notifications', 'activity-logs': 'activity_logs', waste: 'waste',
+  users: 'users', staff: 'staff', roles: 'roles', notifications: 'notifications', 'activity-logs': 'activity_logs', waste: 'waste',
   'notification-preferences': 'settings',
   attendance: 'attendance',
   leave: 'leave',
@@ -42,7 +42,8 @@ function actionFor(req, resource) {
     return 'open';
   }
   if (resource === 'users' && /assignable/.test(path)) return 'view';
-  if (resource === 'staff' && /\/access/.test(path)) return method === 'GET' ? 'view' : 'update';
+  if (resource === 'staff' && /\/organization\/catalog/.test(path)) return 'manage_organization';
+  if (resource === 'staff' && /\/assignment$/.test(path)) return method === 'GET' ? 'view' : 'manage_organization';
   if (resource === 'attendance') {
     if (/\/shift-register/.test(path)) return method === 'GET' ? 'view' : 'mark_daily';
     if (/\/clock/.test(path)) return method === 'GET' ? 'view' : 'clock';
@@ -151,11 +152,23 @@ function enforceApiPermissions(req, res, next) {
     return next();
   }
   if (resource === 'admin' && /financial-logs/.test(req.path)) return requirePermission(`platform_finance.${action}`)(req, res, next);
+  if (resource === 'staff' && /\/options\/accounts$/.test(req.path)) {
+    return requirePermission('users.view')(req, res, next);
+  }
+  if (resource === 'staff' && /\/access$/.test(req.path) && req.method === 'GET') {
+    return requirePermission('users.view')(req, res, next);
+  }
   if (resource === 'staff' && /\/access$/.test(req.path) && req.method === 'POST') {
     return requirePermission('users.create', 'users.update')(req, res, next);
   }
   if (resource === 'staff' && /\/access$/.test(req.path) && req.method === 'PATCH') {
     return requirePermission('users.update', 'users.assign_roles')(req, res, next);
+  }
+  if (resource === 'staff' && /\/access\/reset-password$/.test(req.path)) {
+    return requirePermission('users.update')(req, res, next);
+  }
+  if (resource === 'staff' && /\/transfer$/.test(req.path)) {
+    return requirePermission('platform_shops.update')(req, res, next);
   }
   if (resource === 'payroll' && /\/staff\/\d+\/salary/.test(req.path)) {
     return req.method === 'GET'

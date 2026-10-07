@@ -7,7 +7,7 @@ export default function StaffWorkspaceSidebar({ active, has, onSelect }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   useEffect(() => { localStorage.setItem('rms_staff_sidebar_collapsed', String(collapsed)) }, [collapsed])
   const items = [
-    has('users.view') && ['directory', 'Directory'], has('users.view') && ['organization', 'Organization'],
+    has('staff.view') && ['directory', 'Directory'], has('staff.view') && ['organization', 'Organization'],
     has('attendance.view') && ['attendance', 'Attendance'], has('leave.view') && ['leave', 'Leave'],
     has('payroll.view') && ['payroll', 'Salary'],
     has('payroll.view') && ['analytics', 'Staff analytics'],

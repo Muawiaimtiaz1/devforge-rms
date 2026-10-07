@@ -53,7 +53,7 @@ export default function StaffDirectory() {
       try {
         const auth = await api('/api/auth/me')
         const user = auth.user
-        const mayViewStaff = user.role === 'superadmin' || user.permissions?.includes('users.view')
+        const mayViewStaff = user.role === 'superadmin' || user.permissions?.includes('staff.view')
         const mayViewAttendance = user.role === 'superadmin' || user.permissions?.includes('attendance.view')
         const mayViewPayroll = user.role === 'superadmin' || user.permissions?.includes('payroll.view')
         const mayViewDocuments = user.role === 'superadmin' || user.permissions?.includes('documents.view')
@@ -76,7 +76,7 @@ export default function StaffDirectory() {
   }, [])
 
   useEffect(() => {
-    if (!session || !has('users.view')) return undefined
+    if (!session || !has('staff.view')) return undefined
     const timer = window.setTimeout(() => loadStaff(filters, true).catch((requestError) => setError(requestError.message)), 250)
     return () => window.clearTimeout(timer)
   }, [filters, session, loadStaff, has])
@@ -96,9 +96,9 @@ export default function StaffDirectory() {
       <StaffWorkspaceSidebar active={activePanel} has={has} onSelect={setActivePanel} />
       <section className="staff-shell">
         {error && <div className="page-error"><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
-        {activePanel === 'directory' && has('users.view') && <><header className="staff-heading"><div><p className="section-label">People workspace</p><h1>Staff Directory</h1><p>Employment profiles are separate from login accounts and preserved throughout the employee lifecycle.</p></div>{has('users.create') && <div className="heading-actions"><button className="primary-button" onClick={() => openEditor()}>+ Add staff member</button></div>}</header><StaffSummary summary={result.summary || {}} selectedStatus={filters.status} onStatusChange={(status) => changeFilter('status', status)} /><StaffFilters filters={filters} departments={result.filters?.departments || []} designations={result.filters?.designations || []} onChange={changeFilter} /><div className="staff-result-meta"><span>{result.pagination?.total || 0} staff member{result.pagination?.total === 1 ? '' : 's'}</span>{refreshing && <span role="status">Updating…</span>}</div><StaffTable profiles={result.items} canUpdate={has('users.update')} canManageAccess={has('users.view')} onView={setSelected} onEdit={openEditor} onAccess={setAccessProfile} onAssignment={setAssignmentProfile} /><StaffPagination page={filters.page} pages={result.pagination?.pages || 1} onPageChange={(page) => changeFilter('page', page)} /></>}
+        {activePanel === 'directory' && has('staff.view') && <><header className="staff-heading"><div><p className="section-label">People workspace</p><h1>Staff Directory</h1><p>Employment profiles are separate from login accounts and preserved throughout the employee lifecycle.</p></div>{has('staff.create') && <div className="heading-actions"><button className="primary-button" onClick={() => openEditor()}>+ Add staff member</button></div>}</header><StaffSummary summary={result.summary || {}} selectedStatus={filters.status} onStatusChange={(status) => changeFilter('status', status)} /><StaffFilters filters={filters} departments={result.filters?.departments || []} designations={result.filters?.designations || []} onChange={changeFilter} /><div className="staff-result-meta"><span>{result.pagination?.total || 0} staff member{result.pagination?.total === 1 ? '' : 's'}</span>{refreshing && <span role="status">Updating…</span>}</div><StaffTable profiles={result.items} canUpdate={has('staff.update')} canManageAccess={has('users.view')} onView={setSelected} onEdit={openEditor} onAccess={setAccessProfile} onAssignment={setAssignmentProfile} /><StaffPagination page={filters.page} pages={result.pagination?.pages || 1} onPageChange={(page) => changeFilter('page', page)} /></>}
         <Suspense fallback={<div className="staff-panel-loader" role="status">Loading staff panel…</div>}>
-          {activePanel === 'organization' && has('users.view') && <OrganizationStructurePanel embedded canUpdate={has('users.update')} onChanged={() => loadStaff(filters, true)} />}
+          {activePanel === 'organization' && has('staff.view') && <OrganizationStructurePanel embedded canUpdate={has('staff.manage_organization')} onChanged={() => loadStaff(filters, true)} />}
           {activePanel === 'attendance' && has('attendance.view') && <AttendanceWorkspacePanel embedded has={has} />}
           {activePanel === 'roles' && has('roles.view') && <RoleManagementPanel embedded has={has} />}
           {activePanel === 'sessions' && <MySessionsPanel embedded />}
@@ -110,9 +110,9 @@ export default function StaffDirectory() {
         </Suspense>
       </section>
     </div>
-    {editing !== undefined && <StaffProfileForm profile={editing} canEditSalary={has('users.update')} onClose={() => setEditing(undefined)} onSaved={saved} />}
-    {selected && <StaffProfileDetail profile={selected} canUpdate={has('users.update')} canManageAccess={has('users.view')} onClose={() => setSelected(null)} onAssignment={() => { const profile = selected; setSelected(null); setAssignmentProfile(profile) }} onAccess={() => { const profile = selected; setSelected(null); setAccessProfile(profile) }} onEdit={() => { const profile = selected; setSelected(null); openEditor(profile) }} />}
+    {editing !== undefined && <StaffProfileForm profile={editing} canEditSalary={has('payroll.configure')} onClose={() => setEditing(undefined)} onSaved={saved} />}
+    {selected && <StaffProfileDetail profile={selected} canUpdate={has('staff.update')} canManageAccess={has('users.view')} onClose={() => setSelected(null)} onAssignment={() => { const profile = selected; setSelected(null); setAssignmentProfile(profile) }} onAccess={() => { const profile = selected; setSelected(null); setAccessProfile(profile) }} onEdit={() => { const profile = selected; setSelected(null); openEditor(profile) }} />}
     {accessProfile && <StaffAccessPanel profile={accessProfile} has={has} onClose={() => setAccessProfile(null)} onChanged={saved} />}
-    {assignmentProfile && <StaffAssignmentPanel profile={assignmentProfile} canUpdate={has('users.update')} isSuperadmin={session?.role === 'superadmin'} onClose={() => setAssignmentProfile(null)} onChanged={() => loadStaff(filters, true)} />}
+    {assignmentProfile && <StaffAssignmentPanel profile={assignmentProfile} canUpdate={has('staff.manage_organization')} isSuperadmin={session?.role === 'superadmin'} onClose={() => setAssignmentProfile(null)} onChanged={() => loadStaff(filters, true)} />}
   </main>
 }

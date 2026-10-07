@@ -16,6 +16,7 @@ const MODULES = {
   register: ['view', 'open', 'close', 'cash_drop', 'verify_cash', 'handover', 'view_history'],
   settings: ['view', 'update', 'manage_discounts', 'manage_taxes', 'manage_printers'],
   users: ['view', 'create', 'update', 'delete', 'assign_roles'],
+  staff: ['view', 'create', 'update', 'manage_organization'],
   attendance: ['view', 'clock', 'manage_schedules', 'correct', 'approve', 'mark_daily'],
   leave: ['view', 'request', 'manage', 'approve'],
   payroll: ['view', 'configure', 'run', 'review', 'approve', 'finalize'],
@@ -58,7 +59,7 @@ const PANEL_MODULES = {
   kds: ['kitchen_orders'], products: ['products'], brands: ['brands'], 'raw-stock': ['raw_stock'],
   'waste-management': ['waste'], 'raw-stock': ['raw_stock', 'recipes'], customers: ['customers'], expenses: ['expenses'], tables: ['tables'],
   analytics: ['analytics'], reports: ['reports'], register: ['register'], logs: ['activity_logs'], settings: ['settings'],
-  users: ['users', 'roles', 'attendance', 'leave', 'payroll', 'documents', 'staff_activity'], notifications: ['notifications'],
+  users: ['users', 'staff', 'roles', 'attendance', 'leave', 'payroll', 'documents', 'staff_activity'], notifications: ['notifications'],
 };
 
 function permissionsForPanels(panels = []) {
