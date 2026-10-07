@@ -44,7 +44,10 @@ test('realtime agent is generated separately without changing polling template',
   assert.match(generated, /Authorization: `Bearer/);
   assert.match(generated, /api\/realtime-print-jobs\/\$\{id\}\/\$\{path\}/);
   assert.match(generated, /REALTIME_RECONCILE_MS/);
-  assert.match(generated, /REALTIME_RECONCILE_MS \|\| 5000/);
+  assert.match(generated, /REALTIME_RECONCILE_MS \|\| 30000/);
+  assert.match(generated, /socket\.on\('disconnect', startFallbackPolling\)/);
+  assert.match(generated, /stopFallbackPolling\(\)/);
+  assert.match(generated, /startFallbackPolling\(\);/);
   assert.doesNotMatch(generated, /transports: \['websocket'\]/);
   assert.match(generated, /Realtime connection established/);
   assert.match(generated, /print:heartbeat/);

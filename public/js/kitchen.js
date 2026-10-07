@@ -2,6 +2,11 @@
 // ─── KITCHEN DISPLAY SYSTEM ───────────────────────────────────────────────────
 let _kdsInterval = null;
 
+function pollKDSFallback() {
+  if (document.hidden || window.orderRealtimeSocket?.connected) return;
+  return loadKDSOrders();
+}
+
 async function renderKDS() {
   // Clear any previous polling
   if (_kdsInterval) { clearInterval(_kdsInterval); _kdsInterval = null; }
@@ -51,7 +56,7 @@ async function renderKDS() {
     </div>
   `;
   await loadKDSOrders();
-  _kdsInterval = setInterval(loadKDSOrders, 5 * 60 * 1000);
+  _kdsInterval = setInterval(pollKDSFallback, 5 * 60 * 1000);
 }
 
 async function loadKDSOrders() {
@@ -674,7 +679,7 @@ async function renderKDS() {
   applyKDSWorkflowTabs();
   await loadKDSOrders();
   // WebSockets drive normal refreshes; this slow poll repairs any missed event.
-  _kdsInterval = setInterval(loadKDSOrders, 5 * 60 * 1000);
+  _kdsInterval = setInterval(pollKDSFallback, 5 * 60 * 1000);
 }
 
 function toggleKDSToolbar() {

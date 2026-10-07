@@ -30,7 +30,7 @@ export default function PosOrdersView({user,back,notify,printReceipt,onEdit}){
       const script=document.createElement('script');script.src='/socket.io/socket.io.js';script.dataset.orderRealtimeClient='true';script.onload=connect;script.onerror=reject;document.head.appendChild(script)
     })
     const initial=setTimeout(()=>{if(!loaded.current){loaded.current=true;load()}},0)
-    const fallback=setInterval(load,300000)
+    const fallback=setInterval(()=>{if(!document.hidden&&!socket?.connected)load()},300000)
     const visible=()=>{if(!document.hidden&&staleWhileHidden){staleWhileHidden=false;scheduleRefresh()}}
     document.addEventListener('visibilitychange',visible)
     getSocket().then(subscribe).catch(()=>{if(active)setRealtime('offline')})

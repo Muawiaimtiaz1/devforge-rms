@@ -5314,6 +5314,10 @@ function startPOSOrdersPolling() {
   _posOrdersPollingTimer = setTimeout(async () => {
     _posOrdersPollingTimer = null;
     if (!isPOSOrdersViewActive() || document.hidden) return;
+    if (window.orderRealtimeSocket?.connected) {
+      startPOSOrdersPolling();
+      return;
+    }
     await renderPOSOrders();
     startPOSOrdersPolling();
   }, POS_ORDERS_POLL_INTERVAL_MS);

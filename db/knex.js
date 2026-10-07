@@ -23,8 +23,10 @@ const config = {
       database: process.env.PGDATABASE,
     },
     pool: {
-      min: 2,
-      max: 10
+      min: Math.max(0, Number(process.env.DB_POOL_MIN || 0)),
+      max: Math.max(1, Number(process.env.DB_POOL_MAX || 5)),
+      idleTimeoutMillis: Math.max(1000, Number(process.env.DB_POOL_IDLE_MS || 30000)),
+      acquireTimeoutMillis: Math.max(1000, Number(process.env.DB_POOL_ACQUIRE_MS || 10000))
     }
   }
 };

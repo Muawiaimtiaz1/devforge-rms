@@ -8,7 +8,7 @@ function boolEnv(value) {
 function buildPoolConfig() {
   const poolMax = parseInt(process.env.PG_POOL_MAX || "20", 10);
   const base = {
-    max: Number.isFinite(poolMax) ? poolMax : 20,
+    max: Number.isFinite(poolMax) ? Math.min(poolMax, Number(process.env.PG_POOL_MAX || 5)) : 5,
     idleTimeoutMillis: parseInt(process.env.PG_IDLE_TIMEOUT_MS || "30000", 10),
     connectionTimeoutMillis: parseInt(process.env.PG_CONNECT_TIMEOUT_MS || "10000", 10),
   };

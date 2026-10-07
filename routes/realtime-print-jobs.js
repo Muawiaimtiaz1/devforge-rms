@@ -14,7 +14,7 @@ function buildRealtimeAgentSource(template, profile) {
   source = source.replace(/const AGENT_PROFILE = Object\.freeze\(\{[^\r\n]*\}\);/, `const AGENT_PROFILE = Object.freeze(${JSON.stringify(profile)});`);
   const laneController = [
     'const MAX_CONCURRENT_PDF_RENDERS = Math.max(1, Number(process.env.MAX_CONCURRENT_PDF_RENDERS || 2));',
-    'const REALTIME_RECONCILE_MS = Math.max(1000, Number(process.env.REALTIME_RECONCILE_MS || 5000));',
+    'const REALTIME_RECONCILE_MS = Math.max(5000, Number(process.env.REALTIME_RECONCILE_MS || 30000));',
     'let activePdfRenders = 0;',
     'const pdfRenderWaiters = [];',
     'async function acquirePdfRenderSlot() {',
@@ -74,6 +74,37 @@ function buildRealtimeAgentSource(template, profile) {
     '    } finally {\r\n        releasePdfRenderSlot();\r\n        setTimeout(() => {\r\n            try {\r\n                if (fs.existsSync(pdfPath))'
   );
   source = source.replace(/setInterval\(pollJobs, CONFIG\.POLL_INTERVAL_MS\);\r?\npollJobs\(\);/, "const socket = io(`${CONFIG.SERVER_URL}/realtime-print-agent`, { auth: { token: AGENT_PROFILE.realtimeToken }, reconnection: true });\nsocket.on('connect', () => console.log('Realtime connection established.'));\nsocket.on('print:ready', event => (event.printers || ASSIGNED_PRINTERS).forEach(requestPrinterDrain));\nsocket.on('print:available', event => requestPrinterDrain(event.stationName));\nsocket.on('connect_error', error => console.error('Realtime connection error:', error.message));\nsetInterval(() => socket.connected && socket.emit('print:heartbeat'), 30000);\n// Frequent reconciliation recovers missed events and keeps printing available when a proxy blocks WebSockets.\nsetInterval(pollJobs, REALTIME_RECONCILE_MS);\npollJobs();");
+  source = source.replace(
+    `socket.on('connect', () => console.log('Realtime connection established.'));`,
+    `let fallbackPollTimer = null;
+function startFallbackPolling() {
+    if (fallbackPollTimer) return;
+    pollJobs();
+    fallbackPollTimer = setInterval(pollJobs, REALTIME_RECONCILE_MS);
+}
+function stopFallbackPolling() {
+    if (!fallbackPollTimer) return;
+    clearInterval(fallbackPollTimer);
+    fallbackPollTimer = null;
+}
+socket.on('connect', () => {
+    stopFallbackPolling();
+    console.log('Realtime connection established.');
+});`
+  );
+  source = source.replace(
+    `socket.on('connect_error', error => console.error('Realtime connection error:', error.message));`,
+    `socket.on('disconnect', startFallbackPolling);
+socket.on('connect_error', error => {
+    console.error('Realtime connection error:', error.message);
+    startFallbackPolling();
+});`
+  );
+  source = source.replace(
+    `setInterval(pollJobs, REALTIME_RECONCILE_MS);
+pollJobs();`,
+    `startFallbackPolling();`
+  );
   return source;
 }
 
@@ -135,6 +166,7 @@ router.post('/:id/fail', authenticateAgent, async (req, res) => {
     last_error: reason
   });
   if (!updated) return res.status(404).json({ error: 'Claimed job not found' });
+  if (!exhausted) require('../services/RealtimePrintService').scheduleRetryRelease(retrySeconds * 1000);
   res.json({ success: true, status: exhausted ? 'failed' : 'retry_wait', retry_in_seconds: exhausted ? null : retrySeconds });
 });
 

@@ -11,6 +11,7 @@ class RealtimePrintService {
     this.lastNotificationAt = null;
     this.agentState = new Map();
     this.retryTimer = null;
+    this.retryDueAt = null;
   }
 
   stationRoom(shopId, stationName) {
@@ -54,8 +55,6 @@ class RealtimePrintService {
       socket.emit('print:ready', { printers: identity.printers });
     });
     this.connectPostgresListener().catch(error => console.error('[Realtime Print] Listener startup failed:', error.message));
-    this.retryTimer = setInterval(() => this.releaseDueRetries().catch(error => console.error('[Realtime Print] Retry release failed:', error.message)), 15000);
-    this.retryTimer.unref?.();
     return this.namespace;
   }
 
@@ -85,6 +84,7 @@ class RealtimePrintService {
     await client.query('LISTEN rms_print_jobs');
     console.log('[Realtime Print] PostgreSQL listener active.');
     await this.reconcilePendingJobs();
+    await this.scheduleNextRetry();
   }
 
   async reconcilePendingJobs() {
@@ -103,6 +103,34 @@ class RealtimePrintService {
   async releaseDueRetries() {
     if (process.env.DB_CLIENT !== 'postgres') return;
     await db('print_queue').where({ status: 'retry_wait' }).where('available_at', '<=', db.fn.now()).update({ status: 'pending', claimed_at: null, updated_at: db.fn.now() });
+  }
+
+  scheduleRetryRelease(delayMs) {
+    if (process.env.DB_CLIENT !== 'postgres') return;
+    const boundedDelay = Math.max(0, Math.min(Number(delayMs) || 0, 2147483647));
+    const dueAt = Date.now() + boundedDelay;
+    if (this.retryTimer && this.retryDueAt !== null && this.retryDueAt <= dueAt) return;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryDueAt = dueAt;
+    this.retryTimer = setTimeout(async () => {
+      this.retryTimer = null;
+      this.retryDueAt = null;
+      try {
+        await this.releaseDueRetries();
+        await this.scheduleNextRetry();
+      } catch (error) {
+        console.error('[Realtime Print] Retry release failed:', error.message);
+        this.scheduleRetryRelease(60000);
+      }
+    }, boundedDelay);
+    this.retryTimer.unref?.();
+  }
+
+  async scheduleNextRetry() {
+    if (process.env.DB_CLIENT !== 'postgres') return;
+    const next = await db('print_queue').where({ status: 'retry_wait' }).min({ available_at: 'available_at' }).first();
+    if (!next?.available_at) return;
+    this.scheduleRetryRelease(Math.max(0, new Date(next.available_at).getTime() - Date.now()));
   }
 
   disconnectShop(shopId) {

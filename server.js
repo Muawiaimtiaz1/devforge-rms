@@ -334,7 +334,11 @@ if (require.main === module) {
       finally { inventorySyncRunning = false; }
     };
     syncInventoryAlerts();
-    const inventoryAlertTimer = setInterval(syncInventoryAlerts, 60 * 1000);
+    const inventoryAlertIntervalMs = Math.max(
+      5 * 60 * 1000,
+      Number(process.env.INVENTORY_ALERT_INTERVAL_MS || 30 * 60 * 1000)
+    );
+    const inventoryAlertTimer = setInterval(syncInventoryAlerts, inventoryAlertIntervalMs);
     inventoryAlertTimer.unref?.();
   })();
 }

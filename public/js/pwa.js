@@ -214,5 +214,5 @@ window.addEventListener('focus', reconcileRMSPushSubscription);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') reconcileRMSPushSubscription();
 });
-setInterval(reconcileRMSPushSubscription, 15 * 60 * 1000);
+setInterval(reconcileRMSPushSubscription, 6 * 60 * 60 * 1000);
 document.addEventListener('DOMContentLoaded', refreshPWAButton);
