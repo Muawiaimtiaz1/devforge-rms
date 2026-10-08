@@ -9909,7 +9909,7 @@ async function viewCustomerLedger(customerId) {
 
           let ref = "—";
           if (e.sale_id) {
-            ref = `SALE-${String(e.sale_id).padStart(5, "0")}`;
+            ref = `SALE-${String(e.order_number || e.sale_id).padStart(5, "0")}`;
           } else if (e.type === "payment") {
             ref = `PAY-${String(e.id).padStart(5, "0")}`;
           } else if (e.type === "return") {
@@ -13054,7 +13054,7 @@ function _renderPaymentLogsTab(paymentRows = []) {
       <td class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400">${escapeOrderValue(payment.note || "Payment received")}</td>
       <td class="px-6 py-4">
         <div class="text-xs font-black text-slate-800 dark:text-white">${escapeOrderValue(payment.created_by_name || "Unknown")}</div>
-        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">${payment.sale_id ? `Sale #${payment.sale_id}` : "Ledger payment"}</div>
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">${payment.sale_id ? `Sale #${payment.order_number || payment.sale_id}` : "Ledger payment"}</div>
       </td>
       ${currentUser.role === 'superadmin' ? `<td class="px-6 py-4 text-xs font-bold text-indigo-500">${escapeOrderValue(payment.shop_name || "Core System")}</td>` : ""}
     </tr>
@@ -13101,7 +13101,7 @@ function _renderSalesLogsTab(salesRows = []) {
     return `
       <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.01]">
         <td class="px-6 py-4">
-          <div class="text-xs font-black text-slate-900 dark:text-white">#${sale.id}</div>
+          <div class="text-xs font-black text-slate-900 dark:text-white">#${sale.order_number || sale.id}</div>
           <div class="text-[10px] font-bold text-slate-400 mt-0.5">${_formatLogDateTime(sale.created_at)}</div>
         </td>
         <td class="px-6 py-4">
@@ -13160,7 +13160,7 @@ function _renderDeliveryLogsTab(deliveryRows = []) {
     return `
       <tr class="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.01]">
         <td class="px-6 py-4">
-          <div class="text-xs font-black text-slate-900 dark:text-white">#${sale.id}</div>
+          <div class="text-xs font-black text-slate-900 dark:text-white">#${sale.order_number || sale.id}</div>
           <div class="text-[10px] font-bold text-slate-400 mt-0.5">${_formatLogDateTime(sale.created_at)}</div>
         </td>
         <td class="px-6 py-4">

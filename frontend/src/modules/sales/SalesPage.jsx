@@ -691,7 +691,7 @@ export default function SalesPage() {
           "</h1><h2>Return #" +
           escapeHtml(returnId) +
           "</h2><p>Original sale #" +
-          escapeHtml(ret.sale_id) +
+          escapeHtml(data.sale?.order_number || ret.sale_id) +
           '</p><div class="meta">Method: ' +
           escapeHtml(ret.payment_method || "cash") +
           "<br>Reason: " +
@@ -1108,7 +1108,7 @@ export default function SalesPage() {
       )}
       {modal?.kind === "dues" && (
         <Modal
-          title={"Payment Details: Bill #" + modal.sale.id}
+          title={"Payment Details: Bill #" + (modal.sale.order_number || modal.sale.id)}
           onClose={() => setModal(null)}
         >
           <DueDetails data={modal.data} />
@@ -1116,7 +1116,7 @@ export default function SalesPage() {
       )}
       {modal?.kind === "collect" && (
         <Modal
-          title={"Collect Dues: Bill #" + modal.sale.id}
+          title={"Collect Dues: Bill #" + (modal.sale.order_number || modal.sale.id)}
           onClose={() => setModal(null)}
         >
           <CollectPayment
@@ -1129,7 +1129,7 @@ export default function SalesPage() {
       {modal?.kind === "return" && (
         <Modal
           wide
-          title={"Return Items: Bill #" + modal.sale.id}
+          title={"Return Items: Bill #" + (modal.sale.order_number || modal.sale.id)}
           onClose={() => setModal(null)}
         >
           <ReturnItems

@@ -206,9 +206,9 @@ router.get("/:id", requirePermission("customers.view"), async (req, res) => {
     let ledger;
     if (usePostgres()) {
       const { rows } = await getPostgres().query(`
-        SELECT cl.*, u.name as created_by_name
+        SELECT cl.*, u.name as created_by_name, s.order_number
         FROM customer_ledger cl
-        LEFT JOIN users u ON cl.created_by = u.id
+        LEFT JOIN users u ON cl.created_by = u.id LEFT JOIN sales s ON cl.sale_id = s.id AND cl.shop_id = s.shop_id
         WHERE cl.customer_id = $1
           ${ledgerDateClause}
         ORDER BY cl.created_at ASC, cl.id ASC
@@ -216,9 +216,9 @@ router.get("/:id", requirePermission("customers.view"), async (req, res) => {
       ledger = rows;
     } else {
       ledger = getSqlite().prepare(`
-        SELECT cl.*, u.name as created_by_name
+        SELECT cl.*, u.name as created_by_name, s.order_number
         FROM customer_ledger cl
-        LEFT JOIN users u ON cl.created_by = u.id
+        LEFT JOIN users u ON cl.created_by = u.id LEFT JOIN sales s ON cl.sale_id = s.id AND cl.shop_id = s.shop_id
         WHERE cl.customer_id = ?
           ${ledgerDateClause}
         ORDER BY cl.created_at ASC, cl.id ASC
@@ -571,10 +571,10 @@ router.get("/:id/ledger.pdf", requirePermission("customers.view"), async (req, r
     const dateClause = buildDateClause("cl.created_at", from, to, ledgerParams);
     let ledger;
     if (usePostgres()) {
-        const { rows } = await getPostgres().query(`SELECT cl.*, u.name as created_by_name FROM customer_ledger cl LEFT JOIN users u ON cl.created_by = u.id WHERE cl.customer_id = $1 ${dateClause} ORDER BY cl.created_at ASC, cl.id ASC`, ledgerParams);
+        const { rows } = await getPostgres().query(`SELECT cl.*, u.name as created_by_name, s.order_number FROM customer_ledger cl LEFT JOIN users u ON cl.created_by = u.id LEFT JOIN sales s ON cl.sale_id = s.id AND cl.shop_id = s.shop_id WHERE cl.customer_id = $1 ${dateClause} ORDER BY cl.created_at ASC, cl.id ASC`, ledgerParams);
         ledger = rows;
     } else {
-        ledger = getSqlite().prepare(`SELECT cl.*, u.name as created_by_name FROM customer_ledger cl LEFT JOIN users u ON cl.created_by = u.id WHERE cl.customer_id = ? ${dateClause} ORDER BY cl.created_at ASC, cl.id ASC`).all(...ledgerParams);
+        ledger = getSqlite().prepare(`SELECT cl.*, u.name as created_by_name, s.order_number FROM customer_ledger cl LEFT JOIN users u ON cl.created_by = u.id LEFT JOIN sales s ON cl.sale_id = s.id AND cl.shop_id = s.shop_id WHERE cl.customer_id = ? ${dateClause} ORDER BY cl.created_at ASC, cl.id ASC`).all(...ledgerParams);
     }
 
     let periodDebits = 0, periodCredits = 0, runningBal = balanceBF;
@@ -668,7 +668,7 @@ router.get("/:id/ledger.pdf", requirePermission("customers.view"), async (req, r
         doc.fontSize(7.5).font("Helvetica").fillColor(tMid);
         doc.text(new Date(entry.created_at).toLocaleDateString("en-GB"), C.date + 3, y + 5);
         let ref = "—";
-        if (entry.sale_id) ref = `SALE-${String(entry.sale_id).padStart(5, "0")}`;
+        if (entry.sale_id) ref = `SALE-${String(entry.order_number || entry.sale_id).padStart(5, "0")}`;
         else if (entry.type === 'payment') ref = `PAY-${String(entry.id).padStart(5, "0")}`;
         else if (entry.type === 'return') ref = `RET-${String(entry.id).padStart(5, "0")}`;
         else if (entry.type === 'adjustment') ref = `ADJ-${String(entry.id).padStart(5, "0")}`;
@@ -816,7 +816,7 @@ router.get("/:id/report.pdf", requirePermission("customers.view"), async (req, r
         const due = Number(sale.total || 0) - Number(sale.amount_received || 0);
         const isPaid = due <= 0.01;
         doc.rect(40, y, W, 22).fill(isPaid ? "#f0fdf4" : "#fff7ed").stroke(bdr);
-        doc.fontSize(8.5).font("Helvetica-Bold").fillColor(tDark).text(`SALE #${String(sale.id).padStart(5, "0")}`, 48, y + 7);
+        doc.fontSize(8.5).font("Helvetica-Bold").fillColor(tDark).text(`SALE #${String(sale.order_number || sale.id).padStart(5, "0")}`, 48, y + 7);
         doc.fontSize(8).font("Helvetica").fillColor(tLight).text(new Date(sale.created_at).toLocaleDateString("en-GB"), 140, y + 7);
         const mBg = sale.payment_method === "cash" ? "#d1fae5" : "#dbeafe", mFg = sale.payment_method === "cash" ? "#065f46" : "#1e40af";
         doc.rect(248, y + 5, 52, 13).fill(mBg);

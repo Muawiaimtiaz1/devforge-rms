@@ -1124,14 +1124,14 @@ function buildWasteSourceOptions(context, sourceType) {
 
   if (sourceType === "order") {
     return recentSales.map((sale) => {
-      const label = `Sale #${sale.id} - ${sale.customer_name || "Walk-in"} - ${shopCurrencyCode()} ${Number(sale.total || 0).toFixed(2)}`;
+      const label = `Sale #${sale.order_number || sale.id} - ${sale.customer_name || "Walk-in"} - ${shopCurrencyCode()} ${Number(sale.total || 0).toFixed(2)}`;
       return buildWasteOption(`sale:${sale.id}`, label, { unit: "order" });
     });
   }
 
   if (sourceType === "return") {
     return recentReturns.map((ret) => {
-      const label = `Return #${ret.id} - Sale #${ret.sale_id || "-"} - ${shopCurrencyCode()} ${Number(ret.total_refund || 0).toFixed(2)}`;
+      const label = `Return #${ret.id} - Sale #${ret.order_number || ret.sale_id || "-"} - ${shopCurrencyCode()} ${Number(ret.total_refund || 0).toFixed(2)}`;
       return buildWasteOption(`return:${ret.id}`, label, { unit: "return" });
     });
   }
@@ -1176,7 +1176,7 @@ function wastePanelSourceName(row) {
   if (row.product_name) return row.product_name;
   if (row.raw_stock_name) return row.raw_stock_name;
   if (row.recipe_name) return row.recipe_name;
-  if (row.sale_id) return `Sale #${row.sale_id}`;
+  if (row.sale_id) return `Sale #${row.order_number || row.sale_id}`;
   if (row.return_id) return `Return #${row.return_id}`;
   return `Waste #${row.id}`;
 }

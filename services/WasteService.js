@@ -54,12 +54,12 @@ class WasteService {
         .where('r.shop_id', shopId)
         .orderBy('r.name', 'asc'),
       db('sales as s')
-        .select('s.id', 's.customer_name', 's.total', 's.order_type', 's.order_status', 's.created_at')
+        .select('s.id', 's.order_number', 's.customer_name', 's.total', 's.order_type', 's.order_status', 's.created_at')
         .where('s.shop_id', shopId)
         .orderBy('s.created_at', 'desc')
         .limit(50),
       db('returns as r')
-        .select('r.id', 'r.sale_id', 'r.total_refund', 'r.reason', 'r.created_at')
+        .select('r.id', 'r.sale_id', 'r.total_refund', 'r.reason', 'r.created_at', db.raw('(SELECT order_number FROM sales WHERE id = r.sale_id AND shop_id = r.shop_id) as order_number'))
         .where('r.shop_id', shopId)
         .orderBy('r.created_at', 'desc')
         .limit(50)
@@ -77,12 +77,16 @@ class WasteService {
         'p.name as product_name',
         'rs.name as raw_stock_name',
         'r.name as recipe_name',
+        's.order_number',
         'shops.name as shop_name'
       )
       .leftJoin('users as u', 'we.user_id', 'u.id')
       .leftJoin('products as p', 'we.product_id', 'p.id')
       .leftJoin('raw_stocks as rs', 'we.raw_stock_id', 'rs.id')
       .leftJoin('recipes as r', 'we.recipe_id', 'r.id')
+      .leftJoin('sales as s', function () {
+        this.on('we.sale_id', 's.id').andOn('we.shop_id', 's.shop_id');
+      })
       .leftJoin('shops', 'we.shop_id', 'shops.id');
 
     if (shopId) query.where('we.shop_id', shopId);
@@ -390,7 +394,7 @@ class WasteService {
       if (!sale) throw new Error('Sale/order not found.');
       const saleItems = await trx('sale_items').where({ sale_id: sale.id });
       totalCost = saleItems.reduce((sum, item) => sum + (toNumber(item.buying_price_at_sale) * toNumber(item.quantity)), 0);
-      snapshot = { source_name: `Sale #${sale.id}`, order_type: sale.order_type, order_status: sale.order_status };
+      snapshot = { source_name: `Sale #${sale.order_number || sale.id}`, order_type: sale.order_type, order_status: sale.order_status };
       lines.push(...saleItems.map((item) => ({
         item_type: 'sale_item',
         product_id: item.product_id,

@@ -82,6 +82,7 @@ router.get('/payments', requireAuth, async (req, res) => {
         'c.phone as customer_phone',
         'u.name as created_by_name',
         'u.username as created_by_username',
+        's.order_number',
         's.payment_method',
         's.total as sale_total',
         'shops.name as shop_name'
@@ -102,6 +103,7 @@ router.get('/payments', requireAuth, async (req, res) => {
         's.user_id',
         's.customer_name',
         's.customer_phone',
+        's.order_number',
         's.amount_received',
         's.payment_method',
         's.created_at',
@@ -135,6 +137,7 @@ router.get('/payments', requireAuth, async (req, res) => {
       customer_id: null,
       shop_id: sale.shop_id,
       sale_id: sale.id,
+      order_number: sale.order_number,
       amount: Number(sale.amount_received || 0),
       balance_after: null,
       note: 'Sale payment at checkout',
@@ -180,6 +183,7 @@ router.get('/wastage', requireAuth, async (req, res) => {
           'we.raw_stock_id',
           'we.recipe_id',
           'we.sale_id',
+          's.order_number',
           'we.return_id',
           'we.quantity',
           'we.unit',
@@ -194,7 +198,7 @@ router.get('/wastage', requireAuth, async (req, res) => {
               rs.name,
               r.name,
               CASE
-                WHEN we.sale_id IS NOT NULL THEN CONCAT('Sale #', we.sale_id)
+                WHEN we.sale_id IS NOT NULL THEN CONCAT('Sale #', COALESCE(s.order_number, we.sale_id))
                 WHEN we.return_id IS NOT NULL THEN CONCAT('Return #', we.return_id)
                 ELSE CONCAT('Waste #', we.id)
               END
@@ -207,6 +211,9 @@ router.get('/wastage', requireAuth, async (req, res) => {
         .leftJoin('products as p', 'we.product_id', 'p.id')
         .leftJoin('raw_stocks as rs', 'we.raw_stock_id', 'rs.id')
         .leftJoin('recipes as r', 'we.recipe_id', 'r.id')
+        .leftJoin('sales as s', function () {
+          this.on('we.sale_id', 's.id').andOn('we.shop_id', 's.shop_id');
+        })
         .leftJoin('users as u', 'we.user_id', 'u.id')
         .leftJoin('shops', 'we.shop_id', 'shops.id')
       : db('raw_stock_waste as w')

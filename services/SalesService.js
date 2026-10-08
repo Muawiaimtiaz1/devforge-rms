@@ -1868,7 +1868,8 @@ class SalesService {
         if (paymentMade > 0.01) {
           await customerService.addPaymentEntry(trx, {
             customerId: sale.customer_id, shopId, saleId: sale.id, paymentAmount: paymentMade,
-            paymentMethod, note, userId, shiftId: activeShift.id
+            paymentMethod, note: note || `Payment received for SALE-${String(sale.order_number || sale.id).padStart(5, '0')}`,
+            userId, shiftId: activeShift.id
           });
         }
       }
@@ -2167,7 +2168,7 @@ class SalesService {
               await customerService.addPaymentEntry(trx, {
                   customerId: sale.customer_id, shopId, saleId: null, paymentAmount: totalRefund,
                   paymentMethod: 'ledger',
-                  note: `Refund for sale SALE-${String(saleId).padStart(5, '0')}`, userId, shiftId: activeShift ? activeShift.id : null
+                  note: `Refund for sale SALE-${String(sale.order_number || sale.id).padStart(5, '0')}`, userId, shiftId: activeShift ? activeShift.id : null
               });
           }
       }
