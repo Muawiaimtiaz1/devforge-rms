@@ -3987,7 +3987,7 @@ function capturePOSLayoutState() {
   const ids = [
     "pos-table", "pos-waiter", "pos-rider", "pos-delivery-addr",
     "pos-token", "pos-takeaway-waiter", "pos-discount", "pos-discount-preset", "pos-tax", "pos-tax-preset",
-    "pos-method", "pos-received", "pos-cust-name", "pos-cust-phone"
+    "pos-method", "pos-received", "pos-cust-name", "pos-cust-phone", "pos-order-note"
   ];
   const values = {};
   ids.forEach((id) => {
@@ -4638,7 +4638,14 @@ async function renderPOS() {
             </div>
 
             <div class="mb-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-bold text-orange-700 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-300">Kitchen terminals are assigned automatically from product category routing.</div>
+
           </div>
+
+          <div class="mb-2 px-1">
+              <label for="pos-order-note" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Order Note <span class="normal-case tracking-normal font-bold">(optional)</span></label>
+              <input id="pos-order-note" type="text" maxlength="300" pattern="[A-Za-z0-9 ]*" placeholder="e.g. Start after 10 minutes" oninput="this.value=this.value.replace(/[^A-Za-z0-9 ]/g, '')" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-sm font-bold" />
+              <p class="mt-1 text-[10px] font-medium text-slate-400">Letters, numbers, and spaces only. Visible to kitchen and service staff.</p>
+            </div>
 
           <div id="pos-cart-controls" class="border-t border-slate-200 dark:border-slate-700 ${splitLayout ? 'mt-0.5 pt-0.5 space-y-1 shrink-0' : 'mt-4 pt-4 space-y-4'}">
             <div class="hidden">
@@ -5624,6 +5631,8 @@ async function viewOrderItems(id, readOnly = false) {
         </div>
       </div>` : '';
 
+    const orderNoteHtml = sale.special_instructions ? `<div class="p-4 rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20"><h4 class="mb-1 text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">Order Note</h4><p class="text-sm font-bold text-amber-900 dark:text-amber-100">${escapeOrderValue(sale.special_instructions)}</p></div>` : '';
+
     const itemsHtml = data.items.map(item => `
         <div class="flex items-center justify-between py-3 border-b border-slate-50 dark:border-slate-800/50 last:border-0">
           <div class="flex items-center gap-3">
@@ -5694,6 +5703,7 @@ async function viewOrderItems(id, readOnly = false) {
       <div class="space-y-4">
         ${orderInfoHtml}
         ${Number(sale.tip_amount || 0) > 0 ? `<div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 font-bold text-emerald-700 dark:text-emerald-300">Tip received: ${shopCurrencyCode()} ${Number(sale.tip_amount).toFixed(2)} · ${escapeOrderValue(String(sale.tip_payment_method || sale.payment_method || 'cash').toUpperCase())}</div>` : ""}
+        ${orderNoteHtml}
         ${kitchenStatusesHtml}
         <div class="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[60vh] overflow-y-auto">
           ${itemsHtml}
@@ -5898,6 +5908,7 @@ function proceedToPOSUpdate(id) {
     if ($c('delivery-money-received')) $c('delivery-money-received').checked = Number(_tempEditSaleDetails.amount_received || 0) > 0.01;
     if ($c('pos-cust-name')) $c('pos-cust-name').value = _tempEditSaleDetails.customer_name || '';
     if ($c('pos-cust-phone')) $c('pos-cust-phone').value = _tempEditSaleDetails.customer_phone || '';
+    if ($c('pos-order-note')) $c('pos-order-note').value = _tempEditSaleDetails.special_instructions || '';
     
     switchOrderType(_tempEditSaleDetails.order_type || 'dine_in');
     
@@ -6432,6 +6443,7 @@ async function viewRestrictedSalesOrderItems(id) {
     `).join('');
     openModal(`Order #${data.sale.order_number || id}`, `
       <div class="space-y-4">
+        ${data.sale.special_instructions ? `<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/20"><div class="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">Order Note</div><div class="mt-1 text-sm font-bold text-amber-900 dark:text-amber-100">${escapeOrderValue(data.sale.special_instructions)}</div></div>` : ''}
         <div class="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[60vh] overflow-y-auto">
           ${itemsHtml || '<p class="py-6 text-center text-sm text-slate-400">No ordered items found.</p>'}
         </div>
@@ -7730,6 +7742,12 @@ async function checkout(status = 'completed') {
   // Unified Customer Details (override if set in the new sidebar fields)
   const sidebarName = $c('pos-cust-name')?.value.trim();
   const sidebarPhone = $c('pos-cust-phone')?.value.trim();
+  const order_note = String($c('pos-order-note')?.value || '').trim().replace(/\s+/g, ' ');
+  if (order_note && !/^[A-Za-z0-9 ]+$/.test(order_note)) {
+    resetPOSCheckoutSubmission(status, isEditing);
+    $c('pos-order-note')?.focus();
+    return toast('Order Note may contain letters, numbers, and spaces only', 'error');
+  }
   if (sidebarName) customer_name = sidebarName;
   if (sidebarPhone) customer_phone = sidebarPhone;
 
@@ -7780,6 +7798,7 @@ async function checkout(status = 'completed') {
     order_status: status,
     money_received: deliveryMoneyReceived,
     customer_id: _posSelectedCustomer?.id || null,
+    order_note: order_note || null,
     client_request_id: window.crypto?.randomUUID
       ? window.crypto.randomUUID()
       : `pos-${Date.now()}-${Math.random().toString(36).slice(2)}`,

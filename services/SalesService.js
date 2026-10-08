@@ -14,6 +14,15 @@ const { mergeKitchenChanges } = require('../utils/kitchen-pending-changes');
 const { z } = require('zod');
 
 // Validation Schemas
+const orderNoteSchema = z.preprocess(
+  value => value === undefined ? undefined : (value === null ? null : String(value).trim().replace(/\s+/g, ' ')),
+  z.string()
+    .max(300, 'Order Note must be 300 characters or fewer')
+    .regex(/^[A-Za-z0-9 ]*$/, 'Order Note may contain letters, numbers, and spaces only')
+    .nullable()
+    .optional()
+);
+
 const checkoutSchema = z.object({
   items: z.array(z.object({
     product_id: z.number().int().nullable().optional(),
@@ -46,6 +55,7 @@ const checkoutSchema = z.object({
   order_status: z.string().default('pending'),
   money_received: z.boolean().optional().default(false),
   client_request_id: z.string().trim().min(8).max(100).nullable().optional(),
+  order_note: orderNoteSchema,
 });
 
 class SalesService {
@@ -950,6 +960,7 @@ class SalesService {
           kitchen_id: data.kitchen_id,
           guest_count: data.guest_count,
           token_number: data.token_number,
+          special_instructions: data.order_note || null,
           order_status: data.order_status,
           shift_id: shiftId,
           payment_receiver_id: data.order_type === 'delivery' && data.money_received ? userId : null,
@@ -1441,6 +1452,7 @@ class SalesService {
         kitchen_id: data.kitchen_id || sale.kitchen_id,
         guest_count: data.guest_count,
         token_number: data.token_number || sale.token_number,
+        special_instructions: data.order_note === undefined ? (sale.special_instructions || null) : (data.order_note || null),
         order_status: data.order_status,
         shift_id: shiftId,
         payment_receiver_id: data.order_type === 'delivery' ? (data.money_received ? userId : null) : sale.payment_receiver_id,

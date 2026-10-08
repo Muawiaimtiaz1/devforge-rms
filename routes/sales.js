@@ -95,7 +95,8 @@ router.get("/:id/bill", requireAuth, async (req, res) => {
     return res.json({
       sale: {
         id: details.sale.id,
-        order_number: details.sale.order_number
+        order_number: details.sale.order_number,
+        special_instructions: details.sale.special_instructions
       },
       items: (details.items || []).map(item => ({
         product_name: item.product_name,
