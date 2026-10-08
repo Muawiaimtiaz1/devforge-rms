@@ -264,9 +264,26 @@ class SalesService {
 
   async validateIngredientRequirements(trx, requirements, quantity, productName, shopId) {
     const totals = new Map();
-    for (const req of requirements) totals.set(req.raw_stock_id, (totals.get(req.raw_stock_id) || 0) + Number(req.quantity || 0) * quantity);
+    for (const req of requirements) {
+      const rawStockId = Number(req.raw_stock_id);
+      totals.set(rawStockId, (totals.get(rawStockId) || 0) + Number(req.quantity || 0) * quantity);
+    }
+
+    const rawStockIds = [...totals.keys()];
+    if (!rawStockIds.length) return;
+
+    // Lock the complete ingredient set in a stable order. This preserves the
+    // transaction boundary while avoiding one round trip per ingredient.
+    const stocks = await trx('raw_stocks')
+      .select('id', 'name', 'current_stock', 'conversion_factor')
+      .where({ shop_id: shopId })
+      .whereIn('id', [...rawStockIds].sort((a, b) => a - b))
+      .orderBy('id', 'asc')
+      .forUpdate();
+    const stocksById = new Map(stocks.map(stock => [Number(stock.id), stock]));
+
     for (const [rawStockId, usageQuantity] of totals) {
-      const stock = await trx('raw_stocks').where({ id: rawStockId, shop_id: shopId }).forUpdate().first();
+      const stock = stocksById.get(rawStockId);
       if (!stock) throw new Error(`An ingredient configured for "${productName}" no longer exists.`);
       const totalNeeded = normalizeQuantity(usageQuantity / Number(stock.conversion_factor || 1));
       if (totalNeeded <= 0) continue;
