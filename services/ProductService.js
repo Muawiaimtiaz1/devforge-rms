@@ -1,5 +1,17 @@
 const db = require('../db/knex');
 const { z } = require('zod');
+const { randomInt } = require('crypto');
+
+const BARCODE_RANDOM_LIMIT = 1_000_000;
+const BARCODE_GENERATION_ATTEMPTS = 20;
+
+function systemBarcodeCandidate(shopId, now = new Date()) {
+  const shopPart = String(shopId);
+  if (!/^[0-9]+$/.test(shopPart)) throw new Error('A valid shop is required to generate a barcode');
+  const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const randomPart = String(randomInt(BARCODE_RANDOM_LIMIT)).padStart(6, '0');
+  return shopPart + datePart + randomPart;
+}
 
 const ingredientSchema = z.object({
   raw_stock_id: z.number().int().positive(),
@@ -62,6 +74,38 @@ function parseConfig(value) {
 
 
 class ProductService {
+  async lockBarcodeGeneration(trx, shopId) {
+    if (trx.client.config.client === 'pg') {
+      await trx.raw('SELECT pg_advisory_xact_lock(?)', [Number(shopId)]);
+    }
+  }
+
+  async resolveVariantBarcode(trx, shopId, suppliedBarcode, reservedBarcodes, excludeVariantId = null) {
+    const normalized = String(suppliedBarcode || '').trim();
+    if (normalized) {
+      let query = trx('product_stock_variants').where({ shop_id: shopId, barcode: normalized });
+      if (excludeVariantId) query = query.whereNot({ id: excludeVariantId });
+      if (reservedBarcodes.has(normalized) || await query.first('id')) {
+        const error = new Error('This barcode is already assigned to another variant in this shop');
+        error.code = 'VARIANT_BARCODE_EXISTS';
+        error.status = 409;
+        throw error;
+      }
+      reservedBarcodes.add(normalized);
+      return normalized;
+    }
+
+    for (let attempt = 0; attempt < BARCODE_GENERATION_ATTEMPTS; attempt++) {
+      const candidate = systemBarcodeCandidate(shopId);
+      if (reservedBarcodes.has(candidate)) continue;
+      const existing = await trx('product_stock_variants').where({ shop_id: shopId, barcode: candidate }).first('id');
+      if (existing) continue;
+      reservedBarcodes.add(candidate);
+      return candidate;
+    }
+
+    throw new Error('Unable to generate a unique variant barcode. Please save again.');
+  }
   async validateMenuOptions(trx, variants, addons, shopId) {
     const variantList = variants || [];
     const addonList = addons || [];
@@ -273,13 +317,20 @@ class ProductService {
 
       if (productData.product_type === 'stock_based' && stock_variants?.length) {
         const defaultIndex = Math.max(stock_variants.findIndex(v => v.is_default), 0);
-        await trx('product_stock_variants').insert(stock_variants.map((variant, index) => ({
-          shop_id: shopId, product_id: productId, name: variant.name, sku: variant.sku,
-          barcode: variant.barcode || null, buying_price: variant.buying_price,
-          selling_price: variant.selling_price, stock: variant.stock,
-          min_stock_level: variant.min_stock_level, is_default: index === defaultIndex,
-          is_on_menu: !!variant.is_on_menu, is_active: true
-        })));
+        await this.lockBarcodeGeneration(trx, shopId);
+        const reservedBarcodes = new Set();
+        const variantRows = [];
+        for (let index = 0; index < stock_variants.length; index++) {
+          const variant = stock_variants[index];
+          variantRows.push({
+            shop_id: shopId, product_id: productId, name: variant.name, sku: variant.sku,
+            barcode: await this.resolveVariantBarcode(trx, shopId, variant.barcode, reservedBarcodes),
+            buying_price: variant.buying_price, selling_price: variant.selling_price, stock: variant.stock,
+            min_stock_level: variant.min_stock_level, is_default: index === defaultIndex,
+            is_on_menu: !!variant.is_on_menu, is_active: true
+          });
+        }
+        await trx('product_stock_variants').insert(variantRows);
       }
 
       // 2. Initial Batch
@@ -403,10 +454,13 @@ class ProductService {
         if (!stock_variants.length) throw new Error('Stock-based products require at least one variant');
         const defaultIndex = Math.max(stock_variants.findIndex(v => v.is_default), 0);
         const retainedIds = [];
+        const reservedBarcodes = new Set();
+        await this.lockBarcodeGeneration(trx, shopId);
         for (let index = 0; index < stock_variants.length; index++) {
           const variant = stock_variants[index];
           const values = {
-            name: variant.name, sku: variant.sku, barcode: variant.barcode || null,
+            name: variant.name, sku: variant.sku,
+            barcode: await this.resolveVariantBarcode(trx, shopId, variant.barcode, reservedBarcodes, variant.id),
             buying_price: variant.buying_price, selling_price: variant.selling_price,
             stock: variant.stock, min_stock_level: variant.min_stock_level,
             is_default: index === defaultIndex, is_on_menu: !!variant.is_on_menu,
@@ -674,3 +728,4 @@ class ProductService {
 }
 
 module.exports = new ProductService();
+module.exports.systemBarcodeCandidate = systemBarcodeCandidate;

@@ -3290,7 +3290,7 @@ function renderStockProductVariantsForm() {
       <div class="grid grid-cols-12 gap-2">
         <label class="col-span-4 text-[10px] text-slate-500">Variant name<input value="${escapeOrderValue(variant.name)}" oninput="updateStockProductVariant(${index}, 'name', this.value)" placeholder="250ml, 500ml, 1 Liter" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
         <label class="col-span-4 text-[10px] text-slate-500">SKU<input value="${escapeOrderValue(variant.sku)}" oninput="updateStockProductVariant(${index}, 'sku', this.value)" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
-        <label class="col-span-3 text-[10px] text-slate-500">Barcode<input value="${escapeOrderValue(variant.barcode || '')}" oninput="updateStockProductVariant(${index}, 'barcode', this.value)" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /></label>
+        <label class="col-span-3 text-[10px] text-slate-500">Barcode<input value="${escapeOrderValue(variant.barcode || '')}" oninput="updateStockProductVariant(${index}, 'barcode', this.value)" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs" /><small class="block mt-1 text-[9px] leading-tight text-slate-400">Leave blank to generate automatically.</small></label>
         <button type="button" onclick="removeStockProductVariant(${index})" class="col-span-1 text-rose-500">×</button>
       </div>
       <div class="grid grid-cols-12 gap-2 items-end">

@@ -384,6 +384,7 @@ await query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS order_number INTEGER");
       );
       CREATE INDEX IF NOT EXISTS idx_product_stock_variants_product_id ON product_stock_variants(product_id);
       CREATE INDEX IF NOT EXISTS idx_product_stock_variants_shop_menu ON product_stock_variants(shop_id, is_on_menu);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_product_stock_variants_shop_barcode ON product_stock_variants(shop_id, barcode) WHERE barcode IS NOT NULL AND BTRIM(barcode) <> '';
     `);
     const stockVariantActiveCheck = await query(`
       SELECT column_name FROM information_schema.columns

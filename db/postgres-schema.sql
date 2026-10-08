@@ -705,6 +705,7 @@ CREATE INDEX IF NOT EXISTS idx_return_items_sale_item_id ON return_items(sale_it
 CREATE INDEX IF NOT EXISTS idx_product_batches_product_id ON product_batches(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_stock_variants_product_id ON product_stock_variants(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_stock_variants_shop_menu ON product_stock_variants(shop_id, is_on_menu);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_stock_variants_shop_barcode ON product_stock_variants(shop_id, barcode) WHERE barcode IS NOT NULL AND BTRIM(barcode) <> '';
 CREATE INDEX IF NOT EXISTS idx_customer_ledger_customer_id ON customer_ledger(customer_id);
 CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
 CREATE INDEX IF NOT EXISTS idx_sales_shift_id ON sales(shift_id);

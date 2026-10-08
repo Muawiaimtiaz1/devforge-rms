@@ -154,6 +154,33 @@ CREATE TABLE IF NOT EXISTS products (
   FOREIGN KEY (third_party_person_id) REFERENCES third_party_persons(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS product_stock_variants (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  sku TEXT NOT NULL,
+  barcode TEXT,
+  buying_price REAL NOT NULL DEFAULT 0,
+  selling_price REAL NOT NULL DEFAULT 0,
+  stock REAL NOT NULL DEFAULT 0,
+  min_stock_level REAL NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_on_menu INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  UNIQUE(shop_id, sku),
+  UNIQUE(product_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_stock_variants_product_id ON product_stock_variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_stock_variants_shop_menu ON product_stock_variants(shop_id, is_on_menu);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_stock_variants_shop_barcode
+  ON product_stock_variants(shop_id, barcode)
+  WHERE barcode IS NOT NULL AND TRIM(barcode) <> '';
 CREATE TABLE IF NOT EXISTS floors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   shop_id INTEGER NOT NULL,
