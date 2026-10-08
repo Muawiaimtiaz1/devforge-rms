@@ -3987,7 +3987,7 @@ function capturePOSLayoutState() {
   const ids = [
     "pos-table", "pos-waiter", "pos-rider", "pos-delivery-addr",
     "pos-token", "pos-takeaway-waiter", "pos-discount", "pos-discount-preset", "pos-tax", "pos-tax-preset",
-    "pos-method", "pos-received", "pos-cust-name", "pos-cust-phone", "pos-order-note"
+    "pos-method", "pos-received", "pos-order-note"
   ];
   const values = {};
   ids.forEach((id) => {
@@ -3998,8 +3998,7 @@ function capturePOSLayoutState() {
     values,
     orderType: window._posOrderType,
     quotation: !!$c("pos-is-quotation")?.checked,
-    deliveryMoneyReceived: !!$c("delivery-money-received")?.checked,
-    selectedCustomer: _posSelectedCustomer
+    deliveryMoneyReceived: !!$c("delivery-money-received")?.checked
   };
 }
 
@@ -4348,8 +4347,6 @@ function restorePOSLayoutState(restore) {
   }
   const moneyReceived = $c("delivery-money-received");
   if (moneyReceived) moneyReceived.checked = restore.form.deliveryMoneyReceived;
-  _posSelectedCustomer = restore.form.selectedCustomer || null;
-  renderPOSSelectedCustomerBadge();
   calculateCartTotal();
 }
 
@@ -4707,28 +4704,6 @@ async function renderPOS() {
             </div>
 
             <div class="grid ${splitLayout ? 'grid-cols-4 gap-1 text-xs pt-0.5' : 'grid-cols-2 gap-4 text-base pt-2'} border-t border-slate-200 dark:border-slate-800">
-               <!-- The cashier can link a customer for every order/payment type. -->
-               <div id="pos-customer-identity-fields" class="contents hidden">
-               <div class="col-span-1 relative">
-                 <label id="pos-cust-name-label" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cust. Name</label>
-                 <input id="pos-cust-name" type="text" placeholder="Optional" 
-                        oninput="suggestPOSCustomers(this.value, 'pos-cust-name')"
-                        autocomplete="off"
-                        class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-sm font-bold shadow-sm" />
-                 <!-- Suggestions Dropdown -->
-                 <div id="pos-cust-name-suggestions" class="hidden absolute z-[100] left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"></div>
-               </div>
-               <div class="col-span-1 relative">
-                 <label id="pos-cust-phone-label" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cust. Phone</label>
-                 <input id="pos-cust-phone" type="tel" placeholder="Optional" 
-                        oninput="suggestPOSCustomers(this.value, 'pos-cust-phone')"
-                        autocomplete="off"
-                        class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-sm font-bold shadow-sm" />
-                 <!-- Suggestions Dropdown -->
-                 <div id="pos-cust-phone-suggestions" class="hidden absolute z-[100] left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"></div>
-               </div>
-               </div>
-
                <div class="hidden"><label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">Payment</label>
                <select id="pos-method" onchange="handlePOSMethodChange(this.value)" class="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 transition-all text-base shadow-sm font-bold">
                   <option value="cash">Cash</option>
@@ -5906,8 +5881,6 @@ function proceedToPOSUpdate(id) {
     if ($c('pos-tax')) $c('pos-tax').value = _tempEditSaleDetails.tax_percentage || 0;
     if ($c('pos-received')) $c('pos-received').value = _tempEditSaleDetails.amount_received || 0;
     if ($c('delivery-money-received')) $c('delivery-money-received').checked = Number(_tempEditSaleDetails.amount_received || 0) > 0.01;
-    if ($c('pos-cust-name')) $c('pos-cust-name').value = _tempEditSaleDetails.customer_name || '';
-    if ($c('pos-cust-phone')) $c('pos-cust-phone').value = _tempEditSaleDetails.customer_phone || '';
     if ($c('pos-order-note')) $c('pos-order-note').value = _tempEditSaleDetails.special_instructions || '';
     
     switchOrderType(_tempEditSaleDetails.order_type || 'dine_in');
@@ -7739,26 +7712,13 @@ async function checkout(status = 'completed') {
     token_number = $c('pos-token')?.value.trim() || `TK-${Date.now()}`;
   }
 
-  // Unified Customer Details (override if set in the new sidebar fields)
-  const sidebarName = $c('pos-cust-name')?.value.trim();
-  const sidebarPhone = $c('pos-cust-phone')?.value.trim();
   const order_note = String($c('pos-order-note')?.value || '').trim().replace(/\s+/g, ' ');
   if (order_note && !/^[A-Za-z0-9 ]+$/.test(order_note)) {
     resetPOSCheckoutSubmission(status, isEditing);
     $c('pos-order-note')?.focus();
     return toast('Order Note may contain letters, numbers, and spaces only', 'error');
   }
-  if (sidebarName) customer_name = sidebarName;
-  if (sidebarPhone) customer_phone = sidebarPhone;
 
-  // Validation for Pending Dues
-  if (status === 'completed' && amount_received < grandTotal - 0.01) {
-    if (!customer_name || !customer_phone) {
-      $c('pos-cust-name').focus();
-      resetPOSCheckoutSubmission(status, isEditing);
-      return toast("Customer Name & Phone are REQUIRED for Pending Dues", "error");
-    }
-  }
 
   // Legacy credit validation: only apply for dine-in
   if (orderType === 'dine_in') {
@@ -7797,7 +7757,7 @@ async function checkout(status = 'completed') {
     token_number,
     order_status: status,
     money_received: deliveryMoneyReceived,
-    customer_id: _posSelectedCustomer?.id || null,
+    customer_id: null,
     order_note: order_note || null,
     client_request_id: window.crypto?.randomUUID
       ? window.crypto.randomUUID()
